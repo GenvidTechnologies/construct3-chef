@@ -33,8 +33,9 @@ jobs:
       - checkout
       - azure-cli/install
       - download-deps
-      - node/install-packages:
-          pkg-manager: pnpm
+      - run:
+          name: Install dependencies
+          command: pnpm install --no-frozen-lockfile
       - run:
           name: Lint
           command: pnpm run lint
