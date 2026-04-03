@@ -1,0 +1,10 @@
+// TestLayout layout fixture
+Layout: BattleScreen
+  Layer: Background (index 0)
+  Layer: Gameplay (index 1)
+  Layer: HeroLayer (index 2)
+  Layer: UI (index 3)
+Object: HeroSprite at (100, 200)
+Object: EnemySprite at (300, 200)
+Object: ScoreText at (400, 50)
+// End of layout

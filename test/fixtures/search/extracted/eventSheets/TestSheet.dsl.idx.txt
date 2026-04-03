@@ -1,0 +1,11 @@
+// TestSheet DSL index fixture
+INDEX: heroAttack -> line 8
+INDEX: heroDefend -> line 14
+SIGNAL: BattleStart -> line 13
+FUNCTION: heroAttack (args: 0)
+FUNCTION: heroDefend (args: 0)
+VARIABLE: alpha (number)
+VARIABLE: beta (number)
+VARIABLE: gamma (number)
+VARIABLE: delta (number)
+VARIABLE: score (number)

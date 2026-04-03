@@ -1,0 +1,8 @@
+{
+  "name": "BattleScreen",
+  "layers": [
+    { "name": "Background", "index": 0 },
+    { "name": "Gameplay", "index": 1 },
+    { "name": "UI", "index": 3 }
+  ]
+}

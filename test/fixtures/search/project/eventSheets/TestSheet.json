@@ -1,0 +1,7 @@
+{
+  "name": "TestSheet",
+  "events": [
+    { "type": "start-of-layout", "actions": [] },
+    { "type": "button-clicked", "conditions": [], "actions": [] }
+  ]
+}

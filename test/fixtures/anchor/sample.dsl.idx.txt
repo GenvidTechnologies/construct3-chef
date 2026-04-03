@@ -1,0 +1,32 @@
+# SampleSheet — DSL Coordinate Index
+# Regenerate: npm run generate-dsl
+#
+# Event | JSON Path                    | SID              | DSL Line | Description
+#-------|------------------------------|------------------|----------|--------
+  1     | events[0]                    | §100000000000001 | 4        | group "Battle Events"
+  -     | events[0].children[0]        | §100000000000002 | 5        | static isBattleActive: boolean = false
+  -     | events[0].children[1]        | §100000000000003 | 7        | static isBattleReady: boolean = false
+  2     | events[0].children[2]        | §100000000000004 | 10       | include "CommonEvents"
+  3     | events[0].children[3]        | §100000000000005 | 12       | group "Battle Setup"
+  4     | events[0].children[3].children[0] | §100000000000006 | 14  | block
+        |   action[0]                  |                  |          | System.set-eventvar(isBattleActive, true)
+        |   action[1]                  |                  |          | System.set-eventvar(isBattleReady, false)
+  5     | events[0].children[3].children[1] | §100000000000007 | 18  | block
+        |   action[0]                  |                  |          | Audio.play("battle_theme")
+  -     | events[0].children[4]        | §100000000000008 | 20       | static turnCount: number = 0
+  6     | events[0].children[5]        | §100000000000009 | 22       | group "Hero Turn Events"
+  7     | events[0].children[5].children[0] | §100000000000010 | 24  | block
+        |   action[0]                  |                  |          | System.reset-eventvar(turnCount)
+  8     | events[0].children[5].children[1] | §100000000000011 | 27  | function "onHeroAttack"
+  9     | events[0].children[5].children[2] | §100000000000012 | 30  | block
+        |   action[0]                  |                  |          | System.add-to-eventvar(turnCount, 1)
+        |   action[1]                  |                  |          | Audio.play("attack_sfx")
+        |   action[2]                  |                  |          | System.signal("heroAttackComplete")
+  10    | events[0].children[6]        | §100000000000013 | 36       | group "Enemy Turn Events"
+  11    | events[0].children[6].children[0] | §100000000000014 | 38  | block
+        |   action[0]                  |                  |          | System.signal("enemyTurnStart")
+  12    | events[0].children[7]        | §100000000000015 | 42       | function "onEnemyAttack"
+  13    | events[0].children[8]        | §100000000000016 | 45       | group "Battle End Events"
+  14    | events[0].children[8].children[0] | §100000000000017 | 47  | block
+        |   action[0]                  |                  |          | System.set-eventvar(isBattleActive, false)
+  15    | events[0].children[8].children[1] | §100000000000018 | 50  | function "onBattleEnd"

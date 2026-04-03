@@ -1,0 +1,11 @@
+// Other DSL fixture in SubDir
+// Line 2: subdirectory sheet
+Event: On start of layout
+  Action: Set variable alpha to 0
+Event: On button clicked
+  Condition: alpha > 0
+  Action: Call function heroAttack
+Event: Every tick
+  Action: Update display
+Event: On layout end
+  Action: Cleanup resources

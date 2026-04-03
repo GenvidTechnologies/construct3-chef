@@ -1,0 +1,20 @@
+// TestSheet DSL fixture
+// Line 2: event sheet header
+Event: On start of layout
+  Action: Set variable alpha to 10
+  Action: Set variable beta to 20
+Event: On button clicked
+  Condition: alpha > 5
+  Action: Call function heroAttack
+Event: Every tick
+  Action: Update display score
+  Condition: score > 100
+Event: On signal BattleStart
+  Action: Set variable gamma to 0
+  Action: Call function heroDefend
+Event: On timer expired
+  Condition: beta < 30
+  Action: Set variable delta to alpha
+Event: On layout end
+  Action: Reset all variables
+// End of TestSheet DSL
