@@ -1,0 +1,79 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+construct3-chef mutates Construct 3 projects, which store their data as JSON files on disk (`eventSheets/`, `layouts/`, `objectTypes/`, `scripts/`). It exposes the same library two ways: a yargs **CLI** (`src/cli.ts`) and an **MCP server** (`src/mcp/server.ts`). Both are thin wrappers over the pure library in `src/c3/`. When adding a capability, implement it in `src/c3/`, then surface it in both `cli.ts` and `server.ts`.
+
+## Where to read more
+
+- **`initiatives/c3-mcp-server/initiative.md`** — the living roadmap and knowledge base for this tool: architecture rationale, design decisions (SID addressing, `txId`/`extractedDirty` concurrency, watcher suppression), the catalogued **recipe gaps and bugs** (read this before touching the recipe interpreter/validator), and future work. It was imported from the monorepo where this code was first developed; its repository note maps old `bin/…` paths onto this repo's `src/…`. Historical session plans are under `initiatives/c3-mcp-server/archive/`.
+- **`docs/c3/`** — C3 *platform* reference (event sheet & layout JSON structure, scripting API, the async/concurrency model). Explains *why* the recipe gotchas exist. Distinct from `docs/recipe-reference.md`, `docs/generators.md`, `docs/cli.md`, which document this tool's own usage.
+
+## Commands
+
+```bash
+npm test                  # mocha + tsx + chai, all test/**/*.test.ts
+npm test -- --grep "foo"  # run tests matching a name
+npm test -- test/c3/sidUtils.test.ts   # run a single file
+npm run lint              # eslint over src/ AND test/, --max-warnings 0
+npm run typecheck         # tsc --noEmit — checks src/ ONLY (test/ has known type errors; see commit 0b4c515)
+npm run build             # tsc → dist/, then prepends a node shebang to dist/cli.js
+```
+
+There is no dev script for the CLI. Run it in-place with `npx tsx src/cli.ts <subcommand> --project-dir <path>` (no build needed — `main`/`exports` point at the `.ts` sources and the project runs through tsx). The `construct3-chef` bin only exists after `npm run build` (it points at `dist/cli.js`).
+
+## Dependency bootstrap (important — install will fail without this)
+
+`c3source` and `genvid-mcp-utils` are private Genvid packages, **not on npm**. `package.json` references them as `file:.packages/*.tgz`. Those tarballs are not in git (`.gitignore` excludes `.packages/`); fetch them first:
+
+```bash
+bash scripts/download-deps.sh   # needs az CLI logged in with storage access
+```
+
+Versions are pinned in `.packages-version`. CI (CircleCI, not GitHub Actions) downloads them via an Azure service principal + 1Password before `pnpm install`. If `npm install` fails on a missing local tarball, this is why.
+
+- **`c3source`** — the C3 JSON domain layer: type definitions (`EventSheet`, `Condition`, `Layout`, …), file discovery (`find_all_eventsheets_path`), and primitives like `extractScriptsFromSheet`, `formatCondition`. Treat it as the source of truth for C3's on-disk schema.
+- **`genvid-mcp-utils`** — MCP plumbing: `ReadWriteLock`, `ExpectedChanges`, `paginateText`, `exposeDocs`, `Logger`.
+
+## Module system gotchas
+
+ESM throughout (`"type": "module"`, `NodeNext`). **Relative imports must use the `.js` extension even though the files are `.ts`** (e.g. `import { foo } from "./generators.js"`). `strict` is on. Two tsconfigs: `tsconfig.json` (src-only, emits to `dist/`, used by build + typecheck) and `tsconfig.test.json` (adds `test/`, `noEmit` — exists for editors, not wired into the `typecheck` script).
+
+## The two-surface data model
+
+This is the central idea. There are two views of the project:
+
+- **Source JSON** (`eventSheets/`, `layouts/`, `objectTypes/`) — the write surface. The actual C3 project. Never hand-edit blindly; mutate via recipes.
+- **`extracted/`** (DSL `.dsl.txt`, index `.dsl.idx.txt`, TypeScript `.ts`, layout summaries, `template-scope.txt`, `sid-registry.txt`) — the read surface. Human/AI-readable, regenerated from source by the 5 generators in `src/c3/generators.ts`. Committed alongside source for diffing.
+
+Workflow loop: **read `extracted/` to locate a target → write a recipe targeting it by SID → apply to source JSON → regenerate `extracted/` → sync `project.c3proj`.** After any source mutation, `extracted/` is stale until regenerated.
+
+### SIDs are the addressing system
+
+C3 nodes carry a stable `sid` (a random integer in `[1e14, 1e15)`). Recipes target nodes by SID (`"in": "sid:123…"`) rather than fragile JSON paths — you discover SIDs from the `.dsl.idx.txt` index or via the `resolve-anchor` MCP tool. `src/c3/sidUtils.ts` holds a **module-level SID context** that must be initialized (`initSidContext` from `sid-registry.txt`, or `initSidContextFromSet`) before any SID is generated, and reset after. `recipeApplier.applyParsed` wraps the whole apply in `initSidContext`/`resetSidContext` so every newly generated SID is globally unique against the registry. Tests that touch SID generation must init the context themselves.
+
+## Recipe pipeline
+
+- **`recipeInterpreter.ts`** — declares the `Recipe` type (`objectTypes`, `addInstVars`, `files`, `layouts`), all the op shorthands, `validateRecipe`, and the **pure** execution functions (`executeRecipe`, `executeFileOps`, `applyReplacements`) that transform in-memory `EventSheet` objects with no I/O.
+- **`recipeApplier.ts`** — the orchestrator with I/O. `applyRecipeInner` applies in a fixed order: **objectTypes → addInstVars → layouts → files**, then writes files and regenerates. Adding an objectType touches three places in lockstep: the `objectTypes/*.json`, `scripts/ts-defs/instanceTypes.d.ts`, and `scripts/ts-defs/objects.d.ts`. Layout ops dispatch into `layoutMutator.ts`.
+- **`eventSheetMutator.ts`** — low-level builders (`buildBlock`, `buildAction`, …) and tree edits (`insertEvent`, `resolveNode`, SID-index building) over a single sheet.
+
+The recipe reference (all event-sheet + layout ops, SID addressing, builder shorthands) lives in `docs/recipe-reference.md`; generator internals in `docs/generators.md`.
+
+## MCP server state model (`src/mcp/server.ts`)
+
+The CLI is stateless; the server adds a concurrency layer worth understanding before editing it:
+
+- **`txId`** — increments on every source-file mutation. Optimistic concurrency: read tools / `validate-recipe` return the current `txId`; `apply-recipe` / `sync-project` accept an expected `txId` and reject if it has moved.
+- **`extractedDirty`** — true when source has changed since the last regenerate; read tools append a stale warning and `checkSourceFreshness` flips it by comparing mtimes.
+- **File watchers** on source dirs bump `txId`/`extractedDirty` on *external* edits. Self-induced writes are masked via `ExpectedChanges.add(...)` and `suppressWatcherDepth++` around the write — when editing a mutate tool, you must register expected writes and bump the suppress depth or the watcher will spuriously mark state dirty.
+- **`ReadWriteLock`** serializes writes, allows concurrent reads. Tools are tagged `READ_ONLY` / `REGENERATE` / `MUTATE` annotations.
+- `CancelledError` paths still bump `txId` and set `extractedDirty` because source was already written before regeneration was interrupted.
+
+## Conventions
+
+- C3 JSON is written tab-indented with a trailing newline: `JSON.stringify(x, null, "\t") + "\n"`. Match this when writing project files.
+- Prettier: 120 cols, spaces for `.ts`, **tabs** for `.json`. ESLint extends prettier and disables `no-unused-vars` / `no-explicit-any`.
+- All file I/O is rooted at a `--project-dir` (defaults to cwd); paths inside recipes/tools are relative to that root. Mutate tools include path-traversal guards — keep them.
