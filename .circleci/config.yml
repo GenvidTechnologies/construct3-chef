@@ -40,7 +40,7 @@ commands:
       - az-login-with-sp
       - run:
           name: Download dependencies
-          command: bash scripts/download-deps.sh
+          command: node scripts/download-deps.mjs key
 
 jobs:
   build-and-test:
