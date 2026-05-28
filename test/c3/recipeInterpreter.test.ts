@@ -147,6 +147,34 @@ describe("expandAction", () => {
     assert.deepStrictEqual(action.parameters, { duration: "5" });
   });
 
+  it("accepts objectClass as an alias for object", () => {
+    const action = expandAction({ id: "destroy", objectClass: "Foo" }) as StandardAction;
+    assert.equal(action.id, "destroy");
+    assert.equal(action.objectClass, "Foo");
+  });
+
+  it("prefers object over objectClass when both are present", () => {
+    const action = expandAction({ id: "destroy", object: "Foo", objectClass: "Bar" }) as StandardAction;
+    assert.equal(action.objectClass, "Foo");
+  });
+
+  it("auto-defaults objectClass to System for well-known System action ids", () => {
+    for (const id of ["wait", "wait-for-previous-actions", "signal"]) {
+      const action = expandAction({ id }) as StandardAction;
+      assert.equal(action.objectClass, "System", `id=${id}`);
+    }
+  });
+
+  it("throws when a non-System id action has no object/objectClass", () => {
+    assert.throws(() => expandAction({ id: "destroy" }), /missing its target object/);
+  });
+
+  it("accepts objectClass as an alias on custom-action", () => {
+    const custom = expandAction({ "custom-action": "Initialize", objectClass: "CardScroller" }) as CustomAction;
+    assert.equal(custom.customAction, "Initialize");
+    assert.equal(custom.objectClass, "CardScroller");
+  });
+
   it("throws for unrecognized shorthand", () => {
     assert.throws(() => expandAction({ foo: "bar" } as unknown as BuilderAction), /Unrecognized action shorthand/);
   });
@@ -250,6 +278,15 @@ describe("expandCondition", () => {
   it("expands inverted condition", () => {
     const result = expandCondition({ id: "is-visible", object: "Sprite", inverted: true });
     assert.equal(result.isInverted, true);
+  });
+
+  it("accepts objectClass as an alias for object", () => {
+    const condition = expandCondition({ id: "is-visible", objectClass: "Sprite" });
+    assert.equal(condition.objectClass, "Sprite");
+  });
+
+  it("throws when a condition id has no object/objectClass", () => {
+    assert.throws(() => expandCondition({ id: "is-visible" }), /missing its target object/);
   });
 
   it("throws for unrecognized shorthand", () => {
@@ -2885,6 +2922,50 @@ describe("validateRecipe: shorthand field validation", () => {
     assert.ok(errors.some((e) => e.includes("group shorthand") && e.includes('unknown field "nonsense"')));
   });
 
+  it("rejects unknown field on an insert-actions action shorthand", () => {
+    const recipe = {
+      files: {
+        "Test/Sheet": [{ op: "insert-actions", in: "sid:1", after: 0, actions: [{ id: "destroy", object: "Foo", objclass: "x" }] }],
+      },
+    } as unknown as Recipe;
+    const errors = validateRecipe(recipe);
+    assert.ok(errors.some((e) => e.includes('unknown field "objclass"')), errors.join("; "));
+  });
+
+  it("accepts objectClass alias on an insert-actions action shorthand", () => {
+    const recipe = {
+      files: {
+        "Test/Sheet": [{ op: "insert-actions", in: "sid:1", after: 0, actions: [{ id: "destroy", objectClass: "Foo" }] }],
+      },
+    } as unknown as Recipe;
+    const errors = validateRecipe(recipe);
+    assert.deepStrictEqual(errors, [], errors.join("; "));
+  });
+
+  it("rejects an insert-actions action with no object (non-System)", () => {
+    const recipe = {
+      files: { "Test/Sheet": [{ op: "insert-actions", in: "sid:1", after: 0, actions: [{ id: "destroy" }] }] },
+    } as unknown as Recipe;
+    const errors = validateRecipe(recipe);
+    assert.ok(errors.some((e) => e.includes('missing "object"')), errors.join("; "));
+  });
+
+  it("allows a System action id with no object in insert-actions", () => {
+    const recipe = {
+      files: { "Test/Sheet": [{ op: "insert-actions", in: "sid:1", after: 0, actions: [{ id: "wait-for-previous-actions" }] }] },
+    } as unknown as Recipe;
+    const errors = validateRecipe(recipe);
+    assert.deepStrictEqual(errors, [], errors.join("; "));
+  });
+
+  it("rejects an insert-actions custom-action with no object (no validate/apply mismatch)", () => {
+    const recipe = {
+      files: { "Test/Sheet": [{ op: "insert-actions", in: "sid:1", after: 0, actions: [{ "custom-action": "Foo" }] }] },
+    } as unknown as Recipe;
+    const errors = validateRecipe(recipe);
+    assert.ok(errors.some((e) => e.includes('missing "object"')), errors.join("; "));
+  });
+
   it("warns on missing required field in variable shorthand", () => {
     const recipe = {
       files: {
@@ -3081,6 +3162,45 @@ describe("validateActionParams", () => {
     const warnings = validateActionParams({ call: "myFunc", params: [0] }, "test");
     assert.deepStrictEqual(warnings, []);
   });
+
+  it("accepts objectClass as an alias for object (no warning)", () => {
+    const warnings = validateActionParams({ id: "destroy", objectClass: "Foo" }, "test");
+    assert.deepStrictEqual(warnings, []);
+  });
+
+  it("rejects a genuinely-unknown field on an id action shorthand", () => {
+    const warnings = validateActionParams({ id: "destroy", object: "Foo", objclass: "Foo" }, "test");
+    assert.equal(warnings.length, 1);
+    assert.include(warnings[0], 'unknown field "objclass"');
+  });
+
+  it("rejects an id action with neither object nor objectClass (non-System)", () => {
+    const warnings = validateActionParams({ id: "destroy" }, "test");
+    assert.equal(warnings.length, 1);
+    assert.include(warnings[0], 'missing "object"');
+  });
+
+  it("allows a well-known System action id with no object", () => {
+    const warnings = validateActionParams({ id: "wait-for-previous-actions" }, "test");
+    assert.deepStrictEqual(warnings, []);
+  });
+
+  it("rejects a custom-action with no object/objectClass (matches expandAction throw)", () => {
+    const warnings = validateActionParams({ "custom-action": "Foo" }, "test");
+    assert.equal(warnings.length, 1);
+    assert.include(warnings[0], 'missing "object"');
+  });
+
+  it("accepts a custom-action with objectClass alias", () => {
+    const warnings = validateActionParams({ "custom-action": "Foo", objectClass: "Bar" }, "test");
+    assert.deepStrictEqual(warnings, []);
+  });
+
+  it("rejects an action shorthand that matches no discriminator", () => {
+    const warnings = validateActionParams({ foo: "bar" }, "test");
+    assert.equal(warnings.length, 1);
+    assert.include(warnings[0], "unrecognized action shorthand");
+  });
 });
 
 describe("validateConditionParams", () => {
@@ -3099,6 +3219,29 @@ describe("validateConditionParams", () => {
       "test",
     );
     assert.deepStrictEqual(warnings, []);
+  });
+
+  it("accepts objectClass as an alias for object (no warning)", () => {
+    const warnings = validateConditionParams({ id: "is-visible", objectClass: "Sprite" }, "test");
+    assert.deepStrictEqual(warnings, []);
+  });
+
+  it("rejects a genuinely-unknown field on a condition shorthand", () => {
+    const warnings = validateConditionParams({ id: "is-visible", object: "Sprite", typo: 1 }, "test");
+    assert.equal(warnings.length, 1);
+    assert.include(warnings[0], 'unknown field "typo"');
+  });
+
+  it("rejects a condition id with neither object nor objectClass", () => {
+    const warnings = validateConditionParams({ id: "is-visible" }, "test");
+    assert.equal(warnings.length, 1);
+    assert.include(warnings[0], 'missing "object"');
+  });
+
+  it("rejects a condition shorthand that matches no discriminator", () => {
+    const warnings = validateConditionParams({ foo: "bar" }, "test");
+    assert.equal(warnings.length, 1);
+    assert.include(warnings[0], "unrecognized condition shorthand");
   });
 });
 

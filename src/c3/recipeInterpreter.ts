@@ -350,14 +350,14 @@ export interface RenameLayerOp {
 export type BuilderAction =
   | { script: string[] }
   | { call: string; params?: (string | number | boolean)[] }
-  | { "custom-action": string; object: string; params?: unknown[] }
+  | { "custom-action": string; object?: string; objectClass?: string; params?: unknown[] }
   | { comment: string }
-  | { id: string; object: string; params?: Record<string, string | number | boolean>; behavior?: string };
+  | { id: string; object?: string; objectClass?: string; params?: Record<string, string | number | boolean>; behavior?: string };
 
 export type BuilderCondition =
   | { else: true }
   | { "trigger-once": true }
-  | { id: string; object: string; params?: Record<string, string | number | boolean>; inverted?: boolean; behavior?: string };
+  | { id: string; object?: string; objectClass?: string; params?: Record<string, string | number | boolean>; inverted?: boolean; behavior?: string };
 
 export type BuilderEvent =
   | { variable: VariableShorthand }
@@ -421,6 +421,18 @@ export interface GroupShorthand {
 
 // ─── Part 2: Builder Expansion Functions ───
 
+/**
+ * Well-known object-less C3 "System" action ids. A `{ "id": "<id>" }` shorthand with no `object`
+ * auto-resolves to `objectClass: "System"`. Kept deliberately small — only ids that can never
+ * legitimately target a non-System object — so the default never masks a real missing-object error.
+ */
+export const SYSTEM_ACTION_IDS = new Set<string>([
+  "wait",
+  "wait-for-previous-actions",
+  "wait-for-signal",
+  "signal",
+]);
+
 export function expandAction(shorthand: BuilderAction): C3Action {
   if ("script" in shorthand) {
     return buildScriptAction({ script: shorthand.script });
@@ -438,9 +450,15 @@ export function expandAction(shorthand: BuilderAction): C3Action {
         `Warning: custom-action "${shorthand["custom-action"]}" looks like a plugin action id. Did you mean { "id": "${shorthand["custom-action"]}" }?`,
       );
     }
+    const objectClass = shorthand.object ?? shorthand.objectClass;
+    if (objectClass === undefined) {
+      throw new Error(
+        `custom-action "${shorthand["custom-action"]}" requires an "object" (or "objectClass") naming the target object class`,
+      );
+    }
     return buildCustomAction({
       name: shorthand["custom-action"],
-      objectClass: shorthand.object,
+      objectClass,
       parameters: shorthand.params,
     });
   }
@@ -454,12 +472,22 @@ export function expandAction(shorthand: BuilderAction): C3Action {
         `Warning: Action id "${shorthand.id}" looks like a custom ACE name. Did you mean { "custom-action": "${shorthand.id}" }?`,
       );
     }
+    // Accept `objectClass` (the on-disk JSON field) as an alias for `object`; auto-default
+    // well-known object-less System actions to "System".
+    const objectClass =
+      shorthand.object ?? shorthand.objectClass ?? (SYSTEM_ACTION_IDS.has(shorthand.id) ? "System" : undefined);
+    if (objectClass === undefined) {
+      throw new Error(
+        `Action "${shorthand.id}" is missing its target object — add "object" (or "objectClass"). ` +
+          `If this is a System action, add it to SYSTEM_ACTION_IDS or set "object": "System".`,
+      );
+    }
     const params = shorthand.params
       ? Object.fromEntries(Object.entries(shorthand.params).map(([k, v]) => [k, String(v)]))
       : undefined;
     return buildAction({
       id: shorthand.id,
-      objectClass: shorthand.object,
+      objectClass,
       parameters: params,
       behaviorType: shorthand.behavior,
     });
@@ -475,9 +503,14 @@ export function expandCondition(shorthand: BuilderCondition): Condition {
     return buildCondition({ id: "trigger-once-while-true", objectClass: "System" });
   }
   if ("id" in shorthand) {
+    // Accept `objectClass` (the on-disk JSON field) as an alias for `object`.
+    const objectClass = shorthand.object ?? shorthand.objectClass;
+    if (objectClass === undefined) {
+      throw new Error(`Condition "${shorthand.id}" is missing its target object — add "object" (or "objectClass").`);
+    }
     return buildCondition({
       id: shorthand.id,
-      objectClass: shorthand.object,
+      objectClass,
       parameters: shorthand.params,
       isInverted: shorthand.inverted,
       behaviorType: shorthand.behavior,
@@ -1860,6 +1893,77 @@ export const SHORTHAND_FIELD_SCHEMAS: Record<string, OpFieldSchema> = {
   },
 };
 
+/**
+ * Field schemas for action builder shorthands, keyed by the discriminator key that selects the
+ * variant. `object` and `objectClass` are BOTH allowed on the `id`/`custom-action` variants —
+ * `objectClass` is the on-disk JSON field, accepted as an alias — while a typo like `objclass`
+ * is rejected.
+ */
+export const ACTION_SHORTHAND_SCHEMAS: Record<string, OpFieldSchema> = {
+  script: { required: ["script"], optional: [], misspellings: {} },
+  call: { required: ["call"], optional: ["params"], misspellings: { callFunction: "call", function: "call" } },
+  "custom-action": {
+    required: ["custom-action"],
+    optional: ["object", "objectClass", "params"],
+    misspellings: { customAction: "custom-action", name: "custom-action" },
+  },
+  comment: { required: ["comment"], optional: [], misspellings: {} },
+  id: {
+    required: ["id"],
+    optional: ["object", "objectClass", "params", "behavior"],
+    misspellings: { behaviorType: "behavior" },
+  },
+};
+
+/** Field schemas for condition builder shorthands, keyed by discriminator key. */
+export const CONDITION_SHORTHAND_SCHEMAS: Record<string, OpFieldSchema> = {
+  else: { required: ["else"], optional: [], misspellings: {} },
+  "trigger-once": { required: ["trigger-once"], optional: [], misspellings: {} },
+  id: {
+    required: ["id"],
+    optional: ["object", "objectClass", "params", "inverted", "behavior"],
+    misspellings: { behaviorType: "behavior", isInverted: "inverted" },
+  },
+};
+
+/** Pick the schema whose discriminator key is present on the shorthand. */
+function pickShorthandSchema(
+  item: Record<string, unknown>,
+  schemas: Record<string, OpFieldSchema>,
+): { key: string; schema: OpFieldSchema } | undefined {
+  for (const key of Object.keys(schemas)) {
+    if (item[key] !== undefined) return { key, schema: schemas[key] };
+  }
+  return undefined;
+}
+
+/** Validate required + unknown fields on a shorthand object (mirrors the inline-event field check). */
+function validateShorthandFields(
+  item: Record<string, unknown>,
+  schema: OpFieldSchema,
+  label: string,
+  prefix: string,
+): string[] {
+  const errors: string[] = [];
+  for (const field of schema.required) {
+    if (item[field] === undefined) {
+      errors.push(`${prefix}: ${label} shorthand missing required field "${field}"`);
+    }
+  }
+  const allAllowed = new Set([...schema.required, ...schema.optional]);
+  for (const field of Object.keys(item)) {
+    if (!allAllowed.has(field)) {
+      const suggestion = schema.misspellings[field];
+      errors.push(
+        suggestion
+          ? `${prefix}: ${label} shorthand unknown field "${field}" — did you mean "${suggestion}"?`
+          : `${prefix}: ${label} shorthand unknown field "${field}"`,
+      );
+    }
+  }
+  return errors;
+}
+
 // ─── Param Type Rules ───
 
 interface ParamTypeRule {
@@ -1942,6 +2046,29 @@ export const PARAM_TYPE_RULES: Record<string, ParamTypeRule[]> = {
 export function validateActionParams(action: Record<string, unknown>, prefix: string): string[] {
   const warnings: string[] = [];
 
+  // Field-name validation: reject unknown keys, accept `objectClass` as an alias for `object`,
+  // reject shapes that match no discriminator (expandAction would throw), and flag an
+  // `id`/`custom-action` action with no target object. `id` System actions auto-default to "System".
+  const picked = pickShorthandSchema(action, ACTION_SHORTHAND_SCHEMAS);
+  if (!picked) {
+    warnings.push(
+      `${prefix}: unrecognized action shorthand — expected one of ${Object.keys(ACTION_SHORTHAND_SCHEMAS)
+        .map((k) => `"${k}"`)
+        .join(", ")}`,
+    );
+  } else {
+    warnings.push(...validateShorthandFields(action, picked.schema, picked.key, prefix));
+    const needsObject = picked.key === "id" || picked.key === "custom-action";
+    const isSystemId = picked.key === "id" && typeof action.id === "string" && SYSTEM_ACTION_IDS.has(action.id);
+    if (needsObject && action.object === undefined && action.objectClass === undefined && !isSystemId) {
+      const name = picked.key === "id" ? `action "${action.id}"` : `custom-action "${action["custom-action"]}"`;
+      warnings.push(
+        `${prefix}: ${name} is missing "object" (or "objectClass"). Add the target object class` +
+          (picked.key === "id" ? `, or use "object": "System" for System actions.` : "."),
+      );
+    }
+  }
+
   // Standard actions: { id: "action-id", params: { ... } }
   if (typeof action.id === "string" && action.params && typeof action.params === "object" && !Array.isArray(action.params)) {
     const rules = PARAM_TYPE_RULES[action.id as string];
@@ -1973,6 +2100,30 @@ export function validateActionParams(action: Record<string, unknown>, prefix: st
  */
 export function validateConditionParams(condition: Record<string, unknown>, prefix: string): string[] {
   const warnings: string[] = [];
+
+  // Field-name validation: reject unknown keys, accept `objectClass` as an alias for `object`,
+  // reject shapes that match no discriminator (expandCondition would throw), and flag an
+  // `id` condition with no target object.
+  const picked = pickShorthandSchema(condition, CONDITION_SHORTHAND_SCHEMAS);
+  if (!picked) {
+    warnings.push(
+      `${prefix}: unrecognized condition shorthand — expected one of ${Object.keys(CONDITION_SHORTHAND_SCHEMAS)
+        .map((k) => `"${k}"`)
+        .join(", ")}`,
+    );
+  } else {
+    warnings.push(...validateShorthandFields(condition, picked.schema, picked.key, prefix));
+    if (
+      picked.key === "id" &&
+      condition.object === undefined &&
+      condition.objectClass === undefined &&
+      typeof condition.id === "string"
+    ) {
+      warnings.push(
+        `${prefix}: condition "${condition.id}" is missing "object" (or "objectClass"). Add the target object class.`,
+      );
+    }
+  }
 
   if (typeof condition.id === "string" && condition.params && typeof condition.params === "object" && !Array.isArray(condition.params)) {
     const rules = PARAM_TYPE_RULES[condition.id as string];
@@ -2224,22 +2375,7 @@ export function validateRecipe(recipe: Recipe): string[] {
                 if (shorthand && typeof shorthand === "object") {
                   const shorthandSchema = SHORTHAND_FIELD_SCHEMAS[key];
                   if (shorthandSchema) {
-                    for (const field of shorthandSchema.required) {
-                      if (shorthand[field] === undefined) {
-                        errors.push(`${filePath}[${i}]: ${key} shorthand missing required field "${field}"`);
-                      }
-                    }
-                    const allAllowed = new Set([...shorthandSchema.required, ...shorthandSchema.optional]);
-                    for (const field of Object.keys(shorthand)) {
-                      if (!allAllowed.has(field)) {
-                        const suggestion = shorthandSchema.misspellings[field];
-                        if (suggestion) {
-                          errors.push(`${filePath}[${i}]: ${key} shorthand unknown field "${field}" — did you mean "${suggestion}"?`);
-                        } else {
-                          errors.push(`${filePath}[${i}]: ${key} shorthand unknown field "${field}"`);
-                        }
-                      }
-                    }
+                    errors.push(...validateShorthandFields(shorthand, shorthandSchema, key, `${filePath}[${i}]`));
                   }
                 }
               }
@@ -2252,27 +2388,17 @@ export function validateRecipe(recipe: Recipe): string[] {
                 for (let j = 0; j < variables.length; j++) {
                   // Variables can be { variable: {...} } or just {...}
                   const entry = variables[j] as Record<string, unknown>;
+                  // Variables can be wrapped (`{ variable: {...} }`) or bare (`{...}`); validate the inner object.
                   const target = entry.variable ? (entry.variable as Record<string, unknown>) : entry;
                   if (target && typeof target === "object") {
-                    const shorthandSchema = SHORTHAND_FIELD_SCHEMAS["variable"];
-                    for (const field of shorthandSchema.required) {
-                      if (target[field] === undefined) {
-                        errors.push(`${filePath}[${i}].variables[${j}]: variable shorthand missing required field "${field}"`);
-                      }
-                    }
-                    const allAllowed = new Set([...shorthandSchema.required, ...shorthandSchema.optional]);
-                    // For the wrapper form, skip the "variable" key itself
-                    const keysToCheck = entry.variable ? Object.keys(entry.variable as object) : Object.keys(entry);
-                    for (const field of keysToCheck) {
-                      if (!allAllowed.has(field)) {
-                        const suggestion = shorthandSchema.misspellings[field];
-                        if (suggestion) {
-                          errors.push(`${filePath}[${i}].variables[${j}]: variable shorthand unknown field "${field}" — did you mean "${suggestion}"?`);
-                        } else {
-                          errors.push(`${filePath}[${i}].variables[${j}]: variable shorthand unknown field "${field}"`);
-                        }
-                      }
-                    }
+                    errors.push(
+                      ...validateShorthandFields(
+                        target,
+                        SHORTHAND_FIELD_SCHEMAS["variable"],
+                        "variable",
+                        `${filePath}[${i}].variables[${j}]`,
+                      ),
+                    );
                   }
                 }
               }
