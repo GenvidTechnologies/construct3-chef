@@ -13,16 +13,19 @@ construct3-chef mutates Construct 3 projects, which store their data as JSON fil
 
 ## Commands
 
+This repo uses **pnpm** (committed `pnpm-lock.yaml`). Don't `npm install` — it produces a `package-lock.json` the repo ignores and may resolve a different dep graph.
+
 ```bash
-npm test                  # mocha + tsx + chai, all test/**/*.test.ts
-npm test -- --grep "foo"  # run tests matching a name
-npm test -- test/c3/sidUtils.test.ts   # run a single file
-npm run lint              # eslint over src/ AND test/, --max-warnings 0
-npm run typecheck         # tsc --noEmit — checks src/ ONLY (test/ has known type errors; see commit 0b4c515)
-npm run build             # tsc → dist/, then prepends a node shebang to dist/cli.js
+pnpm install                            # install deps (after download-deps; see below)
+pnpm test                               # mocha + tsx + chai, all test/**/*.test.ts
+pnpm test --grep "foo"                  # run tests matching a name (pnpm forwards args; no `--`)
+pnpm test test/c3/sidUtils.test.ts      # run a single file
+pnpm lint                               # eslint over src/ AND test/, --max-warnings 0
+pnpm typecheck                          # tsc --noEmit — checks src/ ONLY (test/ has known type errors; see commit 0b4c515)
+pnpm build                              # tsc → dist/, then prepends a node shebang to dist/cli.js
 ```
 
-There is no dev script for the CLI. Run it in-place with `npx tsx src/cli.ts <subcommand> --project-dir <path>` (no build needed — `main`/`exports` point at the `.ts` sources and the project runs through tsx). The `construct3-chef` bin only exists after `npm run build` (it points at `dist/cli.js`).
+There is no dev script for the CLI. Run it in-place with `pnpm exec tsx src/cli.ts <subcommand> --project-dir <path>` (no build needed — `main`/`exports` point at the `.ts` sources and the project runs through tsx). The `construct3-chef` bin only exists after `pnpm build` (it points at `dist/cli.js`).
 
 ## Dependency bootstrap (important — install will fail without this)
 
@@ -32,7 +35,7 @@ There is no dev script for the CLI. Run it in-place with `npx tsx src/cli.ts <su
 bash scripts/download-deps.sh   # needs az CLI logged in with storage access
 ```
 
-Versions are pinned in `.packages-version`. CI (CircleCI, not GitHub Actions) downloads them via an Azure service principal + 1Password before `pnpm install`. If `npm install` fails on a missing local tarball, this is why.
+Versions are pinned in `.packages-version`. CI (CircleCI, not GitHub Actions) downloads them via an Azure service principal + 1Password before `pnpm install`. If `pnpm install` fails on a missing local tarball, this is why.
 
 - **`c3source`** — the C3 JSON domain layer: type definitions (`EventSheet`, `Condition`, `Layout`, …), file discovery (`find_all_eventsheets_path`), and primitives like `extractScriptsFromSheet`, `formatCondition`. Treat it as the source of truth for C3's on-disk schema.
 - **`genvid-mcp-utils`** — MCP plumbing: `ReadWriteLock`, `ExpectedChanges`, `paginateText`, `exposeDocs`, `Logger`.

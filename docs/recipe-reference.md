@@ -594,6 +594,10 @@ Renames a layer or sublayer in the layout. Searches recursively through sublayer
 
 **`id` vs `custom-action`**: Plugin-defined actions (e.g., `parse`, `delete-key`) use `id` with **named params** (`{ "key": "value" }`). Custom ACEs defined in event sheets use `custom-action` with **positional array params** (`["value"]`).
 
+**`object` / `objectClass`**: `object` names the target object class. `objectClass` (the field name used in the on-disk eventSheet JSON) is accepted as an alias. A genuinely-unknown key (e.g. a typo like `objclass`) is rejected at validate time.
+
+**System actions**: well-known object-less System actions — `wait`, `wait-for-previous-actions`, `wait-for-signal`, `signal` — auto-default `objectClass: "System"`, so `{ "id": "wait-for-previous-actions" }` works with no `object`. Any other `id` action with no `object`/`objectClass` is **rejected at validate time** (previously it silently rendered `[unknown action]`).
+
 ### Conditions
 
 ```json
@@ -603,6 +607,8 @@ Renames a layer or sublayer in the layout. Searches recursively through sublayer
 { "id": "compare-boolean-eventvar", "object": "System", "params": { "variable": "myBoolVar" } }
 { "id": "is-boolean-instance-variable-set", "object": "ObjectClass", "params": { "instance-variable": "varName" } }
 ```
+
+**`object` / `objectClass`**: as with actions, `objectClass` is accepted as an alias for `object`, unknown keys are rejected, and an `id` condition with no `object`/`objectClass` is rejected at validate time. (`else` / `trigger-once` are System conditions and need no `object`.)
 
 **Comparison operator values** for `compare-two-values`:
 
