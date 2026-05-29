@@ -2317,6 +2317,290 @@ describe("normalizeRecipePaths", () => {
     assert.deepStrictEqual(Object.keys(recipe.files!), ["eventSheets/Test.json"]);
     assert.deepStrictEqual(Object.keys(recipe.layouts!), ["layouts/Test.json"]);
   });
+
+  it("normalizes extract-template sourceLayout", () => {
+    const recipe: Recipe = {
+      layouts: {
+        "layouts/Templates.json": [
+          {
+            op: "extract-template",
+            sourceLayout: "Shop/ShopLayout",
+            sourceType: "Icon",
+            templateName: "Icon",
+            templatesLayer: "Layer 0",
+          },
+        ],
+      },
+    } as unknown as Recipe;
+    normalizeRecipePaths(recipe);
+    const ops = recipe.layouts!["layouts/Templates.json"];
+    assert.equal((ops[0] as any).sourceLayout, "layouts/Shop/ShopLayout.json");
+  });
+
+  it("normalizes replace-instance-with-replica templatesLayout", () => {
+    const recipe: Recipe = {
+      layouts: {
+        "layouts/Game.json": [
+          {
+            op: "replace-instance-with-replica",
+            type: "Hero",
+            templatesLayout: "UI/Templates",
+            templateName: "Hero",
+          },
+        ],
+      },
+    } as unknown as Recipe;
+    normalizeRecipePaths(recipe);
+    const ops = recipe.layouts!["layouts/Game.json"];
+    assert.equal((ops[0] as any).templatesLayout, "layouts/UI/Templates.json");
+  });
+
+  it("normalizes each target.layout on clone-replica-to-layouts", () => {
+    const recipe: Recipe = {
+      layouts: {
+        "layouts/Templates.json": [
+          {
+            op: "clone-replica-to-layouts",
+            templateName: "Icon",
+            sourceType: "Icon",
+            targets: [
+              { layout: "Shop/ShopLayout", layer: "L" },
+              { layout: "layouts/Game.json", layer: "L" },
+            ],
+          },
+        ],
+      },
+    } as unknown as Recipe;
+    normalizeRecipePaths(recipe);
+    const targets = (recipe.layouts!["layouts/Templates.json"][0] as any).targets;
+    assert.equal(targets[0].layout, "layouts/Shop/ShopLayout.json");
+    assert.equal(targets[1].layout, "layouts/Game.json");
+  });
+});
+
+// ─── validateRecipe: workflow ops ───
+
+describe("validateRecipe: workflow ops", () => {
+  describe("extract-template", () => {
+    it("rejects missing sourceLayout / sourceType / templateName / templatesLayer", () => {
+      const recipe: Recipe = {
+        layouts: { "layouts/Templates.json": [{ op: "extract-template" } as any] },
+      } as unknown as Recipe;
+      const errors = validateRecipe(recipe);
+      const joined = errors.join("\n");
+      assert.match(joined, /"sourceLayout" field is required/);
+      assert.match(joined, /"sourceType" field is required/);
+      assert.match(joined, /"templateName" field is required/);
+      assert.match(joined, /"templatesLayer" field is required/);
+    });
+
+    it("rejects sourceLayout equal to the layouts key", () => {
+      const recipe: Recipe = {
+        layouts: {
+          "layouts/Templates.json": [
+            {
+              op: "extract-template",
+              sourceLayout: "layouts/Templates.json",
+              sourceType: "Icon",
+              templateName: "Icon",
+              templatesLayer: "Layer 0",
+            },
+          ],
+        },
+      } as unknown as Recipe;
+      const errors = validateRecipe(recipe);
+      const joined = errors.join("\n");
+      assert.match(joined, /"sourceLayout" must differ from the layouts key/);
+    });
+
+    it("rejects same-layout via bare-key normalization", () => {
+      // Bare keys collapse to the same normalized path; the check still fires.
+      const recipe: Recipe = {
+        layouts: {
+          Templates: [
+            {
+              op: "extract-template",
+              sourceLayout: "Templates",
+              sourceType: "Icon",
+              templateName: "Icon",
+              templatesLayer: "Layer 0",
+            },
+          ],
+        },
+      } as unknown as Recipe;
+      const errors = validateRecipe(recipe);
+      assert.match(errors.join("\n"), /"sourceLayout" must differ from the layouts key/);
+    });
+
+    it("accepts a valid extract-template op", () => {
+      const recipe: Recipe = {
+        layouts: {
+          "layouts/Templates.json": [
+            {
+              op: "extract-template",
+              sourceLayout: "layouts/Shop.json",
+              sourceType: "Icon",
+              templateName: "Icon",
+              templatesLayer: "Layer 0",
+            },
+          ],
+        },
+      } as unknown as Recipe;
+      assert.deepStrictEqual(validateRecipe(recipe), []);
+    });
+  });
+
+  describe("templatize-in-place", () => {
+    it("rejects missing type and templateName", () => {
+      const recipe: Recipe = {
+        layouts: { "layouts/Game.json": [{ op: "templatize-in-place" } as any] },
+      } as unknown as Recipe;
+      const errors = validateRecipe(recipe);
+      const joined = errors.join("\n");
+      assert.match(joined, /"type" field is required for templatize-in-place/);
+      assert.match(joined, /"templateName" field is required for templatize-in-place/);
+    });
+
+    it("accepts a valid op", () => {
+      const recipe: Recipe = {
+        layouts: {
+          "layouts/Game.json": [{ op: "templatize-in-place", type: "Hero", templateName: "Hero" }],
+        },
+      } as unknown as Recipe;
+      assert.deepStrictEqual(validateRecipe(recipe), []);
+    });
+  });
+
+  describe("clone-replica-to-layouts", () => {
+    it("rejects missing templateName / sourceType / targets", () => {
+      const recipe: Recipe = {
+        layouts: { "layouts/Templates.json": [{ op: "clone-replica-to-layouts" } as any] },
+      } as unknown as Recipe;
+      const errors = validateRecipe(recipe);
+      const joined = errors.join("\n");
+      assert.match(joined, /"templateName" field is required for clone-replica-to-layouts/);
+      assert.match(joined, /"sourceType" field is required for clone-replica-to-layouts/);
+      assert.match(joined, /"targets" must be a non-empty array/);
+    });
+
+    it("rejects empty targets array", () => {
+      const recipe: Recipe = {
+        layouts: {
+          "layouts/Templates.json": [
+            { op: "clone-replica-to-layouts", templateName: "T", sourceType: "X", targets: [] },
+          ],
+        },
+      } as unknown as Recipe;
+      const errors = validateRecipe(recipe);
+      assert.match(errors.join("\n"), /"targets" must be a non-empty array/);
+    });
+
+    it("rejects duplicate target layouts", () => {
+      const recipe: Recipe = {
+        layouts: {
+          "layouts/Templates.json": [
+            {
+              op: "clone-replica-to-layouts",
+              templateName: "T",
+              sourceType: "X",
+              targets: [
+                { layout: "layouts/A.json", layer: "L" },
+                { layout: "layouts/A.json", layer: "L" },
+              ],
+            },
+          ],
+        },
+      } as unknown as Recipe;
+      const errors = validateRecipe(recipe);
+      assert.match(errors.join("\n"), /duplicate target layout "layouts\/A.json"/);
+    });
+
+    it("rejects per-target missing layout / layer", () => {
+      const recipe: Recipe = {
+        layouts: {
+          "layouts/Templates.json": [
+            {
+              op: "clone-replica-to-layouts",
+              templateName: "T",
+              sourceType: "X",
+              targets: [{ layer: "L" } as any, { layout: "layouts/B.json" } as any],
+            },
+          ],
+        },
+      } as unknown as Recipe;
+      const errors = validateRecipe(recipe);
+      const joined = errors.join("\n");
+      assert.match(joined, /targets\[0\]: "layout" field is required/);
+      assert.match(joined, /targets\[1\]: "layer" field is required/);
+    });
+
+    it("accepts a valid op with multiple distinct targets", () => {
+      const recipe: Recipe = {
+        layouts: {
+          "layouts/Templates.json": [
+            {
+              op: "clone-replica-to-layouts",
+              templateName: "T",
+              sourceType: "X",
+              targets: [
+                { layout: "layouts/A.json", layer: "L" },
+                { layout: "layouts/B.json", layer: "L" },
+              ],
+            },
+          ],
+        },
+      } as unknown as Recipe;
+      assert.deepStrictEqual(validateRecipe(recipe), []);
+    });
+  });
+
+  describe("replace-instance-with-replica", () => {
+    it("rejects missing type / templatesLayout / templateName", () => {
+      const recipe: Recipe = {
+        layouts: { "layouts/Game.json": [{ op: "replace-instance-with-replica" } as any] },
+      } as unknown as Recipe;
+      const errors = validateRecipe(recipe);
+      const joined = errors.join("\n");
+      assert.match(joined, /"type" field is required for replace-instance-with-replica/);
+      assert.match(joined, /"templatesLayout" field is required for replace-instance-with-replica/);
+      assert.match(joined, /"templateName" field is required for replace-instance-with-replica/);
+    });
+
+    it("rejects non-string layer", () => {
+      const recipe: Recipe = {
+        layouts: {
+          "layouts/Game.json": [
+            {
+              op: "replace-instance-with-replica",
+              type: "X",
+              templatesLayout: "layouts/T.json",
+              templateName: "T",
+              layer: 5,
+            } as any,
+          ],
+        },
+      } as unknown as Recipe;
+      const errors = validateRecipe(recipe);
+      assert.match(errors.join("\n"), /"layer" must be a string for replace-instance-with-replica/);
+    });
+
+    it("accepts a valid op", () => {
+      const recipe: Recipe = {
+        layouts: {
+          "layouts/Game.json": [
+            {
+              op: "replace-instance-with-replica",
+              type: "Hero",
+              templatesLayout: "layouts/Templates.json",
+              templateName: "Hero",
+              layer: "Gameplay",
+            },
+          ],
+        },
+      } as unknown as Recipe;
+      assert.deepStrictEqual(validateRecipe(recipe), []);
+    });
+  });
 });
 
 // ─── validateRecipe: field validation ───

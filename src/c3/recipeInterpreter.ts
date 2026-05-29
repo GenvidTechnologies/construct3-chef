@@ -288,7 +288,36 @@ export interface ObjectTypeCreate {
   instanceVariables?: Array<{ name: string; type: "string" | "number" | "boolean" }>;
 }
 
-export type LayoutOp = AddNonworldInstanceOp | AddSublayerOp | AddLayerOp | CopyInstanceOp | TemplatizeOp | ReplicifyOp | AddReplicaOp | RemoveInstanceOp | RemoveLayerOp | MoveInstanceOp | RenameLayerOp;
+/**
+ * Primitive layout ops dispatched directly by the layout-file loop in
+ * `recipeApplier.applyLayoutOp`. These are the only ops that should reach the
+ * apply switch after `expandWorkflows` has run — workflow ops live in their
+ * own union below and get expanded into a sequence of these.
+ */
+export type PrimitiveLayoutOp =
+  | AddNonworldInstanceOp
+  | AddSublayerOp
+  | AddLayerOp
+  | CopyInstanceOp
+  | TemplatizeOp
+  | ReplicifyOp
+  | AddReplicaOp
+  | RemoveInstanceOp
+  | RemoveLayerOp
+  | MoveInstanceOp
+  | RenameLayerOp;
+
+/**
+ * Composite workflow ops — expanded into `PrimitiveLayoutOp[]` by
+ * `expandWorkflows` before the layout-file loop. See `workflowExpansion.ts`.
+ */
+export type WorkflowLayoutOp =
+  | ExtractTemplateOp
+  | TemplatizeInPlaceOp
+  | CloneReplicaToLayoutsOp
+  | ReplaceInstanceWithReplicaOp;
+
+export type LayoutOp = PrimitiveLayoutOp | WorkflowLayoutOp;
 
 export interface AddNonworldInstanceOp {
   op: "add-nonworld-instance";
@@ -369,6 +398,82 @@ export interface RenameLayerOp {
   op: "rename-layer";
   currentName: string;
   newName: string;
+}
+
+// ─── Composite Workflow Ops ───
+//
+// Workflow ops bundle a common multi-step template pattern into a single
+// declarative entry. They are expanded into primitive layout ops (copy-instance,
+// templatize, replicify, add-replica, remove-instance) in a pre-pass before the
+// layout-file loop runs, and they may fan out across multiple layout keys —
+// e.g. extract-template lands a copy + templatize on the templates layout and
+// a replicify on the source layout. See `workflowExpansion.ts`.
+
+/**
+ * Extract an instance + scene-graph children from a source layout into a
+ * reusable template on the layout this op is filed under, then convert the
+ * original on the source layout into a replica of the new template.
+ */
+export interface ExtractTemplateOp {
+  op: "extract-template";
+  sourceLayout: string;
+  sourceType: string;
+  templateName: string;
+  templatesLayer: string;
+  includeChildren?: boolean;
+  childrenLayer?: string;
+  inheritOverrides?: Record<string, boolean>;
+}
+
+/**
+ * Convert an existing instance on this layout into the master template
+ * (so runtime code can spawn replicas via `create-object` with the template
+ * parameter). One-to-one expansion to `templatize`, named explicitly so the
+ * runtime-spawn use case is discoverable.
+ */
+export interface TemplatizeInPlaceOp {
+  op: "templatize-in-place";
+  type: string;
+  templateName: string;
+  inheritOverrides?: Record<string, boolean>;
+}
+
+export interface CloneReplicaTarget {
+  layout: string;
+  layer: string;
+  childrenLayer?: string;
+  overrides?: import("./layoutMutator.js").InstanceOverrides;
+  childOverrides?: Record<string, import("./layoutMutator.js").InstanceOverrides>;
+  inheritOverrides?: Record<string, boolean>;
+}
+
+/**
+ * Add replicas of an existing template (defined on the layout this op is filed
+ * under) to one or more target layouts. Expands to one `add-replica` op per
+ * target, fanned out under each target's layout key.
+ */
+export interface CloneReplicaToLayoutsOp {
+  op: "clone-replica-to-layouts";
+  templateName: string;
+  sourceType: string;
+  targets: CloneReplicaTarget[];
+}
+
+/**
+ * Remove an existing instance on this layout and place a replica of a named
+ * template (defined on `templatesLayout`) at the removed instance's spot
+ * (same layer, same world props). Expands to `remove-instance` + `add-replica`.
+ *
+ * `instanceVariables` and `tags` from the removed instance are NOT carried
+ * over by default — a replica is treated as a fresh instance of the template.
+ */
+export interface ReplaceInstanceWithReplicaOp {
+  op: "replace-instance-with-replica";
+  type: string;
+  templatesLayout: string;
+  templateName: string;
+  layer?: string;
+  inheritOverrides?: Record<string, boolean>;
 }
 
 // ─── Builder Shorthand Types ───
@@ -2324,13 +2429,27 @@ export function normalizeRecipePaths(recipe: Recipe): void {
     recipe.files = normalized;
   }
 
-  // Normalize layouts keys and copy-instance/add-replica from fields
+  // Normalize layouts keys and cross-layout path fields on ops
   if (recipe.layouts) {
     const normalized: Record<string, (typeof recipe.layouts)[string]> = {};
     for (const [key, ops] of Object.entries(recipe.layouts)) {
       const normalizedOps = ops.map((op) => {
         if ((op.op === "copy-instance" || op.op === "add-replica") && "from" in op && typeof op.from === "string") {
           return { ...op, from: normalizeLayoutKey(op.from) };
+        }
+        if (op.op === "extract-template" && typeof op.sourceLayout === "string") {
+          return { ...op, sourceLayout: normalizeLayoutKey(op.sourceLayout) };
+        }
+        if (op.op === "replace-instance-with-replica" && typeof op.templatesLayout === "string") {
+          return { ...op, templatesLayout: normalizeLayoutKey(op.templatesLayout) };
+        }
+        if (op.op === "clone-replica-to-layouts" && Array.isArray(op.targets)) {
+          return {
+            ...op,
+            targets: op.targets.map((t) =>
+              t && typeof t.layout === "string" ? { ...t, layout: normalizeLayoutKey(t.layout) } : t,
+            ),
+          };
         }
         return op;
       });
@@ -2640,7 +2759,23 @@ export function validateRecipe(recipe: Recipe): string[] {
           errors.push(`layouts["${filePath}"]: value must be an array of layout operations. Expected: [{ "op": "add-nonworld-instance", "type": "..." }]`);
           continue;
         }
-        const VALID_LAYOUT_OPS = new Set(["add-nonworld-instance", "add-sublayer", "add-layer", "copy-instance", "templatize", "replicify", "add-replica", "remove-instance", "remove-layer", "move-instance", "rename-layer"]);
+        const VALID_LAYOUT_OPS = new Set([
+          "add-nonworld-instance",
+          "add-sublayer",
+          "add-layer",
+          "copy-instance",
+          "templatize",
+          "replicify",
+          "add-replica",
+          "remove-instance",
+          "remove-layer",
+          "move-instance",
+          "rename-layer",
+          "extract-template",
+          "templatize-in-place",
+          "clone-replica-to-layouts",
+          "replace-instance-with-replica",
+        ]);
         for (let i = 0; i < ops.length; i++) {
           const op = ops[i] as unknown as Record<string, unknown>;
           if (!op.op || !VALID_LAYOUT_OPS.has(op.op as string)) {
@@ -2731,6 +2866,85 @@ export function validateRecipe(recipe: Recipe): string[] {
               }
               if (!op.newName || typeof op.newName !== "string") {
                 errors.push(`layouts["${filePath}"][${i}]: "newName" field is required for rename-layer`);
+              }
+              break;
+            case "extract-template":
+              if (!op.sourceLayout || typeof op.sourceLayout !== "string") {
+                errors.push(`layouts["${filePath}"][${i}]: "sourceLayout" field is required for extract-template`);
+              }
+              if (!op.sourceType || typeof op.sourceType !== "string") {
+                errors.push(`layouts["${filePath}"][${i}]: "sourceType" field is required for extract-template`);
+              }
+              if (!op.templateName || typeof op.templateName !== "string") {
+                errors.push(`layouts["${filePath}"][${i}]: "templateName" field is required for extract-template`);
+              }
+              if (!op.templatesLayer || typeof op.templatesLayer !== "string") {
+                errors.push(`layouts["${filePath}"][${i}]: "templatesLayer" field is required for extract-template`);
+              }
+              // sourceLayout has been normalized; filePath is the normalized key.
+              // A same-layout extraction is not extract-template — direct the
+              // author to templatize-in-place instead.
+              if (typeof op.sourceLayout === "string" && op.sourceLayout === filePath) {
+                errors.push(
+                  `layouts["${filePath}"][${i}]: extract-template "sourceLayout" must differ from the layouts key (use templatize-in-place to convert an existing instance to a template on the same layout)`,
+                );
+              }
+              break;
+            case "templatize-in-place":
+              if (!op.type || typeof op.type !== "string") {
+                errors.push(`layouts["${filePath}"][${i}]: "type" field is required for templatize-in-place`);
+              }
+              if (!op.templateName || typeof op.templateName !== "string") {
+                errors.push(`layouts["${filePath}"][${i}]: "templateName" field is required for templatize-in-place`);
+              }
+              break;
+            case "clone-replica-to-layouts": {
+              if (!op.templateName || typeof op.templateName !== "string") {
+                errors.push(`layouts["${filePath}"][${i}]: "templateName" field is required for clone-replica-to-layouts`);
+              }
+              if (!op.sourceType || typeof op.sourceType !== "string") {
+                errors.push(`layouts["${filePath}"][${i}]: "sourceType" field is required for clone-replica-to-layouts`);
+              }
+              if (!Array.isArray(op.targets) || op.targets.length === 0) {
+                errors.push(`layouts["${filePath}"][${i}]: "targets" must be a non-empty array for clone-replica-to-layouts`);
+              } else {
+                const seenLayouts = new Set<string>();
+                for (let t = 0; t < op.targets.length; t++) {
+                  const target = op.targets[t] as Record<string, unknown> | undefined;
+                  if (!target || typeof target !== "object") {
+                    errors.push(`layouts["${filePath}"][${i}].targets[${t}]: must be an object`);
+                    continue;
+                  }
+                  if (!target.layout || typeof target.layout !== "string") {
+                    errors.push(`layouts["${filePath}"][${i}].targets[${t}]: "layout" field is required`);
+                  }
+                  if (!target.layer || typeof target.layer !== "string") {
+                    errors.push(`layouts["${filePath}"][${i}].targets[${t}]: "layer" field is required`);
+                  }
+                  if (typeof target.layout === "string") {
+                    if (seenLayouts.has(target.layout)) {
+                      errors.push(
+                        `layouts["${filePath}"][${i}].targets[${t}]: duplicate target layout "${target.layout}" — each target must reference a distinct layout`,
+                      );
+                    }
+                    seenLayouts.add(target.layout);
+                  }
+                }
+              }
+              break;
+            }
+            case "replace-instance-with-replica":
+              if (!op.type || typeof op.type !== "string") {
+                errors.push(`layouts["${filePath}"][${i}]: "type" field is required for replace-instance-with-replica`);
+              }
+              if (!op.templatesLayout || typeof op.templatesLayout !== "string") {
+                errors.push(`layouts["${filePath}"][${i}]: "templatesLayout" field is required for replace-instance-with-replica`);
+              }
+              if (!op.templateName || typeof op.templateName !== "string") {
+                errors.push(`layouts["${filePath}"][${i}]: "templateName" field is required for replace-instance-with-replica`);
+              }
+              if (op.layer !== undefined && typeof op.layer !== "string") {
+                errors.push(`layouts["${filePath}"][${i}]: "layer" must be a string for replace-instance-with-replica`);
               }
               break;
           }
