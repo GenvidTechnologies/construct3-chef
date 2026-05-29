@@ -257,6 +257,94 @@ function collectChildInstances(
 }
 
 /**
+ * Find which layer contains the given instance reference (by identity, not
+ * type). Walks all layers recursively and returns the layer name of the
+ * first match. Returns null when the instance is not present in any layer.
+ */
+function findLayerOfInstance(layout: LayoutJson, instance: InstanceJson): string | null {
+  const layers = layout.layers as LayerJson[] | undefined;
+  if (!layers) return null;
+  return findLayerOfInstanceInList(layers, instance);
+}
+
+function findLayerOfInstanceInList(layers: LayerJson[], instance: InstanceJson): string | null {
+  for (const layer of layers) {
+    const instances = layer.instances as InstanceJson[] | undefined;
+    if (instances && instances.indexOf(instance) !== -1) {
+      return layer.name as string;
+    }
+    const subLayers = layer.subLayers as LayerJson[] | undefined;
+    if (subLayers) {
+      const found = findLayerOfInstanceInList(subLayers, instance);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * Snapshot an existing instance's layer and world-level properties without
+ * mutating the source. Returns the deep-cloned `world` object plus the
+ * containing `layerName`, optional `tags`, `instanceVariables`, and the
+ * scene-graph children's shared layer (or undefined when there are no
+ * children, or when children span multiple layers — addReplica's default
+ * "children share root layer" semantics already covers the latter, but the
+ * info isn't safe to assume otherwise). The snapshot is independent of the
+ * source — callers can mutate it safely.
+ *
+ * Used by composite workflows (e.g. replace-instance-with-replica) that need
+ * to capture an instance's position/size before deleting it so a successor
+ * can land in the same spot, including children on their original layer.
+ *
+ * When `layerName` is provided, returns null if the matched instance is on a
+ * different layer.
+ */
+export function readInstanceWorld(
+  layout: LayoutJson,
+  typeName: string,
+  layerName?: string,
+): {
+  layerName: string;
+  childrenLayerName: string | undefined;
+  world: Record<string, unknown>;
+  tags: string | undefined;
+  instanceVariables: Record<string, unknown> | undefined;
+} | null {
+  const found = findInstanceByType(layout, typeName);
+  if (!found) return null;
+  if (layerName !== undefined && found.layerName !== layerName) return null;
+  const instance = found.instance;
+  const world = (instance.world as Record<string, unknown> | undefined) ?? {};
+  const ivars = instance.instanceVariables as Record<string, unknown> | undefined;
+
+  // Determine the children's shared layer (if any). If children span multiple
+  // layers (rare; not expected in canonical C3 scene-graphs), leave undefined
+  // so the caller falls back to addReplica's "children inherit root layer"
+  // default rather than picking an arbitrary one.
+  const uid = instance.uid as number;
+  const children = findChildInstances(layout, uid);
+  let childrenLayerName: string | undefined;
+  if (children.length > 0) {
+    const childLayers = new Set<string>();
+    for (const child of children) {
+      const childLayer = findLayerOfInstance(layout, child);
+      if (childLayer) childLayers.add(childLayer);
+    }
+    if (childLayers.size === 1) {
+      childrenLayerName = childLayers.values().next().value;
+    }
+  }
+
+  return {
+    layerName: found.layerName,
+    childrenLayerName,
+    world: JSON.parse(JSON.stringify(world)) as Record<string, unknown>,
+    tags: typeof instance.tags === "string" ? (instance.tags as string) : undefined,
+    instanceVariables: ivars ? (JSON.parse(JSON.stringify(ivars)) as Record<string, unknown>) : undefined,
+  };
+}
+
+/**
  * Remap UIDs on a cloned instance using the provided uidMap.
  * Unmapped UIDs pass through unchanged.
  */

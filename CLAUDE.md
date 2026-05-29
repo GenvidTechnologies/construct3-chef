@@ -61,6 +61,7 @@ C3 nodes carry a stable `sid` (a random integer in `[1e14, 1e15)`). Recipes targ
 
 - **`recipeInterpreter.ts`** — declares the `Recipe` type (`objectTypes`, `addInstVars`, `files`, `layouts`), all the op shorthands, `validateRecipe`, and the **pure** execution functions (`executeRecipe`, `executeFileOps`, `applyReplacements`) that transform in-memory `EventSheet` objects with no I/O.
 - **`recipeApplier.ts`** — the orchestrator with I/O. `applyRecipeInner` applies in a fixed order: **objectTypes → addInstVars → layouts → files**, then writes files and regenerates. Adding an objectType touches three places in lockstep: the `objectTypes/*.json`, `scripts/ts-defs/instanceTypes.d.ts`, and `scripts/ts-defs/objects.d.ts`. Layout ops dispatch into `layoutMutator.ts`.
+- **`workflowExpansion.ts`** — composite **workflow ops** (`extract-template`, `templatize-in-place`, `clone-replica-to-layouts`, `replace-instance-with-replica`) expand into primitive layout ops in a pre-pass before the layout-file loop runs, fanning out across multiple layout keys when needed. Dispatch and dry-run logging iterate the expanded `Map`, so workflows are validated as their primitive sequence.
 - **`eventSheetMutator.ts`** — low-level builders (`buildBlock`, `buildAction`, …) and tree edits (`insertEvent`, `resolveNode`, SID-index building) over a single sheet.
 
 The recipe reference (all event-sheet + layout ops, SID addressing, builder shorthands) lives in `docs/recipe-reference.md`; generator internals in `docs/generators.md`.

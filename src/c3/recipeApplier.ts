@@ -12,7 +12,7 @@ import {
   type AddNonworldInstanceOp,
   type PatchScriptOp,
   type RenameSymbolOp,
-  type LayoutOp,
+  type PrimitiveLayoutOp,
   type FileOp,
   validateRecipe,
   executeFileOps,
@@ -38,6 +38,7 @@ import {
 import { collectAllUids, collectLayoutSids } from "./layoutScaffold.js";
 import { readRegistryFile, makeSidGen, freshSidGen, type SidGenerator } from "./sidUtils.js";
 import { diffScripts } from "./previewDiff.js";
+import { expandWorkflows, type LoadLayout } from "./workflowExpansion.js";
 import {
   addInstVarsToObjectType,
   addInstVarsToLayout,
@@ -618,7 +619,7 @@ interface LayoutOpContext {
 function applyLayoutOp(
   layout: LayoutJson,
   layoutPath: string,
-  op: LayoutOp,
+  op: PrimitiveLayoutOp,
   ctx: LayoutOpContext,
   log: Logger,
 ): void {
@@ -729,7 +730,7 @@ function applyLayoutOp(
       break;
 
     default: {
-      // Exhaustiveness check: adding a new LayoutOp variant in
+      // Exhaustiveness check: adding a new PrimitiveLayoutOp variant in
       // recipeInterpreter.ts is a compile error here until this switch is
       // updated. Without this, a new op would silently no-op through both
       // dry-run validation and apply.
@@ -747,9 +748,37 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
     throw new Error("Recipe validation failed:\n" + errors.map((e) => `  - ${e}`).join("\n"));
   }
 
+  // Composite workflow ops (extract-template, templatize-in-place,
+  // clone-replica-to-layouts, replace-instance-with-replica) expand into
+  // primitive layout ops here so dry-run and apply share one expansion and
+  // any expansion-time errors (e.g. instance-not-found for
+  // replace-instance-with-replica's snapshot) surface in validate-recipe too.
+  // The expansion's `loadLayout` cache is separate from the apply loop's
+  // `sourceLayoutCache` — the expansion only reads from disk; apply reads
+  // and writes its own copies. For typical recipes (one or two workflows)
+  // the duplicate disk reads are negligible.
+  const expansionCache = new Map<string, MutatorLayoutJson>();
+  const loadLayout: LoadLayout = (layoutPath) => {
+    let cached = expansionCache.get(layoutPath);
+    if (!cached) {
+      const fullPath = path.join(rootDir, layoutPath);
+      cached = JSON.parse(readFileSync(fullPath, "utf-8")) as MutatorLayoutJson;
+      expansionCache.set(layoutPath, cached);
+    }
+    return cached;
+  };
+  const layoutsForLoop: Map<string, PrimitiveLayoutOp[]> =
+    recipe.layouts && Object.keys(recipe.layouts).length > 0
+      ? expandWorkflows(recipe, loadLayout)
+      : new Map();
+
   const objectTypeCount = recipe.objectTypes?.length ?? 0;
   const addInstVarsCount = recipe.addInstVars?.length ?? 0;
   const fileCount = recipe.files ? Object.keys(recipe.files).length : 0;
+  // Summary counts mirror what the user wrote, not the post-expansion view —
+  // an agent diffing the summary against their recipe JSON should see the
+  // same shape. The per-layout `MODIFY ... (N ops)` lines in dry-run output
+  // are where the expansion fan-out becomes visible.
   const layoutFileCount = recipe.layouts ? Object.keys(recipe.layouts).length : 0;
   const layoutOpCount = recipe.layouts
     ? Object.values(recipe.layouts).reduce((sum, ops) => sum + ops.length, 0)
@@ -799,8 +828,10 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
 
     // layouts dry-run output + in-memory validation. Match the non-dry-run
     // section order (objectTypes → addInstVars → layouts → files) so any
-    // cross-section dependency surfaces consistently.
-    if (recipe.layouts && Object.keys(recipe.layouts).length > 0) {
+    // cross-section dependency surfaces consistently. Iterates `layoutsForLoop`
+    // (the workflow-expanded view) so workflow ops are validated as their
+    // primitive sequence, matching what apply will do.
+    if (layoutsForLoop.size > 0) {
       log("layouts:");
       const layoutsDir = path.join(rootDir, "layouts");
       const allUids = collectAllUids(layoutsDir);
@@ -808,7 +839,9 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
       const dryRunSourceCache = new Map<string, MutatorLayoutJson>();
       const noopLog: Logger = () => {};
 
-      for (const [filePath, ops] of Object.entries(recipe.layouts)) {
+      for (const [filePath, ops] of layoutsForLoop) {
+        // Defensive skip — same rationale as the apply loop below.
+        if (ops.length === 0) continue;
         log(`  MODIFY ${filePath} (${ops.length} ops)`);
         for (const op of ops) {
           switch (op.op) {
@@ -849,7 +882,9 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
               break;
             default: {
               // Matches the exhaustiveness check in applyLayoutOp so a new
-              // LayoutOp variant is a compile error here too.
+              // PrimitiveLayoutOp variant is a compile error here too. Workflow
+              // ops never reach this switch — expandWorkflows replaces them
+              // with primitive ops before the dry-run loop iterates.
               const exhaustive: never = op;
               throw new Error(`layouts dry-run: unsupported op ${(exhaustive as { op: string }).op}`);
             }
@@ -1000,14 +1035,24 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   }
 
   // ─── Step 2: Process layouts ───
-  if (recipe.layouts && Object.keys(recipe.layouts).length > 0) {
+  // Iterates `layoutsForLoop` (workflow-expanded), so a workflow's fan-out
+  // across multiple layout keys is applied as a sequence of primitives —
+  // each layout is loaded once, all its ops run, then it's written back.
+  if (layoutsForLoop.size > 0) {
     log("\nlayouts:");
     const layoutsDir = path.join(rootDir, "layouts");
     const allUids = collectAllUids(layoutsDir);
     const uidCounter = { next: maxFromSet(allUids) + 1 };
     const sourceLayoutCache = new Map<string, MutatorLayoutJson>();
 
-    for (const [layoutPath, ops] of Object.entries(recipe.layouts)) {
+    for (const [layoutPath, ops] of layoutsForLoop) {
+      // Defensive skip: workflowExpansion no longer pre-seeds empty arrays,
+      // but a future workflow that conditionally fans out could still emit
+      // zero primitives to a key. Skipping prevents a load+write of an
+      // unchanged file (which would bump mtime and produce a misleading
+      // "MODIFIED" log line).
+      if (ops.length === 0) continue;
+
       const fullPath = path.join(rootDir, layoutPath);
       const layout = JSON.parse(readFileSync(fullPath, "utf-8")) as LayoutJson;
       const ctx: LayoutOpContext = {
@@ -1064,7 +1109,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   log("\nReminder: run 'npm run sync-c3proj' to register new files with Construct 3.");
 
   if (regenerate) {
-    regenerateExtracted(rootDir, recipe.layouts !== undefined && Object.keys(recipe.layouts).length > 0, log);
+    regenerateExtracted(rootDir, layoutsForLoop.size > 0, log);
   }
 }
 

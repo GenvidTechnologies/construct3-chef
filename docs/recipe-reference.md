@@ -476,7 +476,7 @@ Behavior:
 
 ## Layout Operations
 
-12 operations for adding/removing/moving instances and layers. Specified under the `layouts` key.
+11 primitive operations for adding/removing/moving instances and layers, plus 4 composite **workflow operations** (see [Workflow Operations](#workflow-operations) below) that bundle common multi-step template patterns. All are specified under the `layouts` key.
 
 ```json
 {
@@ -527,7 +527,7 @@ Copies a world instance (and optionally its scene graph children) from a source 
 | `from` | yes | Source layout path (e.g., `"layouts/Watch/WatchLayout.json"`) |
 | `type` | yes | Instance type name to copy from source |
 | `targetLayer` | yes | Layer name in the target layout to place the root instance |
-| `includeChildren` | no | Copy scene graph children too. Default: `false` |
+| `includeChildren` | no | Copy scene graph children too. Default: `false`. Note: the higher-level `extract-template` workflow defaults this to `true` — the asymmetry is intentional (extract-template's typical use is preserving a whole sub-hierarchy) but worth knowing |
 | `childrenLayer` | no | Layer for children (default: same as `targetLayer`) |
 | `overrides` | no | Override properties on the root instance: `x`, `y`, `width`, `height`, `opacity`, `tags`, `"initially-visible"`, `instanceVariables` |
 | `childOverrides` | no | `{ "TypeName": overrides }` — per-type overrides for children |
@@ -603,6 +603,64 @@ Renames a layer or sublayer in the layout. Searches recursively through sublayer
 | ----- | -------- | ----------- |
 | `currentName` | yes | Current layer name |
 | `newName` | yes | New layer name |
+
+---
+
+## Workflow Operations
+
+Composite ops that bundle a common multi-step template pattern into a single declarative entry. The recipe pipeline expands each workflow into its primitive layout ops (`copy-instance`, `templatize`, `replicify`, `add-replica`, `remove-instance`) before the layout-file loop runs, fanning out across multiple layout keys when needed (e.g. `extract-template` emits a `replicify` on `sourceLayout` while filed under `templatesLayout`).
+
+All workflows share the recipe's single safe `SidGenerator`, so every new SID falls in C3's safe `[1e14, 1e15)` range — using a workflow op eliminates the hand-editing SID-overflow trap that previously broke layout files with "invalid SID" errors.
+
+Each workflow is also exposed as a standalone MCP tool with matching parameters, so an agent can invoke a workflow without composing a full recipe envelope.
+
+### extract-template
+
+"Make this reusable." Extract an instance + scene-graph children from a source layout into a master template on a dedicated templates layout, then convert the original on the source into a replica of the new template. Three primitives: `copy-instance` + `templatize` on the templates layout, `replicify` on the source layout. File under the **templates layout** in `recipe.layouts`.
+
+| Field | Required | Description |
+| ----- | -------- | ----------- |
+| `sourceLayout` | yes | Layout path containing the original instance (e.g. `"layouts/Shop/ShopLayout.json"`). Must differ from the layouts key — use `templatize-in-place` for same-layout master templates |
+| `sourceType` | yes | C3 object type of the instance to extract |
+| `templateName` | yes | Template name (globally unique across the project) |
+| `templatesLayer` | yes | Layer on the templates layout for the new template root |
+| `includeChildren` | no | Copy scene graph children too. Default: `true` (opposite of the lower-level `copy-instance` primitive, which defaults to `false` — `extract-template`'s typical use is preserving a whole sub-hierarchy) |
+| `childrenLayer` | no | Layer on the templates layout for children. Default: same as `templatesLayer` |
+| `inheritOverrides` | no | `{ key: boolean }` — override inheritance flags; forwarded to both `templatize` and `replicify` |
+
+### templatize-in-place
+
+"Make this the master so runtime can spawn replicas." Convert an existing instance on this layout into the master template — useful when C3 runtime code creates replicas dynamically via `create-object` with the template parameter. One-to-one expansion to a single `templatize` op.
+
+| Field | Required | Description |
+| ----- | -------- | ----------- |
+| `type` | yes | C3 object type of the instance to convert |
+| `templateName` | yes | Template name (globally unique across the project) |
+| `inheritOverrides` | no | `{ key: boolean }` — override inheritance flags |
+
+### clone-replica-to-layouts
+
+"Use this template on these N pages." Given an existing template defined on the layout this op is filed under, add a replica of it to one or more target layouts in one call. Fans out into one `add-replica` per target.
+
+| Field | Required | Description |
+| ----- | -------- | ----------- |
+| `templateName` | yes | Template name to replicate |
+| `sourceType` | yes | C3 object type the template is built from (needed to locate the source instance on the templates layout) |
+| `targets` | yes | Non-empty array of `{ layout, layer, childrenLayer?, overrides?, childOverrides?, inheritOverrides? }`. Target layout paths must be distinct |
+
+### replace-instance-with-replica
+
+"Swap this instance for a replica of the template." Remove an existing instance on this layout and add a replica of a named template in its spot (same layer, same world props captured from the removed instance). Expands to `remove-instance` + `add-replica`.
+
+| Field | Required | Description |
+| ----- | -------- | ----------- |
+| `type` | yes | C3 object type of the instance to replace |
+| `templatesLayout` | yes | Layout path containing the template definition |
+| `templateName` | yes | Template name to replicate |
+| `layer` | no | Restrict the replace to instances on this layer (throws if mismatched). When omitted, the instance's layer is auto-detected |
+| `inheritOverrides` | no | `{ key: boolean }` — override inheritance flags |
+
+> **Carry-over limitation:** `instanceVariables` and `tags` on the removed instance are **not** carried over to the new replica — a replica is treated as a fresh instance of the template. If the removed instance was holding per-instance state, that state is lost.
 
 ---
 

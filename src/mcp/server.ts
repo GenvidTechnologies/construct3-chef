@@ -67,6 +67,25 @@ const NON_IDEMPOTENT_READ = { readOnlyHint: true, destructiveHint: false, idempo
 
 type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
+// Shared Zod schemas mirroring layoutMutator's InstanceOverrides contract.
+// Used by workflow MCP tools whose inputs carry per-instance world overrides.
+// Without typed schemas, z.record(z.unknown()) would let a string land in a
+// numeric `world.x` field, which applyOverrides assigns blindly — C3 then
+// rejects the layout file at load with "invalid x".
+const INSTANCE_OVERRIDES_SCHEMA = z
+  .object({
+    x: z.number().optional(),
+    y: z.number().optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    opacity: z.number().optional(),
+    tags: z.string().optional(),
+    "initially-visible": z.boolean().optional(),
+    instanceVariables: z.record(z.unknown()).optional(),
+  })
+  .strict();
+const CHILD_OVERRIDES_SCHEMA = z.record(INSTANCE_OVERRIDES_SCHEMA);
+
 /** Normalize Windows backslash paths to forward slashes. */
 function toForwardSlash(p: string): string {
   return p.replace(/\\/g, "/");
@@ -1306,6 +1325,230 @@ server.registerTool(
         };
       }
     })
+);
+
+// ── Template Workflow Tools ─────────────────────────────────────────────────
+//
+// Each tool wraps one composite workflow op in a single-op recipe envelope and
+// hands it to applyParsed. The recipe pipeline (expandWorkflows → primitive
+// dispatch → SidGenerator threading) handles fan-out, SID allocation, and
+// scene-graphs-folder-root registration — the MCP layer just owns the
+// concurrency boilerplate (rwlock, txId, suppressWatcher, registry freshness).
+//
+// Mirrors the apply-recipe pattern (lines ~753–829). No expectedChanges.add
+// (suppressWatcher is sufficient for the watcher contract; apply-recipe does
+// the same).
+
+async function runWorkflowRecipe(
+  recipe: Recipe,
+  expectedTxId: number | undefined,
+  regenerate: boolean | undefined,
+  extra: Extra,
+): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+  checkRegistryFreshness(path.join(EXTRACTED_DIR, "sid-registry.txt"));
+  const shouldRegenerate = regenerate !== false;
+  const totalSteps = shouldRegenerate ? 6 : 1;
+  const lines: string[] = [];
+  const log: Logger = (...args) => lines.push(args.map(String).join(" "));
+  try {
+    if (expectedTxId !== undefined && expectedTxId !== txId) {
+      return {
+        content: [
+          { type: "text", text: `State changed (expected ${expectedTxId}, got ${txId}) — re-validate before applying` },
+          { type: "text", text: `txId: ${txId}` },
+        ],
+        isError: true,
+      };
+    }
+    suppressWatcherDepth++;
+    try {
+      await sendProgress(extra, 0, totalSteps, "Applying workflow");
+      applyParsed(PROJECT_ROOT, recipe, { regenerate: false, log });
+      if (shouldRegenerate) {
+        await runGenerators(log, extra, 1, totalSteps);
+      }
+    } finally {
+      suppressWatcherDepth--;
+    }
+    txId++;
+    if (shouldRegenerate) {
+      extractedDirty = false;
+    }
+    return {
+      content: [
+        { type: "text", text: lines.join("\n") },
+        { type: "text", text: `txId: ${txId}` },
+      ],
+    };
+  } catch (e) {
+    if (e instanceof CancelledError) {
+      txId++;
+      extractedDirty = true;
+    }
+    return {
+      content: [
+        { type: "text", text: `Error: ${e instanceof Error ? e.message : String(e)}` },
+        { type: "text", text: `txId: ${txId}` },
+      ],
+      isError: true,
+    };
+  }
+}
+
+server.registerTool(
+  "extract-template",
+  {
+    title: "Extract Template",
+    description:
+      "Extract an instance + scene-graph children from a source layout into a reusable master template on a templates layout, then convert the original into a replica of the new template. Three-step workflow: copy-instance + templatize on templatesLayout, replicify on sourceLayout — all sharing the recipe's safe SID generator.",
+    annotations: MUTATE,
+    inputSchema: {
+      sourceLayout: z.string().describe("Source layout path (e.g. 'layouts/Shop/ShopLayout.json')"),
+      sourceType: z.string().describe("C3 object type of the instance to extract"),
+      templatesLayout: z.string().describe("Layout that will hold the new master template (e.g. 'layouts/UI_ComponentsLayout.json')"),
+      templateName: z.string().describe("Template name (globally unique across the project)"),
+      templatesLayer: z.string().describe("Layer on templatesLayout for the new template root"),
+      includeChildren: z.boolean().optional().describe("Copy scene graph children too. Default: true"),
+      childrenLayer: z.string().optional().describe("Layer for children on templatesLayout (default: same as templatesLayer)"),
+      inheritOverrides: z.record(z.boolean()).optional().describe("Override inheritance flags forwarded to both templatize and replicify"),
+      txId: z.number().optional().describe("Expected txId — if stale, apply is rejected"),
+      regenerate: z.boolean().optional().describe("Regenerate extracted/ after apply (default: true)"),
+    },
+  },
+  async (
+    { sourceLayout, sourceType, templatesLayout, templateName, templatesLayer, includeChildren, childrenLayer, inheritOverrides, txId: expectedTxId, regenerate },
+    extra: Extra,
+  ) =>
+    rwlock.write(async () => {
+      const recipe: Recipe = {
+        layouts: {
+          [templatesLayout]: [
+            {
+              op: "extract-template",
+              sourceLayout,
+              sourceType,
+              templateName,
+              templatesLayer,
+              includeChildren,
+              childrenLayer,
+              inheritOverrides,
+            },
+          ],
+        },
+      };
+      return runWorkflowRecipe(recipe, expectedTxId, regenerate, extra);
+    }),
+);
+
+server.registerTool(
+  "templatize-in-place",
+  {
+    title: "Templatize In Place",
+    description:
+      "Convert an existing instance into the master template on its current layout. Use this when you want C3 runtime code to spawn replicas via `create-object` with the template parameter. One-step workflow: a single templatize.",
+    annotations: MUTATE,
+    inputSchema: {
+      layout: z.string().describe("Layout path containing the instance (e.g. 'layouts/Game.json')"),
+      type: z.string().describe("C3 object type of the instance to convert"),
+      templateName: z.string().describe("Template name (globally unique across the project)"),
+      inheritOverrides: z.record(z.boolean()).optional().describe("Override inheritance flags"),
+      txId: z.number().optional().describe("Expected txId — if stale, apply is rejected"),
+      regenerate: z.boolean().optional().describe("Regenerate extracted/ after apply (default: true)"),
+    },
+  },
+  async ({ layout, type, templateName, inheritOverrides, txId: expectedTxId, regenerate }, extra: Extra) =>
+    rwlock.write(async () => {
+      const recipe: Recipe = {
+        layouts: {
+          [layout]: [{ op: "templatize-in-place", type, templateName, inheritOverrides }],
+        },
+      };
+      return runWorkflowRecipe(recipe, expectedTxId, regenerate, extra);
+    }),
+);
+
+server.registerTool(
+  "clone-replica-to-layouts",
+  {
+    title: "Clone Replica To Layouts",
+    description:
+      "Given an existing template defined on templatesLayout, add a replica of it to one or more target layouts in one call. Fans out into one add-replica per target.",
+    annotations: MUTATE,
+    inputSchema: {
+      templatesLayout: z.string().describe("Layout path containing the master template definition"),
+      templateName: z.string().describe("Template name to replicate"),
+      sourceType: z.string().describe("C3 object type the template is built from (needed to locate the source instance on templatesLayout)"),
+      targets: z
+        .array(
+          z.object({
+            layout: z.string().describe("Target layout path"),
+            layer: z.string().describe("Layer on the target layout for the replica root"),
+            childrenLayer: z.string().optional(),
+            overrides: INSTANCE_OVERRIDES_SCHEMA.optional(),
+            childOverrides: CHILD_OVERRIDES_SCHEMA.optional(),
+            inheritOverrides: z.record(z.boolean()).optional(),
+          }),
+        )
+        .min(1)
+        .describe("One or more target layouts to add replicas to (distinct layout paths required)"),
+      txId: z.number().optional().describe("Expected txId — if stale, apply is rejected"),
+      regenerate: z.boolean().optional().describe("Regenerate extracted/ after apply (default: true)"),
+    },
+  },
+  async ({ templatesLayout, templateName, sourceType, targets, txId: expectedTxId, regenerate }, extra: Extra) =>
+    rwlock.write(async () => {
+      const recipe: Recipe = {
+        layouts: {
+          [templatesLayout]: [
+            {
+              op: "clone-replica-to-layouts",
+              templateName,
+              sourceType,
+              targets,
+            },
+          ],
+        },
+      };
+      return runWorkflowRecipe(recipe, expectedTxId, regenerate, extra);
+    }),
+);
+
+server.registerTool(
+  "replace-instance-with-replica",
+  {
+    title: "Replace Instance With Replica",
+    description:
+      "Remove an existing instance on a layout and place a replica of a named template in its spot (same layer, same world props). Composes remove-instance + add-replica. instanceVariables and tags on the removed instance are NOT carried over — a replica is treated as a fresh instance of the template.",
+    annotations: MUTATE,
+    inputSchema: {
+      layout: z.string().describe("Layout path containing the instance to replace"),
+      type: z.string().describe("C3 object type of the instance to replace"),
+      templatesLayout: z.string().describe("Layout path containing the template definition"),
+      templateName: z.string().describe("Template name to replicate"),
+      layer: z.string().optional().describe("Restrict the replace to instances on this layer (throws if mismatched). When omitted, the instance's layer is auto-detected."),
+      inheritOverrides: z.record(z.boolean()).optional().describe("Override inheritance flags"),
+      txId: z.number().optional().describe("Expected txId — if stale, apply is rejected"),
+      regenerate: z.boolean().optional().describe("Regenerate extracted/ after apply (default: true)"),
+    },
+  },
+  async ({ layout, type, templatesLayout, templateName, layer, inheritOverrides, txId: expectedTxId, regenerate }, extra: Extra) =>
+    rwlock.write(async () => {
+      const recipe: Recipe = {
+        layouts: {
+          [layout]: [
+            {
+              op: "replace-instance-with-replica",
+              type,
+              templatesLayout,
+              templateName,
+              layer,
+              inheritOverrides,
+            },
+          ],
+        },
+      };
+      return runWorkflowRecipe(recipe, expectedTxId, regenerate, extra);
+    }),
 );
 
 // ── State Tool ───────────────────────────────────────────────────────────────

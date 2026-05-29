@@ -7,6 +7,7 @@ import {
   addLayer,
   findInstanceByType,
   findChildInstances,
+  readInstanceWorld,
   copyInstance,
   buildTemplateBlock,
   removeInstance,
@@ -21,65 +22,7 @@ import {
   type InstanceJson,
   type InstanceOverrides,
 } from "../../src/c3/layoutMutator.js";
-
-// ─── Test helpers ───
-
-function makeTestLayer(name: string, instances?: unknown[], subLayers?: unknown[]): LayerJson {
-  return {
-    name,
-    instances: instances ?? [],
-    subLayers: subLayers ?? [],
-    sid: 0,
-  } as LayerJson;
-}
-
-function makeTestLayout(layers: LayerJson[], sceneGraphRoot?: unknown): LayoutJson {
-  const layout: LayoutJson = { layers };
-  if (sceneGraphRoot) {
-    layout["scene-graphs-folder-root"] = sceneGraphRoot;
-  }
-  return layout;
-}
-
-function makeTestInstance(
-  uid: number,
-  type: string,
-  opts?: {
-    sid?: number;
-    parentUid?: number | null;
-    childUids?: number[];
-    tags?: string;
-    instanceVariables?: Record<string, unknown>;
-    world?: Record<string, unknown>;
-    properties?: Record<string, unknown>;
-    instanceFolderItem?: Record<string, unknown>;
-  },
-): InstanceJson {
-  const instance: InstanceJson = {
-    uid,
-    type,
-    sid: opts?.sid ?? 100 + uid,
-    tags: opts?.tags ?? "",
-    instanceVariables: opts?.instanceVariables ?? {},
-    world: opts?.world ?? {
-      x: 0,
-      y: 0,
-      width: 100,
-      height: 100,
-      opacity: 1,
-    },
-    properties: opts?.properties ?? {},
-    sceneGraphData: {
-      uid,
-      "parent-uid": opts?.parentUid ?? -1,
-      children: (opts?.childUids ?? []).map((u) => ({ uid: u })),
-    },
-  };
-  if (opts?.instanceFolderItem) {
-    instance.instanceFolderItem = opts.instanceFolderItem;
-  }
-  return instance;
-}
+import { makeTestLayer, makeTestLayout, makeTestInstance } from "./helpers/layoutFixtures.js";
 
 // ─── Tests ───
 
@@ -296,6 +239,130 @@ describe("layoutMutator", () => {
       const children = findChildInstances(layout, 5);
       expect(children).to.have.lengthOf(1);
       expect(children[0]).to.equal(child);
+    });
+  });
+
+  // ─── readInstanceWorld ───
+
+  describe("readInstanceWorld", () => {
+    it("returns layerName and world snapshot for a found instance", () => {
+      const inst = makeTestInstance(1, "Hero", {
+        world: { x: 320, y: 240, width: 64, height: 64, opacity: 0.5 },
+        tags: "boss",
+        instanceVariables: { hp: 100, name: "Red" },
+      });
+      const layer = makeTestLayer("Gameplay", [inst]);
+      const layout = makeTestLayout([layer]);
+      const snap = readInstanceWorld(layout, "Hero");
+      expect(snap).to.not.be.null;
+      expect(snap!.layerName).to.equal("Gameplay");
+      expect(snap!.world).to.deep.equal({ x: 320, y: 240, width: 64, height: 64, opacity: 0.5 });
+      expect(snap!.tags).to.equal("boss");
+      expect(snap!.instanceVariables).to.deep.equal({ hp: 100, name: "Red" });
+    });
+
+    it("returns null for missing type", () => {
+      const layout = makeTestLayout([makeTestLayer("UI")]);
+      expect(readInstanceWorld(layout, "Nope")).to.be.null;
+    });
+
+    it("finds an instance on a sublayer and reports the sublayer's name", () => {
+      const inst = makeTestInstance(2, "Button");
+      const sub = makeTestLayer("Buttons", [inst]);
+      const top = makeTestLayer("HUD", [], [sub]);
+      const layout = makeTestLayout([top]);
+      const snap = readInstanceWorld(layout, "Button");
+      expect(snap).to.not.be.null;
+      expect(snap!.layerName).to.equal("Buttons");
+    });
+
+    it("returns null when the layer filter mismatches the actual layer", () => {
+      const inst = makeTestInstance(3, "Sprite");
+      const layer = makeTestLayer("Foreground", [inst]);
+      const layout = makeTestLayout([layer]);
+      expect(readInstanceWorld(layout, "Sprite", "Background")).to.be.null;
+    });
+
+    it("returns the snapshot when the layer filter matches", () => {
+      const inst = makeTestInstance(4, "Sprite");
+      const layer = makeTestLayer("Foreground", [inst]);
+      const layout = makeTestLayout([layer]);
+      const snap = readInstanceWorld(layout, "Sprite", "Foreground");
+      expect(snap).to.not.be.null;
+      expect(snap!.layerName).to.equal("Foreground");
+    });
+
+    it("returns a deep-cloned world — mutating the snapshot does not affect the source", () => {
+      const inst = makeTestInstance(5, "Box", {
+        world: { x: 10, y: 20, width: 30, height: 40, opacity: 1 },
+        instanceVariables: { hits: 0 },
+      });
+      const layer = makeTestLayer("L", [inst]);
+      const layout = makeTestLayout([layer]);
+      const snap = readInstanceWorld(layout, "Box");
+      expect(snap).to.not.be.null;
+      snap!.world.x = 999;
+      (snap!.instanceVariables as Record<string, unknown>).hits = 42;
+      const sourceWorld = inst.world as Record<string, unknown>;
+      expect(sourceWorld.x).to.equal(10);
+      const sourceVars = inst.instanceVariables as Record<string, unknown>;
+      expect(sourceVars.hits).to.equal(0);
+    });
+
+    it("returns undefined tags when the instance has no tags set", () => {
+      // makeTestInstance defaults tags to "" — override to no-tags scenario
+      const inst = makeTestInstance(6, "Plain");
+      delete inst.tags;
+      const layer = makeTestLayer("L", [inst]);
+      const layout = makeTestLayout([layer]);
+      const snap = readInstanceWorld(layout, "Plain");
+      expect(snap).to.not.be.null;
+      expect(snap!.tags).to.be.undefined;
+    });
+
+    it("returns childrenLayerName=undefined when the instance has no children", () => {
+      const inst = makeTestInstance(7, "Lonely");
+      const layer = makeTestLayer("L", [inst]);
+      const layout = makeTestLayout([layer]);
+      const snap = readInstanceWorld(layout, "Lonely");
+      expect(snap).to.not.be.null;
+      expect(snap!.childrenLayerName).to.be.undefined;
+    });
+
+    it("returns childrenLayerName=the shared layer when all children live on the same (different) layer", () => {
+      const parent = makeTestInstance(8, "Container", { childUids: [9, 10] });
+      const child1 = makeTestInstance(9, "ChildA", { parentUid: 8 });
+      const child2 = makeTestInstance(10, "ChildB", { parentUid: 8 });
+      const rootLayer = makeTestLayer("Foreground", [parent]);
+      const childrenLayer = makeTestLayer("HUD", [child1, child2]);
+      const layout = makeTestLayout([rootLayer, childrenLayer]);
+      const snap = readInstanceWorld(layout, "Container");
+      expect(snap).to.not.be.null;
+      expect(snap!.layerName).to.equal("Foreground");
+      expect(snap!.childrenLayerName).to.equal("HUD");
+    });
+
+    it("returns childrenLayerName=undefined when children span multiple layers (lets addReplica fall back to root layer)", () => {
+      const parent = makeTestInstance(11, "Container", { childUids: [12, 13] });
+      const child1 = makeTestInstance(12, "ChildA", { parentUid: 11 });
+      const child2 = makeTestInstance(13, "ChildB", { parentUid: 11 });
+      const rootLayer = makeTestLayer("Root", [parent]);
+      const layerA = makeTestLayer("LayerA", [child1]);
+      const layerB = makeTestLayer("LayerB", [child2]);
+      const layout = makeTestLayout([rootLayer, layerA, layerB]);
+      const snap = readInstanceWorld(layout, "Container");
+      expect(snap).to.not.be.null;
+      expect(snap!.childrenLayerName).to.be.undefined;
+    });
+
+    it("returns childrenLayerName=the root layer when children share the root's layer", () => {
+      const parent = makeTestInstance(14, "Container", { childUids: [15] });
+      const child = makeTestInstance(15, "Child", { parentUid: 14 });
+      const layer = makeTestLayer("Shared", [parent, child]);
+      const layout = makeTestLayout([layer]);
+      const snap = readInstanceWorld(layout, "Container");
+      expect(snap).to.not.be.null;
+      expect(snap!.childrenLayerName).to.equal("Shared");
     });
   });
 
