@@ -176,19 +176,6 @@ function formatGroup(
 }
 
 /**
- * Format a condition, prefixing `[DISABLED] ` when the condition has `disabled: true`
- * in source JSON. Mirrors the prefix convention already used by `formatAction` from
- * c3source for disabled actions. The `Condition` type in c3source does not declare a
- * `disabled` field even though C3 stores it at runtime, so the check is structural.
- */
-export function formatConditionWithDisabled(cond: Condition): string {
-  const disabled =
-    "disabled" in cond && (cond as Record<string, unknown>).disabled === true;
-  const condStr = formatCondition(cond);
-  return disabled ? `[DISABLED] ${condStr}` : condStr;
-}
-
-/**
  * Return a brief description of an action for the DSL coordinate index.
  * Much shorter than `formatAction` — just enough to identify the action type.
  */
@@ -256,7 +243,7 @@ function formatBlockLike(
 
   // Format conditions
   for (const cond of event.conditions) {
-    lines.push(`${indent}  when: ${formatConditionWithDisabled(cond)}`);
+    lines.push(`${indent}  when: ${formatCondition(cond)}`);
   }
 
   // Format actions
@@ -329,10 +316,10 @@ function formatBlock(
   counter.value++;
 
   const flags: string[] = [];
-  if ("isOrBlock" in event && (event as Record<string, unknown>).isOrBlock === true) {
+  if (event.isOrBlock === true) {
     flags.push("OR");
   }
-  if ("disabled" in event && (event as Record<string, unknown>).disabled === true) {
+  if (event.disabled === true) {
     flags.push("DISABLED");
   }
   const flagStr = flags.length > 0 ? ` [${flags.join(", ")}]` : "";
@@ -558,7 +545,7 @@ export function buildShallowSidMap(sheet: EventSheet): SidMapEntry[] {
     // legacy sheet with a missing array previously fell through here harmlessly
     // because the shallow map didn't touch them.
     for (const cond of event.conditions ?? []) {
-      parts.push(formatConditionWithDisabled(cond));
+      parts.push(formatCondition(cond));
     }
     const actions = event.actions ?? [];
     for (let i = 0; i < actions.length; i++) {
@@ -624,10 +611,10 @@ export function buildShallowSidMap(sheet: EventSheet): SidMapEntry[] {
         case "block": {
           counter.value++; // mirror formatBlock
           const flags: string[] = [];
-          if ("isOrBlock" in event && (event as Record<string, unknown>).isOrBlock === true) {
+          if (event.isOrBlock === true) {
             flags.push("OR");
           }
-          if ("disabled" in event && (event as Record<string, unknown>).disabled === true) {
+          if (event.disabled === true) {
             flags.push("DISABLED");
           }
           const flagStr = flags.length > 0 ? ` [${flags.join(", ")}]` : "";
