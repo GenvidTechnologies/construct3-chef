@@ -12,6 +12,7 @@ import type {
   FunctionParameter,
 } from "c3source";
 import { isScriptAction } from "c3source";
+import { escapeRegExp } from "genvid-mcp-utils";
 
 import {
   buildBlock,
@@ -1747,10 +1748,6 @@ function renameSymbol(
       `rename-symbol: no replacements matched in any script action. Searched for: ${fromList}`,
     );
   }
-}
-
-function escapeRegExp(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**

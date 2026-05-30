@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { walkFiles } from "genvid-mcp-utils";
 
 /** File category for search operations. */
 export type SearchType = "dsl" | "ts" | "layout" | "md" | "json" | "idx";
@@ -51,27 +52,6 @@ function toForwardSlash(p: string): string {
   return p.replace(/\\/g, "/");
 }
 
-/**
- * Recursively collect all files under dir whose names end with ext.
- */
-function walkFiles(dir: string, ext: string): string[] {
-  const results: string[] = [];
-  if (!fs.existsSync(dir)) return results;
-
-  function walk(current: string): void {
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      const full = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        walk(full);
-      } else if (entry.name.endsWith(ext)) {
-        results.push(full);
-      }
-    }
-  }
-
-  walk(dir);
-  return results;
-}
 
 /**
  * Format a set of line windows (with context) for a single file.
