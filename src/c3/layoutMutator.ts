@@ -1,5 +1,7 @@
 // Layout mutation library — pure functions, no file I/O.
 
+import { makeDefaultLayer } from "c3source";
+
 export type LayoutJson = Record<string, unknown>;
 export type LayerJson = Record<string, unknown>;
 export type InstanceJson = Record<string, unknown>;
@@ -89,33 +91,14 @@ function removeLayerFromList(layers: LayerJson[], target: LayerJson): boolean {
 }
 
 /**
- * Build a full C3 layer structure with all required fields.
+ * Build a full C3 layer structure with all required fields. Delegates to
+ * c3source's makeDefaultLayer — the canonical default-layer schema, sourced
+ * from a real C3 export. Note this defaults to a white, opaque layer with
+ * `sampling: "auto"` (the older hand-rolled values were gray/transparent and
+ * omitted sampling).
  */
 export function buildLayer(name: string): LayerJson {
-  return {
-    name,
-    overriden: 0,
-    subLayers: [],
-    instances: [],
-    sid: 0,
-    effectTypes: [],
-    isInitiallyVisible: true,
-    isInitiallyInteractive: true,
-    isHTMLElementsLayer: false,
-    color: [1, 1, 1, 1],
-    backgroundColor: [0.369, 0.369, 0.369, 1],
-    isTransparent: true,
-    parallaxX: 1,
-    parallaxY: 1,
-    scaleRate: 1,
-    forceOwnTexture: false,
-    renderingMode: "3d",
-    drawOrder: "z-order",
-    useRenderCells: false,
-    blendMode: "normal",
-    zElevation: 0,
-    global: false,
-  };
+  return makeDefaultLayer(name);
 }
 
 /**
