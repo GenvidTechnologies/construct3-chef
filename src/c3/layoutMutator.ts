@@ -1,6 +1,6 @@
 // Layout mutation library — pure functions, no file I/O.
 
-import { makeDefaultLayer } from "c3source";
+import { makeDefaultLayer, addSceneGraphRoot, removeSceneGraphRoot, type Layout } from "c3source";
 
 export type LayoutJson = Record<string, unknown>;
 export type LayerJson = Record<string, unknown>;
@@ -495,15 +495,10 @@ export function copyInstance(opts: {
     childInstances.push(child);
   }
 
-  // 11. Register root's new SID in scene-graphs-folder-root
+  // 11. Register root's new SID in scene-graphs-folder-root (addSceneGraphRoot
+  // creates the folder if the layout lacks one — it owns that invariant).
   const newRootSid = rootClone.sid as number;
-  const sceneGraphsFolder = (opts.targetLayout as Record<string, unknown>)[
-    "scene-graphs-folder-root"
-  ] as Record<string, unknown> | undefined;
-  if (sceneGraphsFolder) {
-    const items = sceneGraphsFolder.items as Array<Record<string, unknown>>;
-    items.push({ sid: newRootSid });
-  }
+  addSceneGraphRoot(opts.targetLayout as unknown as Layout, newRootSid);
 }
 
 // ---------------------------------------------------------------------------
@@ -784,16 +779,7 @@ export function removeInstance(layout: LayoutJson, typeName: string, layer?: str
   }
 
   // 5. Remove root's SID from scene-graphs-folder-root.items
-  const sceneGraphsFolder = (layout as Record<string, unknown>)[
-    "scene-graphs-folder-root"
-  ] as Record<string, unknown> | undefined;
-  if (sceneGraphsFolder) {
-    const items = sceneGraphsFolder.items as Array<Record<string, unknown>>;
-    const sidIdx = items.findIndex((item) => item.sid === rootSid);
-    if (sidIdx !== -1) {
-      items.splice(sidIdx, 1);
-    }
-  }
+  removeSceneGraphRoot(layout as unknown as Layout, rootSid);
 }
 
 // ---------------------------------------------------------------------------
@@ -848,16 +834,7 @@ export function moveInstance(opts: {
   }
 
   // 4. Remove original's SID from scene-graphs-folder-root.items
-  const sceneGraphsFolder = (opts.layout as Record<string, unknown>)[
-    "scene-graphs-folder-root"
-  ] as Record<string, unknown> | undefined;
-  if (sceneGraphsFolder) {
-    const items = sceneGraphsFolder.items as Array<Record<string, unknown>>;
-    const sidIdx = items.findIndex((item) => item.sid === originalSid);
-    if (sidIdx !== -1) {
-      items.splice(sidIdx, 1);
-    }
-  }
+  removeSceneGraphRoot(opts.layout as unknown as Layout, originalSid);
 }
 
 // ---------------------------------------------------------------------------
