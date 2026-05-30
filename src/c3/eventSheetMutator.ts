@@ -12,9 +12,11 @@ import type {
   FunctionParameter,
   ScriptAction,
 } from "c3source";
+import { isScriptAction, hasActions, hasConditions } from "c3source";
 import type { SidGenerator } from "./sidUtils.js";
 
 export type { ScriptAction, IncludeEvent, CommentEvent } from "c3source";
+export { hasActions };
 
 /** Entry in the SID-based event index. */
 export interface SidIndexEntry {
@@ -136,28 +138,20 @@ export function resolveNode(sheet: EventSheet, jsonPath: string): EventSheetEven
 
 type EventWithChildren = BlockEvent | FunctionBlockEvent | CustomAceBlockEvent | GroupEvent;
 
+/**
+ * Type-based guard: true for every event kind that *can* carry children, even
+ * before a `children` array exists. Distinct from c3source's `hasChildren`,
+ * which is presence-based (`Array.isArray(event.children)`) — resolveNode
+ * relies on this returning true for a childless block so it can create the
+ * array, so the two are not interchangeable. `hasActions`/`hasConditions`
+ * (both type-based) are imported from c3source above.
+ */
 export function hasChildren(event: EventSheetEvent): event is EventSheetEvent & EventWithChildren {
   return (
     event.eventType === "block" ||
     event.eventType === "function-block" ||
     event.eventType === "custom-ace-block" ||
     event.eventType === "group"
-  );
-}
-
-export function hasActions(event: EventSheetEvent): event is EventSheetEvent & { actions: (ScriptAction | Record<string, unknown>)[] } {
-  return (
-    event.eventType === "block" ||
-    event.eventType === "function-block" ||
-    event.eventType === "custom-ace-block"
-  );
-}
-
-function hasConditions(event: EventSheetEvent): event is EventSheetEvent & { conditions: Condition[] } {
-  return (
-    event.eventType === "block" ||
-    event.eventType === "function-block" ||
-    event.eventType === "custom-ace-block"
   );
 }
 
@@ -641,13 +635,6 @@ export function walkScriptActionsInArray(events: EventSheetEvent[]): ScriptActio
  */
 export function walkScriptActions(sheet: EventSheet): ScriptAction[] {
   return walkScriptActionsInArray(sheet.events);
-}
-
-function isScriptAction(action: ScriptAction | Record<string, unknown>): action is ScriptAction {
-  return (
-    (action as ScriptAction).type === "script" &&
-    (action as ScriptAction).language === "typescript"
-  );
 }
 
 export function isStandardAction(action: C3Action): action is StandardAction {

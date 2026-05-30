@@ -11,6 +11,7 @@ import type {
   CustomAceBlockEvent,
   FunctionParameter,
 } from "c3source";
+import { isScriptAction } from "c3source";
 
 import {
   buildBlock,
@@ -1502,13 +1503,6 @@ function findScriptActionByContent(
   }
 
   return matches[0];
-}
-
-function isScriptAction(action: ScriptAction | Record<string, unknown>): action is ScriptAction {
-  return (
-    (action as ScriptAction).type === "script" &&
-    (action as ScriptAction).language === "typescript"
-  );
 }
 
 // Node-based variants used by SID-resolved ops
