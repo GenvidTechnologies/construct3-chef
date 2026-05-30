@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { walkFiles } from "genvid-mcp-utils";
+import { walkFiles, toPosixPath } from "genvid-mcp-utils";
 
 /** File category for search operations. */
 export type SearchType = "dsl" | "ts" | "layout" | "md" | "json" | "idx";
@@ -44,13 +44,6 @@ const TYPE_MAP: Record<SearchType, TypeEntry> = {
   idx: { baseDir: "extracted", subDir: "eventSheets", ext: ".dsl.idx.txt" },
   json: { baseDir: "project", subDir: "", ext: ".json" },
 };
-
-/**
- * Convert path separators to forward slashes for consistent output.
- */
-function toForwardSlash(p: string): string {
-  return p.replace(/\\/g, "/");
-}
 
 
 /**
@@ -131,7 +124,7 @@ export function search(config: SearchConfig, options: SearchOptions): SearchResu
         "path is required for json type — must include 'eventSheets/' or 'layouts/' prefix"
       );
     }
-    const normalized = toForwardSlash(options.path);
+    const normalized = toPosixPath(options.path);
     if (!normalized.startsWith("eventSheets/") && !normalized.startsWith("layouts/")) {
       throw new Error(
         `json type path must start with 'eventSheets/' or 'layouts/', got: '${options.path}'`
@@ -196,7 +189,7 @@ export function search(config: SearchConfig, options: SearchOptions): SearchResu
     if (truncated) break;
 
     const content = fs.readFileSync(filePath, "utf-8").split("\n");
-    const relPath = toForwardSlash(
+    const relPath = toPosixPath(
       isExtracted
         ? path.relative(config.extractedDir, filePath)
         : path.relative(config.projectRoot, filePath)

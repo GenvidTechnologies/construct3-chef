@@ -14,6 +14,7 @@ import {
   bufferingLogger,
   resolveWithin,
   walkFiles,
+  toPosixPath,
   READ_ONLY,
   REGENERATE,
   MUTATE,
@@ -94,10 +95,6 @@ const INSTANCE_OVERRIDES_SCHEMA = z
   .strict();
 const CHILD_OVERRIDES_SCHEMA = z.record(INSTANCE_OVERRIDES_SCHEMA);
 
-/** Normalize Windows backslash paths to forward slashes. */
-function toForwardSlash(p: string): string {
-  return p.replace(/\\/g, "/");
-}
 
 function emitLog(level: "debug" | "info" | "warning" | "error", message: string): void {
   server.sendLoggingMessage({ level, logger: "construct3-chef", data: message }).catch(() => {});
@@ -243,7 +240,7 @@ function paginatedResponse(
 
 function globRelative(dir: string, ext: string): string[] {
   return walkFiles(dir, ext)
-    .map((full) => toForwardSlash(path.relative(dir, full)))
+    .map((full) => toPosixPath(path.relative(dir, full)))
     .sort();
 }
 
@@ -257,7 +254,7 @@ function setupWatchers(): void {
     if (!fs.existsSync(fullDir)) continue;
     fs.watch(fullDir, { recursive: true }, (_event, filename) => {
       if (!filename || suppressWatcherDepth > 0) return;
-      const normalized = toForwardSlash(path.join(dir, filename));
+      const normalized = toPosixPath(path.join(dir, filename));
       if (expectedChanges.consume(normalized)) return;
       txId++;
       extractedDirty = true;
@@ -1144,7 +1141,7 @@ server.registerTool(
           const outDir = path.dirname(outFullPath);
           fs.mkdirSync(outDir, { recursive: true });
           fs.writeFileSync(outFullPath, JSON.stringify(cloned, null, "\t") + "\n");
-          expectedChanges.add(toForwardSlash(path.relative(PROJECT_ROOT, outFullPath)));
+          expectedChanges.add(toPosixPath(path.relative(PROJECT_ROOT, outFullPath)));
           await sendProgress(extra, 0, totalSteps, "Cloning layout");
           log(`Scaffolded ${name} → layouts/${outRelPath}`);
 
