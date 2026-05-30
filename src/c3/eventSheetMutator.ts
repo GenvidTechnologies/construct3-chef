@@ -12,11 +12,11 @@ import type {
   FunctionParameter,
   ScriptAction,
 } from "c3source";
-import { isScriptAction, hasActions, hasConditions } from "c3source";
+import { isScriptAction, hasActions, hasConditions, canHaveChildren } from "c3source";
 import type { SidGenerator } from "./sidUtils.js";
 
 export type { ScriptAction, IncludeEvent, CommentEvent } from "c3source";
-export { hasActions };
+export { hasActions, canHaveChildren };
 
 /** Entry in the SID-based event index. */
 export interface SidIndexEntry {
@@ -123,7 +123,7 @@ export function resolveNode(sheet: EventSheet, jsonPath: string): EventSheetEven
     node = current[index];
 
     if (i < segments.length - 1) {
-      if (!("children" in node) || !hasChildren(node)) {
+      if (!("children" in node) || !canHaveChildren(node)) {
         throw new Error(`Cannot get children of '${node.eventType}' event at "${segments.slice(0, i + 1).join(".")}" in "${jsonPath}"`);
       }
       if (!node.children) {
@@ -136,25 +136,6 @@ export function resolveNode(sheet: EventSheet, jsonPath: string): EventSheetEven
   return node!;
 }
 
-type EventWithChildren = BlockEvent | FunctionBlockEvent | CustomAceBlockEvent | GroupEvent;
-
-/**
- * Type-based guard: true for every event kind that *can* carry children, even
- * before a `children` array exists. Distinct from c3source's `hasChildren`,
- * which is presence-based (`Array.isArray(event.children)`) — resolveNode
- * relies on this returning true for a childless block so it can create the
- * array, so the two are not interchangeable. `hasActions`/`hasConditions`
- * (both type-based) are imported from c3source above.
- */
-export function hasChildren(event: EventSheetEvent): event is EventSheetEvent & EventWithChildren {
-  return (
-    event.eventType === "block" ||
-    event.eventType === "function-block" ||
-    event.eventType === "custom-ace-block" ||
-    event.eventType === "group"
-  );
-}
-
 function getEventsArray(sheet: EventSheet, jsonPath: string): EventSheetEvent[] {
   if (jsonPath === "") {
     return sheet.events;
@@ -162,7 +143,7 @@ function getEventsArray(sheet: EventSheet, jsonPath: string): EventSheetEvent[] 
 
   const node = resolveNode(sheet, jsonPath);
 
-  if (!hasChildren(node)) {
+  if (!canHaveChildren(node)) {
     throw new Error(
       `Cannot get children of '${node.eventType}' event — path must be a parent container (block/group/function-block), not a sibling node. For root-level insertions use path: "".`,
     );

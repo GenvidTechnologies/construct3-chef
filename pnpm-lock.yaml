@@ -447,8 +447,8 @@ packages:
     engines: {node: '>= 0.8'}
 
   c3source@file:.packages/c3source.tgz:
-    resolution: {integrity: sha512-E22dnC+8Mi6i1iAaO1iY/aO3BWbG1/3RsRy7gC0uR+xIsrQDfDZBZKe+S/Q4JAf/smtyIgq8qBCEJe06mlGV0w==, tarball: file:.packages/c3source.tgz}
-    version: 0.2.0
+    resolution: {integrity: sha512-ZISJ8NiXDSlAsBHKBkqqDNCRY9f+ZCj6QY5Z3IsDIQzGjXmXzyBH89cnj2C5uiza2MHSu7KwJgq0X23i5BIm6A==, tarball: file:.packages/c3source.tgz}
+    version: 0.3.0
     engines: {node: '>=22'}
 
   call-bind-apply-helpers@1.0.2:
