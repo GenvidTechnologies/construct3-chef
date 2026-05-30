@@ -11,6 +11,7 @@ import {
   ExpectedChanges,
   paginateText,
   exposeDocs,
+  bufferingLogger,
   resolveWithin,
   walkFiles,
   READ_ONLY,
@@ -729,8 +730,7 @@ server.registerTool(
       // the file watcher may have missed (atomic-rename, git checkout, network mounts).
       // This matters: apply-recipe's optimistic-concurrency check uses our returned txId.
       checkRegistryFreshness(path.join(EXTRACTED_DIR, "sid-registry.txt"));
-      const lines: string[] = [];
-      const log: Logger = (...args) => lines.push(args.map(String).join(" "));
+      const { log, text } = bufferingLogger();
       try {
         const recipe: Recipe = JSON.parse(recipeJson);
         const errors = validateRecipe(recipe);
@@ -746,7 +746,7 @@ server.registerTool(
         applyParsed(PROJECT_ROOT, recipe, { dryRun: true, log });
         return {
           content: [
-            { type: "text", text: lines.join("\n") },
+            { type: "text", text: text() },
             { type: "text", text: `txId: ${txId}` },
           ],
         };
@@ -789,8 +789,7 @@ server.registerTool(
       checkRegistryFreshness(path.join(EXTRACTED_DIR, "sid-registry.txt"));
       const shouldRegenerate = regenerate !== false;
       const totalSteps = shouldRegenerate ? 6 : 1; // apply + 5 generators
-      const lines: string[] = [];
-      const log: Logger = (...args) => lines.push(args.map(String).join(" "));
+      const { log, text } = bufferingLogger();
       try {
         if (expectedTxId !== undefined && expectedTxId !== txId) {
           return {
@@ -819,7 +818,7 @@ server.registerTool(
         }
         return {
           content: [
-            { type: "text", text: lines.join("\n") },
+            { type: "text", text: text() },
             { type: "text", text: `txId: ${txId}` },
           ],
         };
@@ -853,8 +852,7 @@ server.registerTool(
   },
   async (_args: Record<string, never>, extra: Extra) =>
     rwlock.write(async () => {
-      const lines: string[] = [];
-      const log: Logger = (...args) => lines.push(args.map(String).join(" "));
+      const { log, text } = bufferingLogger();
       try {
         // Suppress watcher — regenerate writes only to extracted/ (derived output)
         suppressWatcherDepth++;
@@ -865,7 +863,7 @@ server.registerTool(
         }
         extractedDirty = false;
         return {
-          content: [{ type: "text", text: lines.join("\n") }],
+          content: [{ type: "text", text: text() }],
         };
       } catch (e) {
         if (e instanceof CancelledError) {
@@ -893,13 +891,12 @@ server.registerTool(
   },
   async () =>
     rwlock.read(async () => {
-      const lines: string[] = [];
-      const log: Logger = (...args) => lines.push(args.map(String).join(" "));
+      const { log, text } = bufferingLogger();
       try {
         runSync(PROJECT_ROOT, true, log);
         return {
           content: [
-            { type: "text", text: lines.join("\n") },
+            { type: "text", text: text() },
             { type: "text", text: `txId: ${txId}` },
           ],
         };
@@ -931,8 +928,7 @@ server.registerTool(
   },
   async ({ txId: expectedTxId }) =>
     rwlock.write(async () => {
-      const lines: string[] = [];
-      const log: Logger = (...args) => lines.push(args.map(String).join(" "));
+      const { log, text } = bufferingLogger();
       try {
         if (expectedTxId !== undefined && expectedTxId !== txId) {
           return {
@@ -953,7 +949,7 @@ server.registerTool(
         txId++;
         return {
           content: [
-            { type: "text", text: lines.join("\n") },
+            { type: "text", text: text() },
             { type: "text", text: `txId: ${txId}` },
           ],
         };
@@ -1081,8 +1077,7 @@ server.registerTool(
     rwlock.write(async () => {
       const shouldRegenerate = regenerate !== false;
       const totalSteps = shouldRegenerate ? 7 : 2; // clone + sync + 5 generators
-      const lines: string[] = [];
-      const log: Logger = (...args) => lines.push(args.map(String).join(" "));
+      const { log, text } = bufferingLogger();
       try {
         if (expectedTxId !== undefined && expectedTxId !== txId) {
           return {
@@ -1171,7 +1166,7 @@ server.registerTool(
         }
         return {
           content: [
-            { type: "text", text: lines.join("\n") },
+            { type: "text", text: text() },
             { type: "text", text: `txId: ${txId}` },
           ],
         };
@@ -1212,8 +1207,7 @@ server.registerTool(
   },
   async ({ source, name: targetName, txId: expectedTxId }) =>
     rwlock.write(async () => {
-      const lines: string[] = [];
-      const log: Logger = (...args) => lines.push(args.map(String).join(" "));
+      const { log, text } = bufferingLogger();
       try {
         if (expectedTxId !== undefined && expectedTxId !== txId) {
           return {
@@ -1294,7 +1288,7 @@ server.registerTool(
         txId++;
         return {
           content: [
-            { type: "text", text: lines.join("\n") },
+            { type: "text", text: text() },
             { type: "text", text: `txId: ${txId}` },
           ],
         };
@@ -1336,8 +1330,7 @@ async function runWorkflowRecipe(
   checkRegistryFreshness(path.join(EXTRACTED_DIR, "sid-registry.txt"));
   const shouldRegenerate = regenerate !== false;
   const totalSteps = shouldRegenerate ? 6 : 1;
-  const lines: string[] = [];
-  const log: Logger = (...args) => lines.push(args.map(String).join(" "));
+  const { log, text } = bufferingLogger();
   try {
     if (expectedTxId !== undefined && expectedTxId !== txId) {
       return {
@@ -1364,7 +1357,7 @@ async function runWorkflowRecipe(
     }
     return {
       content: [
-        { type: "text", text: lines.join("\n") },
+        { type: "text", text: text() },
         { type: "text", text: `txId: ${txId}` },
       ],
     };
