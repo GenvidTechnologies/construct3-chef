@@ -18,7 +18,7 @@ construct3-chef mutates Construct 3 projects, which store their data as JSON fil
 This repo uses **pnpm** (committed `pnpm-lock.yaml`). Don't `npm install` — it produces a `package-lock.json` the repo ignores and may resolve a different dep graph.
 
 ```bash
-pnpm install                            # install deps (after download-deps; see below)
+pnpm install                            # install deps (fetches @genvid/* from npm)
 pnpm test                               # mocha + tsx + chai, all test/**/*.test.ts
 pnpm test --grep "foo"                  # run tests matching a name (pnpm forwards args; no `--`)
 pnpm test test/c3/sidUtils.test.ts      # run a single file
@@ -34,18 +34,12 @@ There is no dev script for the CLI. Run it in-place with `pnpm exec tsx src/cli.
 pnpm exec tsx src/cli.ts generate --project-dir test/fixtures/sample-project
 ```
 
-## Dependency bootstrap (important — install will fail without this)
+## Leaf dependencies
 
-`c3source` and `genvid-mcp-utils` are private Genvid packages, **not on npm**. `package.json` references them as `file:.packages/*.tgz`. Those tarballs are not in git (`.gitignore` excludes `.packages/`); fetch them first:
+`@genvid/c3source` and `@genvid/mcp-utils` are public Genvid packages on npm; `pnpm install` fetches them from the registry like any other dependency. Versions are pinned in `package.json`. (These were once private tarballs pulled from Azure Blob via a `download-deps` + 1Password bootstrap; that machinery was retired when the packages went public — `git log` for the history.)
 
-```bash
-bash scripts/download-deps.sh   # needs az CLI logged in with storage access
-```
-
-Versions are pinned in `.packages-version`. CI (CircleCI, not GitHub Actions) downloads them via an Azure service principal + 1Password before `pnpm install`. If `pnpm install` fails on a missing local tarball, this is why.
-
-- **`c3source`** — the C3 JSON domain layer: type definitions (`EventSheet`, `Condition`, `Layout`, …), file discovery (`find_all_eventsheets_path`), and primitives like `extractScriptsFromSheet`, `formatCondition`. Treat it as the source of truth for C3's on-disk schema.
-- **`genvid-mcp-utils`** — MCP plumbing: `ReadWriteLock`, `ExpectedChanges`, `paginateText`, `exposeDocs`, `Logger`.
+- **`@genvid/c3source`** — the C3 JSON domain layer: type definitions (`EventSheet`, `Condition`, `Layout`, …), file discovery (`find_all_eventsheets_path`), and primitives like `extractScriptsFromSheet`, `formatCondition`. Treat it as the source of truth for C3's on-disk schema.
+- **`@genvid/mcp-utils`** — MCP plumbing: `ReadWriteLock`, `ExpectedChanges`, `paginateText`, `exposeDocs`, `Logger`.
 
 ## Module system gotchas
 
@@ -79,7 +73,7 @@ The CLI is stateless; the server adds a concurrency layer worth understanding be
 
 - **`txId`** — the `OptimisticWatcher`'s monotonic counter (`watcher.txId`, incremented via `watcher.bump()`) — bumped on every source-file mutation. Optimistic concurrency: read tools / `validate-recipe` return the current `txId`; `apply-recipe` / `sync-project` accept an expected `txId` and reject if it has moved.
 - **`extractedDirty`** — true when source has changed since the last regenerate; read tools append a stale warning and `checkSourceFreshness` flips it by comparing mtimes. Stays module-level (project-specific); set from the watcher's `onSourceChange` callback.
-- **File watchers** — `createSourceWatcher` (`src/mcp/sourceWatcher.ts`) wires genvid-mcp-utils' `OptimisticWatcher` over the source dirs + `project.c3proj`. External source edits bump `txId` and set `extractedDirty` (via `onSourceChange`); `project.c3proj` edits bump `txId` only. Self-induced writes are masked by wrapping them in `watcher.suppress(async () => { … })` (synchronous suppress window) plus `watcher.expect(absPath)` for paths whose watcher event may land after the window closes — when editing a mutate tool, wrap its writes in `suppress` (and `expect()` anything written outside that call) or the watcher will spuriously mark state dirty.
+- **File watchers** — `createSourceWatcher` (`src/mcp/sourceWatcher.ts`) wires @genvid/mcp-utils' `OptimisticWatcher` over the source dirs + `project.c3proj`. External source edits bump `txId` and set `extractedDirty` (via `onSourceChange`); `project.c3proj` edits bump `txId` only. Self-induced writes are masked by wrapping them in `watcher.suppress(async () => { … })` (synchronous suppress window) plus `watcher.expect(absPath)` for paths whose watcher event may land after the window closes — when editing a mutate tool, wrap its writes in `suppress` (and `expect()` anything written outside that call) or the watcher will spuriously mark state dirty.
 - **`ReadWriteLock`** serializes writes, allows concurrent reads. Tools are tagged `READ_ONLY` / `REGENERATE` / `MUTATE` annotations.
 - `CancelledError` paths still bump `txId` (`watcher.bump()`) and set `extractedDirty` because source was already written before regeneration was interrupted.
 
