@@ -1,3 +1,5 @@
+@CONVENTIONS.md
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -82,3 +84,21 @@ The CLI is stateless; the server adds a concurrency layer worth understanding be
 - C3 JSON is written tab-indented with a trailing newline: `JSON.stringify(x, null, "\t") + "\n"`. Match this when writing project files.
 - Prettier: 120 cols, spaces for `.ts`, **tabs** for `.json`. ESLint extends prettier and disables `no-unused-vars` / `no-explicit-any`.
 - All file I/O is rooted at a `--project-dir` (defaults to cwd); paths inside recipes/tools are relative to that root. Mutate tools include path-traversal guards — keep them.
+
+## Commit Format
+
+Conventional Commits: `<type>: <subject>`, where `type` is one of `feat`, `fix`, `chore`, `docs`, `refactor`, `test`. Subject is imperative, lowercase, no trailing period. Body (optional) explains the *why* and any non-obvious *what*, wrapped at ~72 cols. When a commit is authored with Claude Code, end the message with the trailer:
+
+```
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+```
+
+Squash-merged PRs carry a `(#N)` suffix on the subject (added by the merge), e.g. `feat: composite template workflow ops + MCP tools (#9)`.
+
+## Pull Request Format
+
+Host is **GitHub** (`gh` CLI). PR title follows the same Conventional Commit shape as the squash subject. The body should summarize what changed and why, call out verification done (lint/typecheck/test), and note any follow-ups. When generated with Claude Code, append the `🤖 Generated with [Claude Code](https://claude.com/claude-code)` footer.
+
+## Branching
+
+Default/base branch is `main`. Do feature work on a topic branch (this repo has used names like `upstream-updates`); never commit directly to `main`. Rebase onto `main` to integrate upstream changes; squash-merge topic branches into `main` via PR. Stacked branches rebase with `--onto` after a parent squash-merges.
