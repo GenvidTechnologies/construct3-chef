@@ -6,7 +6,18 @@ import { z } from "zod";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ReadWriteLock, ExpectedChanges, paginateText, exposeDocs } from "genvid-mcp-utils";
+import {
+  ReadWriteLock,
+  ExpectedChanges,
+  paginateText,
+  exposeDocs,
+  resolveWithin,
+  walkFiles,
+  READ_ONLY,
+  REGENERATE,
+  MUTATE,
+  NON_IDEMPOTENT_READ,
+} from "genvid-mcp-utils";
 import type { Logger } from "genvid-mcp-utils";
 import { applyParsed } from "../c3/recipeApplier.js";
 import { validateRecipe, type Recipe } from "../c3/recipeInterpreter.js";
@@ -54,14 +65,10 @@ let extractedDirty = false;
 let suppressWatcherDepth = 0;
 const expectedChanges = new ExpectedChanges();
 
-// ── Tool Annotations ─────────────────────────────────────────────────────────
-
-const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true } as const;
-const REGENERATE = { readOnlyHint: false, destructiveHint: false, idempotentHint: true } as const;
-const MUTATE = { readOnlyHint: false, destructiveHint: true, idempotentHint: false } as const;
-// Reads source files only (no project mutation) but returns different output per call —
-// e.g. random-SID minting. Clients must NOT treat as idempotent for retry/cache purposes.
-const NON_IDEMPOTENT_READ = { readOnlyHint: true, destructiveHint: false, idempotentHint: false } as const;
+// Tool annotation presets (READ_ONLY / REGENERATE / MUTATE / NON_IDEMPOTENT_READ)
+// are imported from genvid-mcp-utils. NON_IDEMPOTENT_READ marks tools that read
+// source only but return different output per call (e.g. random-SID minting) —
+// clients must NOT treat them as idempotent for retry/cache purposes.
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -130,8 +137,8 @@ async function runGenerators(log: Logger, extra?: Extra, progressOffset = 0, pro
 }
 
 function readExtracted(relPath: string): string | null {
-  const fullPath = path.resolve(path.join(EXTRACTED_DIR, relPath));
-  if (!fullPath.startsWith(EXTRACTED_DIR + path.sep) && fullPath !== EXTRACTED_DIR) return null;
+  const fullPath = resolveWithin(EXTRACTED_DIR, relPath);
+  if (fullPath === null) return null;
   if (!fs.existsSync(fullPath)) return null;
   return fs.readFileSync(fullPath, "utf-8");
 }
@@ -234,25 +241,9 @@ function paginatedResponse(
 }
 
 function globRelative(dir: string, ext: string): string[] {
-  const results: string[] = [];
-  function walk(current: string) {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
-      return; // directory missing or inaccessible
-    }
-    for (const entry of entries) {
-      const full = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        walk(full);
-      } else if (entry.name.endsWith(ext)) {
-        results.push(toForwardSlash(path.relative(dir, full)));
-      }
-    }
-  }
-  walk(dir);
-  return results.sort();
+  return walkFiles(dir, ext)
+    .map((full) => toForwardSlash(path.relative(dir, full)))
+    .sort();
 }
 
 // ── File Watchers ────────────────────────────────────────────────────────────
@@ -1042,11 +1033,10 @@ server.registerTool(
       }
 
       const targetFile = file ?? "aces.json";
-      const filePath = path.resolve(path.join(addonPath, targetFile));
 
       // Path traversal check — reject paths that escape the addon directory
-      const relative = path.relative(addonPath, filePath);
-      if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      const filePath = resolveWithin(addonPath, targetFile);
+      if (filePath === null) {
         return notFound("read-addon", `Invalid file path '${targetFile}' — must stay within addon directory`);
       }
 
@@ -1107,9 +1097,8 @@ server.registerTool(
         const layoutsDir = path.join(PROJECT_ROOT, "layouts");
 
         // Path traversal check — output must stay within layouts/
-        const outFullPath = path.resolve(path.join(layoutsDir, outRelPath));
-        const outRelative = path.relative(layoutsDir, outFullPath);
-        if (outRelative.startsWith("..") || path.isAbsolute(outRelative)) {
+        const outFullPath = resolveWithin(layoutsDir, outRelPath);
+        if (outFullPath === null) {
           return {
             content: [
               { type: "text", text: `Invalid output path '${outRelPath}' — must stay within layouts/` },
@@ -1120,9 +1109,8 @@ server.registerTool(
         }
 
         // Path traversal check — source must stay within layouts/
-        const sourceFullPath = path.resolve(path.join(layoutsDir, source));
-        const sourceRelative = path.relative(layoutsDir, sourceFullPath);
-        if (sourceRelative.startsWith("..") || path.isAbsolute(sourceRelative)) {
+        const sourceFullPath = resolveWithin(layoutsDir, source);
+        if (sourceFullPath === null) {
           return {
             content: [
               { type: "text", text: `Invalid source path '${source}' — must stay within layouts/` },
