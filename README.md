@@ -14,12 +14,10 @@ Construct 3 stores project data as JSON files on disk (event sheets, layouts, ob
 ## Installation
 
 ```bash
-npm install construct3-chef
-# or
-pnpm add construct3-chef
+npm install @genvid/construct3-chef
 ```
 
-Requires Node.js 18+.
+Requires Node.js 22+. The installed CLI binary is named `construct3-chef`.
 
 ## Quick Start
 
@@ -27,16 +25,16 @@ All commands accept a global `--project-dir` option (defaults to `cwd`). Point i
 
 ```bash
 # Generate extracted/ files from C3 JSON (run after editing event sheets)
-npx construct3-chef generate --project-dir /path/to/c3project
+npx @genvid/construct3-chef generate --project-dir /path/to/c3project
 
 # Apply a recipe
-npx construct3-chef apply-recipe my-recipe.json --project-dir /path/to/c3project
+npx @genvid/construct3-chef apply-recipe my-recipe.json --project-dir /path/to/c3project
 
 # Validate project.c3proj matches disk
-npx construct3-chef validate-project --project-dir /path/to/c3project
+npx @genvid/construct3-chef validate-project --project-dir /path/to/c3project
 
 # Start the MCP server
-npx construct3-chef server --project-dir /path/to/c3project
+npx @genvid/construct3-chef server --project-dir /path/to/c3project
 ```
 
 If you install globally or add to `package.json` scripts, you can omit `npx`.
@@ -67,13 +65,13 @@ Recipes are JSON files that describe mutations to event sheets and layouts. They
 
 ```bash
 # Validate without writing
-npx construct3-chef apply-recipe my-recipe.json --dry-run
+npx @genvid/construct3-chef apply-recipe my-recipe.json --dry-run
 
 # Show script diffs
-npx construct3-chef apply-recipe my-recipe.json --preview
+npx @genvid/construct3-chef apply-recipe my-recipe.json --preview
 
 # Apply and regenerate extracted/
-npx construct3-chef apply-recipe my-recipe.json
+npx @genvid/construct3-chef apply-recipe my-recipe.json
 ```
 
 See [docs/recipe-reference.md](docs/recipe-reference.md) for the full recipe format, all 15 event sheet operations, all 12 layout operations, and the builder shorthand syntax.
@@ -102,7 +100,7 @@ See [docs/generators.md](docs/generators.md) for internals, output format, and c
 ### Starting the server
 
 ```bash
-npx construct3-chef server --project-dir /path/to/c3project
+npx @genvid/construct3-chef server --project-dir /path/to/c3project
 ```
 
 Configure it in your MCP client (example for Claude Desktop or similar):
@@ -112,7 +110,7 @@ Configure it in your MCP client (example for Claude Desktop or similar):
   "mcpServers": {
     "construct3-chef": {
       "command": "npx",
-      "args": ["construct3-chef", "server", "--project-dir", "/path/to/c3project"]
+      "args": ["@genvid/construct3-chef", "server", "--project-dir", "/path/to/c3project"]
     }
   }
 }

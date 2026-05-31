@@ -17,28 +17,28 @@ construct3-chef mutates Construct 3 projects, which store their data as JSON fil
 
 ## Commands
 
-This repo uses **pnpm** (committed `pnpm-lock.yaml`). Don't `npm install` — it produces a `package-lock.json` the repo ignores and may resolve a different dep graph.
+This repo uses **npm** (committed `package-lock.json`). It's published to npmjs.com as `@genvid/construct3-chef` via the genvid-public-ci GitHub Actions recipe (`.github/workflows/`); the gate runs `npm ci`.
 
 ```bash
-pnpm install                            # install deps (fetches @genvid/* from npm)
-pnpm test                               # mocha + tsx + chai, all test/**/*.test.ts
-pnpm test --grep "foo"                  # run tests matching a name (pnpm forwards args; no `--`)
-pnpm test test/c3/sidUtils.test.ts      # run a single file
-pnpm lint                               # eslint over src/ AND test/, --max-warnings 0
-pnpm typecheck                          # tsc --noEmit — checks src/ ONLY (test/ has known type errors; see commit 0b4c515)
-pnpm build                              # tsc → dist/, then prepends a node shebang to dist/cli.js
+npm install                             # install deps (fetches @genvid/* from npm)
+npm test                                # mocha + tsx + chai, all test/**/*.test.ts
+npm test -- --grep "foo"                # run tests matching a name (npm needs `--` before forwarded args)
+npm test -- test/c3/sidUtils.test.ts    # run a single file
+npm run lint                            # eslint over src/ AND test/, --max-warnings 0
+npm run typecheck                       # tsc --noEmit — checks src/ ONLY (test/ has known type errors; see commit 0b4c515)
+npm run build                           # tsc → dist/, then prepends a node shebang to dist/cli.js
 ```
 
-There is no dev script for the CLI. Run it in-place with `pnpm exec tsx src/cli.ts <subcommand> --project-dir <path>` (no build needed — `main`/`exports` point at the `.ts` sources and the project runs through tsx). The `construct3-chef` bin only exists after `pnpm build` (it points at `dist/cli.js`).
+There is no dev script for the CLI. Run it in-place with `npx tsx src/cli.ts <subcommand> --project-dir <path>` — tsx compiles the `.ts` on the fly, so no build is needed. The package's `main`/`types`/`exports` point at the built `dist/` (what published consumers import); the `construct3-chef` bin also only exists after `npm run build` (it points at `dist/cli.js`).
 
 **Golden test.** `test/c3/sampleProjectGolden.test.ts` regenerates `extracted/` from the real-project fixture `test/fixtures/sample-project/` and diffs it against the committed golden (`…/extracted/`), guarding the generate→`extracted/` pipeline (esp. layout-summary `fullLayerName`/global composition + DSL coordinates). When a generator change *intentionally* alters output, regenerate the golden:
 ```bash
-pnpm exec tsx src/cli.ts generate --project-dir test/fixtures/sample-project
+npx tsx src/cli.ts generate --project-dir test/fixtures/sample-project
 ```
 
 ## Leaf dependencies
 
-`@genvid/c3source` and `@genvid/mcp-utils` are public Genvid packages on npm; `pnpm install` fetches them from the registry like any other dependency. Versions are pinned in `package.json`. (These were once private tarballs pulled from Azure Blob via a `download-deps` + 1Password bootstrap; that machinery was retired when the packages went public — `git log` for the history.)
+`@genvid/c3source` and `@genvid/mcp-utils` are public Genvid packages on npm; `npm install` fetches them from the registry like any other dependency. Versions are pinned in `package.json`. (These were once private tarballs pulled from Azure Blob via a `download-deps` + 1Password bootstrap; that machinery was retired when the packages went public — `git log` for the history.)
 
 - **`@genvid/c3source`** — the C3 JSON domain layer: type definitions (`EventSheet`, `Condition`, `Layout`, …), file discovery (`find_all_eventsheets_path`), and primitives like `extractScriptsFromSheet`, `formatCondition`. Treat it as the source of truth for C3's on-disk schema.
 - **`@genvid/mcp-utils`** — MCP plumbing: `ReadWriteLock`, `ExpectedChanges`, `paginateText`, `exposeDocs`, `Logger`.
