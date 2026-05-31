@@ -38,15 +38,16 @@ npx construct3-chef generate [--only <type>] [--project-dir <path>]
 
 | Option | Description |
 | ------ | ----------- |
-| `--only <type>` | Generate only one type: `scripts`, `dsl`, `layouts`, `templates`, `sid-registry` |
+| `--only <type>` | Generate only one type: `scripts`, `dsl`, `layouts`, `templates`, `sid-registry`, `global-layers` |
 
-When run without `--only`, all five generators run in sequence:
+When run without `--only`, all six generators run in sequence:
 
 1. **scripts** — Extract TypeScript from event sheet script actions → `extracted/**/*.ts`
 2. **dsl** — Generate human-readable DSL and index → `extracted/**/*.dsl.txt`, `*.dsl.idx.txt`
 3. **layouts** — Generate layout summaries → `extracted/**/*.layout.txt`
 4. **templates** — Generate cross-layout template scope → `extracted/template-scope.txt`
 5. **sid-registry** — Generate sorted global SID list → `extracted/sid-registry.txt`
+6. **global-layers** — Generate global-layer report (source + overriding layouts + instance counts) → `extracted/global-layers.txt`
 
 ---
 

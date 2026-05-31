@@ -9,7 +9,7 @@ map (§ "Where to read more").
 ## This tool's usage
 
 - `recipe-reference.md` — all event-sheet + layout + workflow recipe ops, SID addressing, builder shorthands, and the numbered recipe gotchas/bugs (read before touching the recipe interpreter/validator)
-- `generators.md` — the 5 generators, `extracted/` output format, cross-referencing, localVars matching
+- `generators.md` — the 6 generators, `extracted/` output format, cross-referencing, localVars matching
 - `cli.md` — full CLI flag documentation for every subcommand
 
 ## Architecture & design rationale

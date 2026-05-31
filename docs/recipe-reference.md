@@ -767,7 +767,7 @@ npx construct3-chef apply-recipe <recipe.json> --no-regenerate  # Skip generate 
 | 13 | **Consecutive position-based `remove-event` must be in descending index order** | Or switch to `in: "sid:X"` — SID removes are order-independent. |
 | 14 | **Expression params need C3 expression syntax** | `"path": ""` is an empty expression (error). For an empty string value, use `"path": "\"\""`. |
 | 15 | **Script + variable in same block requires a child block** | When adding both a variable and a script to the same block, the script must be in an unconditional child block. |
-| 16 | **Action-level entries in `.dsl.idx.txt`** | Index files show `action[N]` rows (0-based) indented under their parent event — use these for `actionIndex`. |
+| 16 | **No action-level rows in `.dsl.idx.txt`** | The index lists one row per event node, not per action (per-action rows were removed). For an `actionIndex` (`patch-script`, `patch-action-param`), read the action ordering in the matching `.dsl.txt` — actions are 1-indexed within their block's `actions` array. Block rows carry a hidden `⟪search⟫` tail so `read-dsl-index grep=` matches condition/action content (parity with `read-event-sids`). |
 | 17 | **Variable builder uses `static`/`constant`, not `isStatic`/`isConstant`** | Both forms are now accepted as aliases, but `"static": true` is canonical. |
 | 18 | **`insert-actions` uses `"actions"`, `insert-variables` uses `"variables"`** | There is no generic `"items"` field. |
 | 19 | **`add-include` uses `include` field, not `sheet`** | `{ "op": "add-include", "include": "SheetName" }`. Using `"sheet"` silently produces a broken include. |
