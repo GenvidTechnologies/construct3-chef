@@ -1,14 +1,6 @@
 import { describe, it } from "mocha";
 import assert from "node:assert/strict";
-import {
-  mkdtempSync,
-  cpSync,
-  rmSync,
-  existsSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-} from "node:fs";
+import { mkdtempSync, cpSync, rmSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
@@ -17,6 +9,7 @@ import {
   generateLayoutSummaries,
   generateTemplateScope,
   generateSidRegistry,
+  generateGlobalLayers,
 } from "../../src/c3/generators.js";
 
 /**
@@ -76,6 +69,7 @@ describe("sample-project golden extracted/ output", () => {
     generateLayoutSummaries(tmpRoot, outDir, noop);
     generateTemplateScope(tmpRoot, outDir, noop);
     generateSidRegistry(tmpRoot, noop);
+    generateGlobalLayers(tmpRoot, outDir, noop);
   });
 
   after(function () {

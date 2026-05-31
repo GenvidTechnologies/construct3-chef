@@ -1,0 +1,5 @@
+# C3 Global Layers
+# Source: layouts/**/*.json
+# Global layers are shared across layouts; one layout defines instances, others override.
+
+global layer: source="Second Layout", overridingLayouts=[Main Layout], instanceCount=2

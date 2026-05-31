@@ -30,6 +30,7 @@ import {
   generateLayoutSummaries,
   generateTemplateScope,
   generateSidRegistry,
+  generateGlobalLayers,
   findJsonFiles,
   SID_SOURCE_DIRS,
 } from "../c3/generators.js";
@@ -118,6 +119,7 @@ const GENERATOR_STEPS = [
   },
   { name: "Generating template scope", fn: (log: Logger) => generateTemplateScope(PROJECT_ROOT, EXTRACTED_DIR, log) },
   { name: "Generating SID registry", fn: (log: Logger) => generateSidRegistry(PROJECT_ROOT, log) },
+  { name: "Generating global layers", fn: (log: Logger) => generateGlobalLayers(PROJECT_ROOT, EXTRACTED_DIR, log) },
 ] as const;
 
 class CancelledError extends Error {
@@ -131,7 +133,7 @@ function checkCancelled(extra?: Extra): void {
   if (extra?.signal?.aborted) throw new CancelledError();
 }
 
-async function runGenerators(log: Logger, extra?: Extra, progressOffset = 0, progressTotal = 5): Promise<void> {
+async function runGenerators(log: Logger, extra?: Extra, progressOffset = 0, progressTotal = 6): Promise<void> {
   for (let i = 0; i < GENERATOR_STEPS.length; i++) {
     checkCancelled(extra);
     if (extra) await sendProgress(extra, progressOffset + i, progressTotal, GENERATOR_STEPS[i].name);
@@ -326,6 +328,25 @@ server.registerTool(
     rwlock.read(async () => {
       const layouts = globRelative(path.join(PROJECT_ROOT, "layouts"), ".json");
       return { content: [{ type: "text", text: layouts.join("\n") }] };
+    }),
+);
+
+server.registerTool(
+  "list-global-layers",
+  {
+    title: "List Global Layers",
+    description:
+      "List each global layer with its source layout, overriding layouts, and instance count. Global layers are shared across layouts; one layout defines the instances, others reference them via override. Generated from layouts/**/*.json.",
+    annotations: READ_ONLY,
+    inputSchema: { ...PAGINATION_PARAMS },
+  },
+  async ({ offset, limit }) =>
+    rwlock.read(async () => {
+      const text = readExtracted("global-layers.txt");
+      if (text === null) {
+        return notFound("list-global-layers", "global-layers.txt not found. Run 'regenerate' to generate it.");
+      }
+      return paginatedResponse(text, offset, limit);
     }),
 );
 
@@ -821,7 +842,7 @@ server.registerTool(
       // with SIDs that already exist on disk.
       checkRegistryFreshness(path.join(EXTRACTED_DIR, "sid-registry.txt"));
       const shouldRegenerate = regenerate !== false;
-      const totalSteps = shouldRegenerate ? 6 : 1; // apply + 5 generators
+      const totalSteps = shouldRegenerate ? 7 : 1; // apply + 6 generators
       const { log, text } = bufferingLogger();
       try {
         if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
@@ -879,7 +900,7 @@ server.registerTool(
   {
     title: "Regenerate Extracted Files",
     description:
-      "Run all 5 C3 generators (extract scripts, DSL, layout summaries, template scope, SID registry) and update extracted/. Clears the extractedDirty flag. Use after external edits to source files, or when extractedDirty is true.",
+      "Run all 6 C3 generators (extract scripts, DSL, layout summaries, template scope, SID registry, global layers) and update extracted/. Clears the extractedDirty flag. Use after external edits to source files, or when extractedDirty is true.",
     annotations: REGENERATE,
     inputSchema: {},
   },
@@ -1091,7 +1112,7 @@ server.registerTool(
   async ({ source, name, path: outRelPath, eventSheet, txId: expectedTxId, regenerate }, extra: Extra) =>
     rwlock.write(async () => {
       const shouldRegenerate = regenerate !== false;
-      const totalSteps = shouldRegenerate ? 7 : 2; // clone + sync + 5 generators
+      const totalSteps = shouldRegenerate ? 8 : 2; // clone + sync + 6 generators
       const { log, text } = bufferingLogger();
       try {
         if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
@@ -1343,7 +1364,7 @@ async function runWorkflowRecipe(
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   checkRegistryFreshness(path.join(EXTRACTED_DIR, "sid-registry.txt"));
   const shouldRegenerate = regenerate !== false;
-  const totalSteps = shouldRegenerate ? 6 : 1;
+  const totalSteps = shouldRegenerate ? 7 : 1; // apply + 6 generators
   const { log, text } = bufferingLogger();
   try {
     if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
