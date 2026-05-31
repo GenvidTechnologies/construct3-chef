@@ -2,13 +2,13 @@
 
 Design rationale and research behind construct3-chef's MCP server (`src/mcp/server.ts`) and the file-based model it wraps. This is the durable reference; the operational summary lives in [CLAUDE.md](../CLAUDE.md) (§ "The two-surface data model", § "MCP server state model"), and the tool-by-tool usage lives in [recipe-reference.md](recipe-reference.md), [generators.md](generators.md), and [cli.md](cli.md).
 
-> **Provenance.** construct3-chef began life inside the Genvid "burbank" monorepo as `bin/c3/` + `bin/mcp/`, developed across ~19 working sessions, then extracted into this standalone package (shared MCP plumbing → `@genvid/mcp-utils`, the C3 JSON domain layer → `@genvid/c3source`, domain-categorization tooling → `domain-manager`). That work was tracked in the now-retired **c3-mcp-server initiative**; its session-by-session plans, completed-feature design docs (packaging, filesystem-independence, session 18, SID-singleton removal), requirements analyses, and the full MCP security audit are recoverable from git history (`git log -- initiatives/c3-mcp-server`). The *forward-looking* parts of that initiative were carried into three live initiatives: [c3-live-editor-integration](../initiatives/c3-live-editor-integration/initiative.md), [mcp-tooling-followups](../initiatives/mcp-tooling-followups/initiative.md), and [extracted-on-demand](../initiatives/extracted-on-demand/initiative.md).
+> **Provenance.** construct3-chef began life inside the Genvid "burbank" monorepo as `bin/c3/` + `bin/mcp/`, developed across ~19 working sessions, then extracted into this standalone package (shared MCP plumbing → `@genvid/mcp-utils`, the C3 JSON domain layer → `@genvid/c3source`, domain-categorization tooling → `domain-manager`). That work was tracked in the now-retired **c3-mcp-server initiative**; its session-by-session plans, completed-feature design docs (packaging, filesystem-independence, session 18, SID-singleton removal), requirements analyses, and the full MCP security audit are recoverable from git history (`git log -- initiatives/c3-mcp-server`). The *forward-looking* parts of that initiative were carried into tracking issues: [#14 C3 Live Editor Integration](https://github.com/genvid-holdings/construct3-chef/issues/14), [#15 `extracted/` Generated On Demand](https://github.com/genvid-holdings/construct3-chef/issues/15), and the granular MCP-tooling follow-up issues (#18–#24).
 
 ## Why a file-based MCP server
 
 The same library is exposed two ways — a yargs **CLI** and an **MCP server** — both thin wrappers over the pure functions in `src/c3/`. The MCP server gives Claude Code structured, queryable access to a C3 project (read DSL, search, apply recipes, regenerate, sync) without reading raw files or shelling out to `npm run`.
 
-The decisive constraint is that **the C3 Editor SDK does not expose event-sheet or layout manipulation** (see [SDK capabilities](#c3-editor-sdk-capabilities-research) below). So the highest-value approach is a server that operates directly on the project's on-disk JSON, not one that drives a live editor. A live-editor bridge is *additive*, not essential — it is the subject of the [c3-live-editor-integration](../initiatives/c3-live-editor-integration/initiative.md) initiative.
+The decisive constraint is that **the C3 Editor SDK does not expose event-sheet or layout manipulation** (see [SDK capabilities](#c3-editor-sdk-capabilities-research) below). So the highest-value approach is a server that operates directly on the project's on-disk JSON, not one that drives a live editor. A live-editor bridge is *additive*, not essential — it is the subject of issue [#14 C3 Live Editor Integration](https://github.com/genvid-holdings/construct3-chef/issues/14).
 
 ```
 Claude Code  <--stdio-->  MCP Server (Node.js, local)
@@ -44,7 +44,7 @@ Summary of the standalone MCP security/best-practices audit (the full per-issue 
 - **ReDoS mitigation** on `search` — pattern length cap (500 chars) + match count cap (1000). (`re2` was deferred: a native dependency for marginal benefit against a local stdio threat model.)
 - **Lifecycle** — stdio (no network surface), startup validation (warns on missing `project.c3proj` / `extracted/`, auto-generates `extracted/` when absent), graceful SIGINT/SIGTERM shutdown, MCP `logging` capability for watcher-event diagnostics.
 
-**Known open items** (carried to [mcp-tooling-followups](../initiatives/mcp-tooling-followups/initiative.md)): no configuration layer for which tools register / where `domain-config.json` lives (matters mainly for non-dev package consumers), and no cursor-based pagination on `list-event-sheets` / `list-layouts` (low priority at ~100 files).
+**Known open items**: no configuration layer for which tools register / where `domain-config.json` lives ([#23](https://github.com/genvid-holdings/construct3-chef/issues/23); matters mainly for non-dev package consumers), and no cursor-based pagination on `list-event-sheets` / `list-layouts` ([#24](https://github.com/genvid-holdings/construct3-chef/issues/24); low priority at ~100 files).
 
 ## C3 Editor SDK capabilities (research)
 
@@ -59,7 +59,7 @@ Findings from the C3 addon SDK exploration that justify the file-based-first dec
 
 It does **not** expose — and this is the crux — **event-sheet read/write, layout-structure manipulation (layers, layout properties), variable/data manipulation, project filesystem access, or direct inter-plugin communication.** Editor-side code runs on the main browser thread (has `fetch`/`WebSocket`); runtime code uses a DOM messaging bridge (`postToDOM`/`postToDOMAsync`).
 
-**Consequence:** anything touching event sheets or layout structure *must* go through the on-disk JSON (the file-based server). A live bridge can only add instance/property manipulation on top — which is exactly the scope of the [c3-live-editor-integration](../initiatives/c3-live-editor-integration/initiative.md) initiative.
+**Consequence:** anything touching event sheets or layout structure *must* go through the on-disk JSON (the file-based server). A live bridge can only add instance/property manipulation on top — which is exactly the scope of issue [#14 C3 Live Editor Integration](https://github.com/genvid-holdings/construct3-chef/issues/14).
 
 ### C3 addon structure (reference)
 

@@ -107,7 +107,7 @@ Global layers persist their visibility and interactivity state across layout tra
 
 ### Tooling gap
 
-There is no extracted file that lists global layers, their originating layouts, and which layouts override them — unlike templates, which have `template-scope.txt`. When investigating a global layer, check the originating layout JSON directly (the one where `"global": true` appears without `"overriden": 1`). This gap is filed as a future item in the [mcp-tooling-followups initiative](../../initiatives/mcp-tooling-followups/initiative.md).
+There is no extracted file that lists global layers, their originating layouts, and which layouts override them — unlike templates, which have `template-scope.txt`. When investigating a global layer, check the originating layout JSON directly (the one where `"global": true` appears without `"overriden": 1`). This gap is filed as issue [#20 global-layers.txt extraction](https://github.com/genvid-holdings/construct3-chef/issues/20).
 
 ## Localization in Layouts
 
