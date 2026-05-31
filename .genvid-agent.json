@@ -1,14 +1,14 @@
 {
   "project": {
-    "name": "construct3-chef",
+    "name": "@genvid/construct3-chef",
     "description": "CLI + MCP server that mutates Construct 3 projects (event sheets, layouts, objectTypes) stored as on-disk JSON, via SID-addressed recipes and a read-side extracted/ generator pipeline.",
     "languages": ["typescript"]
   },
   "commands": {
-    "test": "pnpm test",
-    "lint": "pnpm lint",
-    "build": "pnpm build",
-    "validate": "pnpm lint && pnpm typecheck && pnpm test"
+    "test": "npm test",
+    "lint": "npm run lint",
+    "build": "npm run build",
+    "validate": "npm run lint && npm run typecheck && npm test"
   },
   "repo": {
     "default_branch": "main",
