@@ -5,6 +5,8 @@
  * three lookup strategies: by DSL line number, by SID, and by name/regex.
  */
 
+import { SEARCH_SENTINEL } from "./dslFormatter.js";
+
 export interface Anchor {
   eventNumber: number | null;
   jsonPath: string;
@@ -13,10 +15,7 @@ export interface Anchor {
   description: string;
 }
 
-export type AnchorLookup =
-  | { by: "line"; line: number }
-  | { by: "sid"; sid: number }
-  | { by: "name"; name: string };
+export type AnchorLookup = { by: "line"; line: number } | { by: "sid"; sid: number } | { by: "name"; name: string };
 
 export interface AnchorResult {
   /** true if lookup matched exactly, false if nearest-enclosing */
@@ -46,7 +45,9 @@ export function parseIndexText(indexText: string): Anchor[] {
     const [rawEvent, rawPath, rawSid, rawDslLine, ...descParts] = parts;
     const jsonPath = rawPath.trim();
     const dslLineStr = rawDslLine.trim();
-    const description = descParts.join("|").trim();
+    const rawDesc = descParts.join("|").trim();
+    const sIdx = rawDesc.indexOf(SEARCH_SENTINEL);
+    const description = sIdx >= 0 ? rawDesc.slice(0, sIdx).trimEnd() : rawDesc;
 
     // Action rows: no dslLine — skip them
     if (!dslLineStr) continue;
@@ -91,10 +92,7 @@ export function parseIndexText(indexText: string): Anchor[] {
  *   First match is `anchor`, additional matches go in `alternatives`.
  *   Returns `null` if no match.
  */
-export function resolveAnchor(
-  indexText: string,
-  lookup: AnchorLookup,
-): AnchorResult | null {
+export function resolveAnchor(indexText: string, lookup: AnchorLookup): AnchorResult | null {
   const anchors = parseIndexText(indexText);
 
   switch (lookup.by) {

@@ -3,13 +3,11 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseIndexText, resolveAnchor } from "../../src/c3/anchorResolver.js";
+import { SEARCH_SENTINEL } from "../../src/c3/dslFormatter.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const FIXTURE_PATH = path.join(
-  __dirname,
-  "../fixtures/anchor/sample.dsl.idx.txt",
-);
+const FIXTURE_PATH = path.join(__dirname, "../fixtures/anchor/sample.dsl.idx.txt");
 
 const indexText = readFileSync(FIXTURE_PATH, "utf-8");
 
@@ -37,9 +35,7 @@ describe("parseIndexText", () => {
   it("action-level rows are excluded from results (no dslLine)", () => {
     const anchors = parseIndexText(indexText);
     // Action rows have no dslLine — they should not appear in the result
-    const actionRows = anchors.filter(
-      (a) => a.jsonPath.startsWith("action["),
-    );
+    const actionRows = anchors.filter((a) => a.jsonPath.startsWith("action["));
     expect(actionRows).to.have.length(0);
   });
 
@@ -64,6 +60,48 @@ describe("parseIndexText", () => {
         expect(anchor.sid).to.be.a("number");
       }
     }
+  });
+});
+
+describe("parseIndexText — SEARCH_SENTINEL stripping", () => {
+  it("description is stripped of sentinel + tail; resolveByName on param value returns null; resolveByName on visible text matches", () => {
+    // Build a synthetic index row whose Description contains the sentinel + hidden tail
+    const visibleDesc = "block";
+    const hiddenTail = 'System.go-to-layout(layout="Main Layout")';
+    const fullDesc = `${visibleDesc}${SEARCH_SENTINEL}${hiddenTail}`;
+    const row = `  1     | events[0]         | §100000000000001 | 4        | ${fullDesc}`;
+    const indexText = [
+      "# TestSheet — DSL Coordinate Index",
+      "# Regenerate: npm run generate-dsl",
+      "#",
+      "# Event | JSON Path | SID | DSL Line | Description",
+      "#-------|-----------|-----|----------|-----------",
+      row,
+      "",
+    ].join("\n");
+
+    const anchors = parseIndexText(indexText);
+    expect(anchors.length).to.equal(1);
+
+    // The parsed description must be the clean visible text — no sentinel, no tail
+    expect(anchors[0].description).to.equal(visibleDesc);
+    expect(anchors[0].description).to.not.include(SEARCH_SENTINEL);
+    expect(anchors[0].description).to.not.include("Main Layout");
+
+    // resolveByName on a param value (only in the hidden tail) must NOT match
+    const noMatch = resolveAnchor(indexText, { by: "name", name: "Main Layout" });
+    expect(noMatch).to.be.null;
+
+    // resolveByName on the visible description text must match
+    const match = resolveAnchor(indexText, { by: "name", name: "block" });
+    expect(match).to.not.be.null;
+    expect(match!.anchor.description).to.equal("block");
+  });
+
+  it("row count from fixture is unaffected (parseIndexText skips action rows by dslLine, not sentinel content)", () => {
+    const anchors = parseIndexText(indexText);
+    // The fixture has 18 rows with a dslLine (action rows excluded)
+    expect(anchors.length).to.equal(18);
   });
 });
 
