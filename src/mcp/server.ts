@@ -30,12 +30,13 @@ import {
   generateLayoutSummaries,
   generateTemplateScope,
   generateSidRegistry,
+  generateGlobalLayers,
   findJsonFiles,
   SID_SOURCE_DIRS,
 } from "../c3/generators.js";
 import { runSync } from "../c3/projectSync.js";
 import { readRegistryFile, mintUniqueSid } from "../c3/sidUtils.js";
-import { filterIndex, buildShallowSidMap } from "../c3/dslFormatter.js";
+import { filterIndex, buildShallowSidMap, type SidMapEntry } from "../c3/dslFormatter.js";
 import type { EventSheet } from "@genvid/c3source";
 import { resolveIncludeTree, formatIncludeTree, flattenIncludeTree } from "../c3/includeTree.js";
 import { collectAllUids, cloneLayout } from "../c3/layoutScaffold.js";
@@ -96,7 +97,6 @@ const INSTANCE_OVERRIDES_SCHEMA = z
   .strict();
 const CHILD_OVERRIDES_SCHEMA = z.record(INSTANCE_OVERRIDES_SCHEMA);
 
-
 function emitLog(level: "debug" | "info" | "warning" | "error", message: string): void {
   server.sendLoggingMessage({ level, logger: "construct3-chef", data: message }).catch(() => {});
 }
@@ -113,20 +113,27 @@ async function sendProgress(extra: Extra, progress: number, total: number, messa
 const GENERATOR_STEPS = [
   { name: "Extracting scripts", fn: (log: Logger) => extractScripts(PROJECT_ROOT, EXTRACTED_DIR, log) },
   { name: "Generating DSL", fn: (log: Logger) => generateDSL(PROJECT_ROOT, EXTRACTED_DIR, log) },
-  { name: "Generating layout summaries", fn: (log: Logger) => generateLayoutSummaries(PROJECT_ROOT, EXTRACTED_DIR, log) },
+  {
+    name: "Generating layout summaries",
+    fn: (log: Logger) => generateLayoutSummaries(PROJECT_ROOT, EXTRACTED_DIR, log),
+  },
   { name: "Generating template scope", fn: (log: Logger) => generateTemplateScope(PROJECT_ROOT, EXTRACTED_DIR, log) },
   { name: "Generating SID registry", fn: (log: Logger) => generateSidRegistry(PROJECT_ROOT, log) },
+  { name: "Generating global layers", fn: (log: Logger) => generateGlobalLayers(PROJECT_ROOT, EXTRACTED_DIR, log) },
 ] as const;
 
 class CancelledError extends Error {
-  constructor() { super("Cancelled"); this.name = "CancelledError"; }
+  constructor() {
+    super("Cancelled");
+    this.name = "CancelledError";
+  }
 }
 
 function checkCancelled(extra?: Extra): void {
   if (extra?.signal?.aborted) throw new CancelledError();
 }
 
-async function runGenerators(log: Logger, extra?: Extra, progressOffset = 0, progressTotal = 5): Promise<void> {
+async function runGenerators(log: Logger, extra?: Extra, progressOffset = 0, progressTotal = 6): Promise<void> {
   for (let i = 0; i < GENERATOR_STEPS.length; i++) {
     checkCancelled(extra);
     if (extra) await sendProgress(extra, progressOffset + i, progressTotal, GENERATOR_STEPS[i].name);
@@ -228,9 +235,7 @@ function paginatedResponse(
   limit: number | undefined,
 ): { content: { type: "text"; text: string }[] } {
   const paginated = paginateText(text, { offset, limit });
-  const content: { type: "text"; text: string }[] = [
-    { type: "text", text: appendStaleWarning(paginated.text) },
-  ];
+  const content: { type: "text"; text: string }[] = [{ type: "text", text: appendStaleWarning(paginated.text) }];
   if (offset !== undefined || limit !== undefined) {
     const returnedLines = paginated.text === "" ? 0 : paginated.text.split("\n").length;
     const endLine = paginated.offset + Math.max(0, returnedLines - 1);
@@ -243,6 +248,34 @@ function globRelative(dir: string, ext: string): string[] {
   return walkFiles(dir, ext)
     .map((full) => toPosixPath(path.relative(dir, full)))
     .sort();
+}
+
+/**
+ * Render the rows portion of a read-event-sids response (excluding the header).
+ *
+ * When `grep` is provided and an entry matched only via its hidden `searchText`
+ * (i.e. the regex does NOT match `description` but DOES match a line in
+ * `searchText`), a sub-line `  ↳ matched: <first matching searchText line>` is
+ * appended immediately after the data row so callers can see WHICH condition or
+ * action matched.
+ *
+ * Exported for unit testing — the handler calls this directly.
+ */
+export function renderEventSidRows(entries: SidMapEntry[], grep?: string): string {
+  const re = grep ? new RegExp(grep, "i") : null;
+  const maxPathLen = Math.max(12, ...entries.map((e) => e.jsonPath.length));
+  const lines: string[] = [];
+  for (const e of entries) {
+    const sidStr = e.sid !== undefined ? `§${e.sid}` : "(no SID)";
+    lines.push(`${e.jsonPath.padEnd(maxPathLen + 2)}${sidStr.padEnd(20)}${e.description}`);
+    if (re && !re.test(e.description) && e.searchText) {
+      const matchedLine = e.searchText.split("\n").find((line) => re.test(line));
+      if (matchedLine !== undefined) {
+        lines.push(`  ↳ matched: ${matchedLine.trim()}`);
+      }
+    }
+  }
+  return lines.join("\n");
 }
 
 // ── File Watchers ────────────────────────────────────────────────────────────
@@ -271,18 +304,16 @@ server.registerTool(
   "list-event-sheets",
   {
     title: "List Event Sheets",
-    description: "List all C3 event sheet JSON files in the project. Returns relative paths from the eventSheets/ root.",
+    description:
+      "List all C3 event sheet JSON files in the project. Returns relative paths from the eventSheets/ root.",
     annotations: READ_ONLY,
     inputSchema: {},
   },
   async () =>
     rwlock.read(async () => {
-      const sheets = globRelative(
-        path.join(PROJECT_ROOT, "eventSheets"),
-        ".json"
-      );
+      const sheets = globRelative(path.join(PROJECT_ROOT, "eventSheets"), ".json");
       return { content: [{ type: "text", text: sheets.join("\n") }] };
-    })
+    }),
 );
 
 server.registerTool(
@@ -295,12 +326,28 @@ server.registerTool(
   },
   async () =>
     rwlock.read(async () => {
-      const layouts = globRelative(
-        path.join(PROJECT_ROOT, "layouts"),
-        ".json"
-      );
+      const layouts = globRelative(path.join(PROJECT_ROOT, "layouts"), ".json");
       return { content: [{ type: "text", text: layouts.join("\n") }] };
-    })
+    }),
+);
+
+server.registerTool(
+  "list-global-layers",
+  {
+    title: "List Global Layers",
+    description:
+      "List each global layer with its source layout, overriding layouts, and instance count. Global layers are shared across layouts; one layout defines the instances, others reference them via override. Generated from layouts/**/*.json.",
+    annotations: READ_ONLY,
+    inputSchema: { ...PAGINATION_PARAMS },
+  },
+  async ({ offset, limit }) =>
+    rwlock.read(async () => {
+      const text = readExtracted("global-layers.txt");
+      if (text === null) {
+        return notFound("list-global-layers", "global-layers.txt not found. Run 'regenerate' to generate it.");
+      }
+      return paginatedResponse(text, offset, limit);
+    }),
 );
 
 // ── Read Tools ────────────────────────────────────────────────────────────────
@@ -328,7 +375,7 @@ server.registerTool(
         return notFound("read-dsl", `No DSL file found for '${sheet}'. Use list-event-sheets to see available sheets.`);
       }
       return paginatedResponse(text, offset, limit);
-    })
+    }),
 );
 
 server.registerTool(
@@ -355,13 +402,16 @@ server.registerTool(
       );
       let text = readExtracted(`eventSheets/${sheet}.dsl.idx.txt`);
       if (text === null) {
-        return notFound("read-dsl-index", `No DSL index file found for '${sheet}'. Use list-event-sheets to see available sheets.`);
+        return notFound(
+          "read-dsl-index",
+          `No DSL index file found for '${sheet}'. Use list-event-sheets to see available sheets.`,
+        );
       }
       if (grep) {
         text = filterIndex(text, grep);
       }
       return paginatedResponse(text, offset, limit);
-    })
+    }),
 );
 
 server.registerTool(
@@ -387,7 +437,10 @@ server.registerTool(
     rwlock.read(async () => {
       const sourcePath = path.join(PROJECT_ROOT, "eventSheets", `${sheet}.json`);
       if (!fs.existsSync(sourcePath)) {
-        return notFound("read-event-sids", `No event sheet found for '${sheet}'. Use list-event-sheets to see available sheets.`);
+        return notFound(
+          "read-event-sids",
+          `No event sheet found for '${sheet}'. Use list-event-sheets to see available sheets.`,
+        );
       }
       const raw = fs.readFileSync(sourcePath, "utf-8");
       const parsed = JSON.parse(raw) as EventSheet;
@@ -403,13 +456,8 @@ server.registerTool(
       // Format as pipe-delimited table matching .dsl.idx.txt style
       const sheetName = sheet.includes("/") ? sheet.split("/").pop()! : sheet;
       const header = `# ${sheetName} — Event SID Map (from source)\n# JSON Path | SID | Description`;
-      const maxPathLen = Math.max(12, ...entries.map((e) => e.jsonPath.length));
-      const rows = entries.map((e) => {
-        const sidStr = e.sid !== undefined ? `§${e.sid}` : "(no SID)";
-        return `${e.jsonPath.padEnd(maxPathLen + 2)}${sidStr.padEnd(20)}${e.description}`;
-      });
-      return { content: [{ type: "text", text: `${header}\n${rows.join("\n")}` }] };
-    })
+      return { content: [{ type: "text", text: `${header}\n${renderEventSidRows(entries, grep)}` }] };
+    }),
 );
 
 server.registerTool(
@@ -432,10 +480,13 @@ server.registerTool(
       );
       const text = readExtracted(`eventSheets/${sheet}.ts`);
       if (text === null) {
-        return notFound("read-scripts", `No extracted TypeScript found for '${sheet}'. Use list-event-sheets to see available sheets.`);
+        return notFound(
+          "read-scripts",
+          `No extracted TypeScript found for '${sheet}'. Use list-event-sheets to see available sheets.`,
+        );
       }
       return paginatedResponse(text, offset, limit);
-    })
+    }),
 );
 
 server.registerTool(
@@ -458,10 +509,13 @@ server.registerTool(
       );
       const text = readExtracted(`layouts/${layout}.layout.txt`);
       if (text === null) {
-        return notFound("read-layout", `No layout summary found for '${layout}'. Use list-layouts to see available layouts.`);
+        return notFound(
+          "read-layout",
+          `No layout summary found for '${layout}'. Use list-layouts to see available layouts.`,
+        );
       }
       return paginatedResponse(text, offset, limit);
-    })
+    }),
 );
 
 // ── Reference Tools ───────────────────────────────────────────────────────────
@@ -479,10 +533,13 @@ server.registerTool(
     rwlock.read(async () => {
       const text = readExtracted("template-scope.txt");
       if (text === null) {
-        return notFound("read-template-scope", "template-scope.txt not found. Run 'npm run generate-c3' to generate it.");
+        return notFound(
+          "read-template-scope",
+          "template-scope.txt not found. Run 'npm run generate-c3' to generate it.",
+        );
       }
       return paginatedResponse(text, offset, limit);
-    })
+    }),
 );
 
 server.registerTool(
@@ -501,7 +558,7 @@ server.registerTool(
         return notFound("read-sid-registry", "sid-registry.txt not found. Run 'npm run generate-c3' to generate it.");
       }
       return paginatedResponse(text, offset, limit);
-    })
+    }),
 );
 
 server.registerTool(
@@ -514,8 +571,7 @@ server.registerTool(
       "Minted SIDs are NOT persisted to the registry — to avoid re-drawing them across calls, write them into source files and run 'regenerate', or pass them as `extraUsedSids` on the next call.",
     annotations: NON_IDEMPOTENT_READ,
     inputSchema: {
-      count: z.number().int().min(1).max(100).optional()
-        .describe("Number of SIDs to mint (default: 1, max: 100)."),
+      count: z.number().int().min(1).max(100).optional().describe("Number of SIDs to mint (default: 1, max: 100)."),
       extraUsedSids: z
         .array(z.number().int().gte(1e14).lt(1e15))
         .max(100000)
@@ -552,7 +608,7 @@ server.registerTool(
         const msg = e instanceof Error ? e.message : String(e);
         return { content: [{ type: "text", text: `generate-sids: ${msg}` }], isError: true };
       }
-    })
+    }),
 );
 
 server.registerTool(
@@ -563,9 +619,14 @@ server.registerTool(
       "Show the transitive include tree for an eventSheet — which sheets it includes, and what those sheets include (recursively). Useful for determining which C3 functions are callable from a given layout's eventSheet. Optionally lists functions defined at each level.",
     annotations: READ_ONLY,
     inputSchema: {
-      path: z.string().describe("EventSheet name (e.g. 'GoalsEvents') or path (e.g. 'eventSheets/Goals/GoalsEvents.json')"),
+      path: z
+        .string()
+        .describe("EventSheet name (e.g. 'GoalsEvents') or path (e.g. 'eventSheets/Goals/GoalsEvents.json')"),
       functions: z.boolean().optional().describe("Include function names defined at each level (default: false)"),
-      flat: z.boolean().optional().describe("Return a flat deduplicated list of all included sheet names instead of a tree (default: false)"),
+      flat: z
+        .boolean()
+        .optional()
+        .describe("Return a flat deduplicated list of all included sheet names instead of a tree (default: false)"),
     },
   },
   async ({ path: sheetPath, functions: includeFunctions, flat }) =>
@@ -593,12 +654,15 @@ server.registerTool(
     annotations: READ_ONLY,
     inputSchema: {
       pattern: z.string().describe("Regex pattern to search for"),
-      type: z.enum(["dsl", "ts", "layout", "md", "json", "idx"]).optional()
+      type: z
+        .enum(["dsl", "ts", "layout", "md", "json", "idx"])
+        .optional()
         .describe("File category to search (default: dsl)"),
-      path: z.string().optional()
+      path: z
+        .string()
+        .optional()
         .describe("Single file or directory prefix. For json type, must include 'eventSheets/' or 'layouts/' prefix"),
-      context: z.number().int().min(0).optional()
-        .describe("Context lines around matches (like grep -C)"),
+      context: z.number().int().min(0).optional().describe("Context lines around matches (like grep -C)"),
     },
   },
   async ({ pattern, type, path: searchPath, context }) =>
@@ -625,13 +689,16 @@ server.registerTool(
           text = appendStaleWarning(text);
         }
 
-        emitLog("info", `search: type=${type ?? "dsl"}, path=${searchPath ?? "(all)"}, matches=${result.lines.length}${result.truncated ? " (truncated)" : ""}`);
+        emitLog(
+          "info",
+          `search: type=${type ?? "dsl"}, path=${searchPath ?? "(all)"}, matches=${result.lines.length}${result.truncated ? " (truncated)" : ""}`,
+        );
 
         return { content: [{ type: "text", text }] };
       } catch (e) {
         return notFound("search", e instanceof Error ? e.message : String(e));
       }
-    })
+    }),
 );
 
 // ── Anchor Resolution Tool ────────────────────────────────────────────────────
@@ -657,7 +724,10 @@ server.registerTool(
       );
       const text = readExtracted(`eventSheets/${sheet}.dsl.idx.txt`);
       if (text === null) {
-        return notFound("resolve-anchor", `No DSL index file found for '${sheet}'. Use list-event-sheets to see available sheets.`);
+        return notFound(
+          "resolve-anchor",
+          `No DSL index file found for '${sheet}'. Use list-event-sheets to see available sheets.`,
+        );
       }
 
       let lookup: Parameters<typeof resolveAnchor>[1];
@@ -691,12 +761,14 @@ server.registerTool(
       if (result.alternatives && result.alternatives.length > 0) {
         lines.push("", "---", "Also matched:");
         for (const alt of result.alternatives) {
-          lines.push(`  Line ${alt.dslLine}: ${alt.description} (SID: ${alt.sid !== undefined ? "§" + alt.sid : "none"}, Path: ${alt.jsonPath})`);
+          lines.push(
+            `  Line ${alt.dslLine}: ${alt.description} (SID: ${alt.sid !== undefined ? "§" + alt.sid : "none"}, Path: ${alt.jsonPath})`,
+          );
         }
       }
 
       return { content: [{ type: "text", text: appendStaleWarning(lines.join("\n")) }] };
-    })
+    }),
 );
 
 // ── Recipe Tools ─────────────────────────────────────────────────────────────
@@ -747,7 +819,7 @@ server.registerTool(
           isError: true,
         };
       }
-    })
+    }),
 );
 
 server.registerTool(
@@ -759,14 +831,8 @@ server.registerTool(
     annotations: MUTATE,
     inputSchema: {
       recipe: z.string().describe("Recipe JSON string"),
-      txId: z
-        .number()
-        .optional()
-        .describe("Expected txId from validate-recipe — if stale, apply is rejected"),
-      regenerate: z
-        .boolean()
-        .optional()
-        .describe("Regenerate extracted/ files after applying (default: true)"),
+      txId: z.number().optional().describe("Expected txId from validate-recipe — if stale, apply is rejected"),
+      regenerate: z.boolean().optional().describe("Regenerate extracted/ files after applying (default: true)"),
     },
   },
   async ({ recipe: recipeJson, txId: expectedTxId, regenerate }, extra: Extra) =>
@@ -776,13 +842,16 @@ server.registerTool(
       // with SIDs that already exist on disk.
       checkRegistryFreshness(path.join(EXTRACTED_DIR, "sid-registry.txt"));
       const shouldRegenerate = regenerate !== false;
-      const totalSteps = shouldRegenerate ? 6 : 1; // apply + 5 generators
+      const totalSteps = shouldRegenerate ? 7 : 1; // apply + 6 generators
       const { log, text } = bufferingLogger();
       try {
         if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
           return {
             content: [
-              { type: "text", text: `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before applying` },
+              {
+                type: "text",
+                text: `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before applying`,
+              },
               { type: "text", text: `txId: ${watcher.txId}` },
             ],
             isError: true,
@@ -821,7 +890,7 @@ server.registerTool(
           isError: true,
         };
       }
-    })
+    }),
 );
 
 // ── Regenerate Tool ─────────────────────────────────────────────────────────
@@ -831,7 +900,7 @@ server.registerTool(
   {
     title: "Regenerate Extracted Files",
     description:
-      "Run all 5 C3 generators (extract scripts, DSL, layout summaries, template scope, SID registry) and update extracted/. Clears the extractedDirty flag. Use after external edits to source files, or when extractedDirty is true.",
+      "Run all 6 C3 generators (extract scripts, DSL, layout summaries, template scope, SID registry, global layers) and update extracted/. Clears the extractedDirty flag. Use after external edits to source files, or when extractedDirty is true.",
     annotations: REGENERATE,
     inputSchema: {},
   },
@@ -857,7 +926,7 @@ server.registerTool(
           isError: true,
         };
       }
-    })
+    }),
 );
 
 // ── Project Tools ────────────────────────────────────────────────────────────
@@ -891,7 +960,7 @@ server.registerTool(
           isError: true,
         };
       }
-    })
+    }),
 );
 
 server.registerTool(
@@ -902,10 +971,7 @@ server.registerTool(
       "Sync project.c3proj to match files on disk. Adds missing entries and removes stale ones. Pass txId for optimistic concurrency. Returns output and new txId.",
     annotations: MUTATE,
     inputSchema: {
-      txId: z
-        .number()
-        .optional()
-        .describe("Expected txId — if stale, sync is rejected"),
+      txId: z.number().optional().describe("Expected txId — if stale, sync is rejected"),
     },
   },
   async ({ txId: expectedTxId }) =>
@@ -915,7 +981,10 @@ server.registerTool(
         if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
           return {
             content: [
-              { type: "text", text: `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before syncing` },
+              {
+                type: "text",
+                text: `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before syncing`,
+              },
               { type: "text", text: `txId: ${watcher.txId}` },
             ],
             isError: true,
@@ -941,7 +1010,7 @@ server.registerTool(
           isError: true,
         };
       }
-    })
+    }),
 );
 
 // ── Addon Tool ──────────────────────────────────────────────────────────────
@@ -956,14 +1025,8 @@ server.registerTool(
       "Read a C3 addon's extracted files (default: aces.json). Without a name, lists all available addons from addons/plugin/ and addons/effect/ with their extraction status.",
     annotations: READ_ONLY,
     inputSchema: {
-      name: z
-        .string()
-        .optional()
-        .describe("Addon name (e.g. 'CV_Clock'). Omit to list all available addons."),
-      file: z
-        .string()
-        .optional()
-        .describe("File to read within the extracted addon folder (default: 'aces.json')"),
+      name: z.string().optional().describe("Addon name (e.g. 'CV_Clock'). Omit to list all available addons."),
+      file: z.string().optional().describe("File to read within the extracted addon folder (default: 'aces.json')"),
     },
   },
   async ({ name, file }) =>
@@ -1003,7 +1066,7 @@ server.registerTool(
       if (!addonPath) {
         return notFound(
           "read-addon",
-          `Addon '${name}' not installed locally — extract from addons/plugin/${name}.c3addon or addons/effect/${name}.c3addon first`
+          `Addon '${name}' not installed locally — extract from addons/plugin/${name}.c3addon or addons/effect/${name}.c3addon first`,
         );
       }
 
@@ -1021,7 +1084,7 @@ server.registerTool(
 
       const content = fs.readFileSync(filePath, "utf-8");
       return { content: [{ type: "text", text: content }] };
-    })
+    }),
 );
 
 // ── Scaffold Tools ──────────────────────────────────────────────────────
@@ -1042,26 +1105,23 @@ server.registerTool(
         .string()
         .describe("Relative output path within layouts/ for the new layout JSON (e.g. 'NewFeature/NewLayout.json')"),
       eventSheet: z.string().describe("Event sheet name for the new layout"),
-      txId: z
-        .number()
-        .optional()
-        .describe("Expected txId — if stale, scaffold is rejected"),
-      regenerate: z
-        .boolean()
-        .optional()
-        .describe("Regenerate extracted/ files after scaffolding (default: true)"),
+      txId: z.number().optional().describe("Expected txId — if stale, scaffold is rejected"),
+      regenerate: z.boolean().optional().describe("Regenerate extracted/ files after scaffolding (default: true)"),
     },
   },
   async ({ source, name, path: outRelPath, eventSheet, txId: expectedTxId, regenerate }, extra: Extra) =>
     rwlock.write(async () => {
       const shouldRegenerate = regenerate !== false;
-      const totalSteps = shouldRegenerate ? 7 : 2; // clone + sync + 5 generators
+      const totalSteps = shouldRegenerate ? 8 : 2; // clone + sync + 6 generators
       const { log, text } = bufferingLogger();
       try {
         if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
           return {
             content: [
-              { type: "text", text: `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before scaffolding` },
+              {
+                type: "text",
+                text: `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before scaffolding`,
+              },
               { type: "text", text: `txId: ${watcher.txId}` },
             ],
             isError: true,
@@ -1111,9 +1171,7 @@ server.registerTool(
         // layouts/, or objectTypes/.
         const existingUids = collectAllUids(layoutsDir);
         const sidRegistryPath = path.join(EXTRACTED_DIR, "sid-registry.txt");
-        const existingSids = fs.existsSync(sidRegistryPath)
-          ? readRegistryFile(sidRegistryPath)
-          : new Set<number>();
+        const existingSids = fs.existsSync(sidRegistryPath) ? readRegistryFile(sidRegistryPath) : new Set<number>();
         const cloned = cloneLayout(sourceLayout, { name, eventSheet, existingUids, existingSids });
 
         // Write output
@@ -1160,7 +1218,7 @@ server.registerTool(
           isError: true,
         };
       }
-    })
+    }),
 );
 
 server.registerTool(
@@ -1171,14 +1229,9 @@ server.registerTool(
       "Clone an existing objectType (sprite) to create a new one. Remaps all SIDs and imageSpriteIds for uniqueness, copies associated image files, writes the new objectType JSON, and syncs project.c3proj.",
     annotations: MUTATE,
     inputSchema: {
-      source: z
-        .string()
-        .describe("Source objectType name (e.g. 'StoryBookIcon')"),
+      source: z.string().describe("Source objectType name (e.g. 'StoryBookIcon')"),
       name: z.string().describe("Target objectType name (e.g. 'VideosIcon')"),
-      txId: z
-        .number()
-        .optional()
-        .describe("Expected txId — if stale, scaffold is rejected"),
+      txId: z.number().optional().describe("Expected txId — if stale, scaffold is rejected"),
     },
   },
   async ({ source, name: targetName, txId: expectedTxId }) =>
@@ -1188,7 +1241,10 @@ server.registerTool(
         if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
           return {
             content: [
-              { type: "text", text: `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before scaffolding` },
+              {
+                type: "text",
+                text: `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before scaffolding`,
+              },
               { type: "text", text: `txId: ${watcher.txId}` },
             ],
             isError: true,
@@ -1199,11 +1255,17 @@ server.registerTool(
         const imagesDir = path.join(PROJECT_ROOT, "images");
 
         // Validate names don't contain path separators
-        for (const [label, val] of [["source", source], ["name", targetName]] as const) {
+        for (const [label, val] of [
+          ["source", source],
+          ["name", targetName],
+        ] as const) {
           if (val.includes("/") || val.includes("\\") || val.includes("..")) {
             return {
               content: [
-                { type: "text", text: `Invalid ${label} '${val}' — must be a plain objectType name without path separators` },
+                {
+                  type: "text",
+                  text: `Invalid ${label} '${val}' — must be a plain objectType name without path separators`,
+                },
                 { type: "text", text: `txId: ${watcher.txId}` },
               ],
               isError: true,
@@ -1279,7 +1341,7 @@ server.registerTool(
           isError: true,
         };
       }
-    })
+    }),
 );
 
 // ── Template Workflow Tools ─────────────────────────────────────────────────
@@ -1302,13 +1364,16 @@ async function runWorkflowRecipe(
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   checkRegistryFreshness(path.join(EXTRACTED_DIR, "sid-registry.txt"));
   const shouldRegenerate = regenerate !== false;
-  const totalSteps = shouldRegenerate ? 6 : 1;
+  const totalSteps = shouldRegenerate ? 7 : 1; // apply + 6 generators
   const { log, text } = bufferingLogger();
   try {
     if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
       return {
         content: [
-          { type: "text", text: `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before applying` },
+          {
+            type: "text",
+            text: `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before applying`,
+          },
           { type: "text", text: `txId: ${watcher.txId}` },
         ],
         isError: true,
@@ -1356,18 +1421,37 @@ server.registerTool(
     inputSchema: {
       sourceLayout: z.string().describe("Source layout path (e.g. 'layouts/Shop/ShopLayout.json')"),
       sourceType: z.string().describe("C3 object type of the instance to extract"),
-      templatesLayout: z.string().describe("Layout that will hold the new master template (e.g. 'layouts/UI_ComponentsLayout.json')"),
+      templatesLayout: z
+        .string()
+        .describe("Layout that will hold the new master template (e.g. 'layouts/UI_ComponentsLayout.json')"),
       templateName: z.string().describe("Template name (globally unique across the project)"),
       templatesLayer: z.string().describe("Layer on templatesLayout for the new template root"),
       includeChildren: z.boolean().optional().describe("Copy scene graph children too. Default: true"),
-      childrenLayer: z.string().optional().describe("Layer for children on templatesLayout (default: same as templatesLayer)"),
-      inheritOverrides: z.record(z.boolean()).optional().describe("Override inheritance flags forwarded to both templatize and replicify"),
+      childrenLayer: z
+        .string()
+        .optional()
+        .describe("Layer for children on templatesLayout (default: same as templatesLayer)"),
+      inheritOverrides: z
+        .record(z.boolean())
+        .optional()
+        .describe("Override inheritance flags forwarded to both templatize and replicify"),
       txId: z.number().optional().describe("Expected txId — if stale, apply is rejected"),
       regenerate: z.boolean().optional().describe("Regenerate extracted/ after apply (default: true)"),
     },
   },
   async (
-    { sourceLayout, sourceType, templatesLayout, templateName, templatesLayer, includeChildren, childrenLayer, inheritOverrides, txId: expectedTxId, regenerate },
+    {
+      sourceLayout,
+      sourceType,
+      templatesLayout,
+      templateName,
+      templatesLayer,
+      includeChildren,
+      childrenLayer,
+      inheritOverrides,
+      txId: expectedTxId,
+      regenerate,
+    },
     extra: Extra,
   ) =>
     rwlock.write(async () => {
@@ -1428,7 +1512,11 @@ server.registerTool(
     inputSchema: {
       templatesLayout: z.string().describe("Layout path containing the master template definition"),
       templateName: z.string().describe("Template name to replicate"),
-      sourceType: z.string().describe("C3 object type the template is built from (needed to locate the source instance on templatesLayout)"),
+      sourceType: z
+        .string()
+        .describe(
+          "C3 object type the template is built from (needed to locate the source instance on templatesLayout)",
+        ),
       targets: z
         .array(
           z.object({
@@ -1476,13 +1564,21 @@ server.registerTool(
       type: z.string().describe("C3 object type of the instance to replace"),
       templatesLayout: z.string().describe("Layout path containing the template definition"),
       templateName: z.string().describe("Template name to replicate"),
-      layer: z.string().optional().describe("Restrict the replace to instances on this layer (throws if mismatched). When omitted, the instance's layer is auto-detected."),
+      layer: z
+        .string()
+        .optional()
+        .describe(
+          "Restrict the replace to instances on this layer (throws if mismatched). When omitted, the instance's layer is auto-detected.",
+        ),
       inheritOverrides: z.record(z.boolean()).optional().describe("Override inheritance flags"),
       txId: z.number().optional().describe("Expected txId — if stale, apply is rejected"),
       regenerate: z.boolean().optional().describe("Regenerate extracted/ after apply (default: true)"),
     },
   },
-  async ({ layout, type, templatesLayout, templateName, layer, inheritOverrides, txId: expectedTxId, regenerate }, extra: Extra) =>
+  async (
+    { layout, type, templatesLayout, templateName, layer, inheritOverrides, txId: expectedTxId, regenerate },
+    extra: Extra,
+  ) =>
     rwlock.write(async () => {
       const recipe: Recipe = {
         layouts: {
@@ -1518,7 +1614,7 @@ server.registerTool(
       return {
         content: [{ type: "text", text: `txId: ${watcher.txId}\nextractedDirty: ${extractedDirty}` }],
       };
-    })
+    }),
 );
 
 // ── Start ─────────────────────────────────────────────────────────────────────
@@ -1532,7 +1628,9 @@ export async function startServer(projectDir?: string): Promise<void> {
   // Startup validation — warn but don't hard-fail
   const c3projPath = path.join(PROJECT_ROOT, "project.c3proj");
   if (!fs.existsSync(c3projPath)) {
-    console.error(`[construct3-chef] Warning: project.c3proj not found in ${PROJECT_ROOT} — not a Construct 3 project directory`);
+    console.error(
+      `[construct3-chef] Warning: project.c3proj not found in ${PROJECT_ROOT} — not a Construct 3 project directory`,
+    );
   }
   if (!fs.existsSync(EXTRACTED_DIR)) {
     console.error(`[construct3-chef] extracted/ not found — auto-generating...`);
@@ -1541,7 +1639,9 @@ export async function startServer(projectDir?: string): Promise<void> {
       await runGenerators(log);
       console.error(`[construct3-chef] Auto-generation complete`);
     } catch (e) {
-      console.error(`[construct3-chef] Warning: auto-generation failed — ${e instanceof Error ? e.message : String(e)}`);
+      console.error(
+        `[construct3-chef] Warning: auto-generation failed — ${e instanceof Error ? e.message : String(e)}`,
+      );
       console.error(`[construct3-chef] Run 'npm run generate-c3' manually to generate extracted files`);
     }
   }

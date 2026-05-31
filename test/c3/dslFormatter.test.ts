@@ -18,8 +18,9 @@ import {
   formatEventSheet,
   formatIndex,
   filterIndex,
-  describeAction,
   buildShallowSidMap,
+  buildBlockSearchText,
+  SEARCH_SENTINEL,
   type EventCounter,
   type DslIndexEntry,
   type SidMapEntry,
@@ -654,11 +655,7 @@ describe("formatEvent", () => {
     } as unknown as BlockEvent;
     const entries = makeEntries();
     const lines = formatEvent(event, "", "Test", makeCounter(), "events[0]", 1, entries);
-    assert.deepEqual(lines, [
-      "block",
-      "  when: System.on-start-of-layout()",
-      "  when: Sprite.is-visible()",
-    ]);
+    assert.deepEqual(lines, ["block", "  when: System.on-start-of-layout()", "  when: Sprite.is-visible()"]);
   });
 
   it("formats a block with comment action (no do: prefix)", () => {
@@ -1265,16 +1262,12 @@ describe("formatIndex", () => {
   });
 });
 
-describe("action-level index entries", () => {
+describe("block index entries (searchText contract)", () => {
   function makeCounter(value = 0): EventCounter {
     return { value };
   }
 
-  function makeEntries(): DslIndexEntry[] {
-    return [];
-  }
-
-  it("block with actions generates action-level index entries with correct actionIndex values", () => {
+  it("block with actions generates exactly ONE index entry (the block row) and NO actionIndex entries", () => {
     const event: BlockEvent = {
       eventType: "block",
       conditions: [{ id: "on-start-of-layout", objectClass: "System", sid: 1 }],
@@ -1285,182 +1278,141 @@ describe("action-level index entries", () => {
       ],
       sid: 100,
     };
-    const entries = makeEntries();
+    const entries: DslIndexEntry[] = [];
     formatEvent(event, "", "TestSheet", makeCounter(), "events[0]", 1, entries);
 
-    // 1 event-level entry + 3 action-level entries = 4 total
-    assert.equal(entries.length, 4);
+    // Exactly 1 entry — the block row; no per-action rows
+    assert.equal(entries.length, 1);
 
-    // First entry is the block event itself
+    // The single entry is the block event itself
     assert.equal(entries[0].eventNumber, 1);
     assert.equal(entries[0].actionIndex, undefined);
-
-    // Action entries have actionIndex 0, 1, 2
-    assert.equal(entries[1].actionIndex, 0);
-    assert.equal(entries[2].actionIndex, 1);
-    assert.equal(entries[3].actionIndex, 2);
-
-    // Action entries have eventNumber null
-    assert.equal(entries[1].eventNumber, null);
-    assert.equal(entries[2].eventNumber, null);
-    assert.equal(entries[3].eventNumber, null);
-
-    // Action entries share the parent event's jsonPath
-    assert.equal(entries[1].jsonPath, "events[0]");
-    assert.equal(entries[2].jsonPath, "events[0]");
-    assert.equal(entries[3].jsonPath, "events[0]");
+    assert.equal(entries[0].description, "block");
   });
 
-  it("action descriptions are correct for different action types", () => {
-    const scriptMultiLine: ScriptAction = {
-      type: "script",
-      language: "typescript",
-      script: ["const x = 1;", "console.log(x);"],
+  it("block with parameterized action has searchText containing the parameter value", () => {
+    const event: BlockEvent = {
+      eventType: "block",
+      conditions: [{ id: "on-start-of-layout", objectClass: "System", sid: 1 }],
+      actions: [
+        {
+          id: "go-to-layout",
+          objectClass: "System",
+          sid: 2,
+          parameters: { layout: '"Main Layout"' },
+        },
+      ],
+      sid: 100,
     };
-    const scriptSingleLine: ScriptAction = {
-      type: "script",
-      language: "typescript",
-      script: ["runtime.setReturnValue(42);"],
-    };
-    const callAction = { callFunction: "playSFX", sid: 3, parameters: ['"click"'] };
-    const commentAction = { type: "comment", text: "Set up UI elements" };
-    const customAction = { customAction: "Initialize", objectClass: "CardScroller", sid: 5 };
-    const standardAction = { id: "set-text", objectClass: "Label", sid: 2, parameters: { text: "hi" } };
+    const entries: DslIndexEntry[] = [];
+    formatEvent(event, "", "TestSheet", makeCounter(), "events[0]", 1, entries);
 
-    // Multi-line script -> cross-ref
-    const multiLineDesc = describeAction(scriptMultiLine, "SheetName", 3, 1);
-    assert.equal(multiLineDesc, "script \u2192 SheetName_Event3_Act1");
-
-    // Single-line script -> inline
-    const singleLineDesc = describeAction(scriptSingleLine, "SheetName", 3, 2);
-    assert.equal(singleLineDesc, "script { runtime.setReturnValue(42); }");
-
-    // Call action
-    const callDesc = describeAction(callAction, "SheetName", 3, 3);
-    assert.equal(callDesc, "call playSFX()");
-
-    // Comment action
-    const commentDesc = describeAction(commentAction, "SheetName", 3, 4);
-    assert.equal(commentDesc, "// Set up UI elements");
-
-    // Custom ACE action
-    const customDesc = describeAction(customAction, "SheetName", 3, 5);
-    assert.equal(customDesc, "ace CardScroller.Initialize()");
-
-    // Standard action
-    const standardDesc = describeAction(standardAction, "SheetName", 3, 6);
-    assert.equal(standardDesc, "Label.set-text()");
+    assert.equal(entries.length, 1);
+    assert.isDefined(entries[0].searchText);
+    // Parameter value must be present in the hidden search tail
+    assert.include(entries[0].searchText!, "Main Layout");
+    // The visible description remains clean
+    assert.equal(entries[0].description, "block");
   });
 
-  it("formatIndex renders action rows correctly (indented, no event number, no DSL line)", () => {
-    const entries: DslIndexEntry[] = [
-      { eventNumber: 1, jsonPath: "events[0]", dslLineNumber: 4, description: "block" },
-      {
-        eventNumber: null,
-        jsonPath: "events[0]",
-        dslLineNumber: 0,
-        description: "script \u2192 Sheet_Event1_Act1",
-        actionIndex: 0,
-      },
-      { eventNumber: null, jsonPath: "events[0]", dslLineNumber: 0, description: "call playSFX()", actionIndex: 1 },
-      { eventNumber: null, jsonPath: "events[0]", dslLineNumber: 0, description: "// comment text", actionIndex: 2 },
-    ];
-    const result = formatIndex("TestSheet", entries);
-    const lines = result.split("\n");
-
-    // Line 5 = first data row (event-level, block)
-    assert.include(lines[5], "1");
-    assert.include(lines[5], "events[0]");
-    assert.include(lines[5], "4");
-    assert.include(lines[5], "block");
-
-    // Line 6 = action[0] row — should have empty event, indented action path, empty DSL line
-    assert.include(lines[6], "action[0]");
-    assert.include(lines[6], "script \u2192 Sheet_Event1_Act1");
-    // Event column should be spaces, not a number or dash
-    assert.match(lines[6], /^\s+\s+\|/);
-    // Should NOT contain a DSL line number (just spaces between the pipes)
-    const actionParts = lines[6].split("|");
-    // SID column (index 2) should be all spaces (no SID for action rows)
-    assert.match(actionParts[2].trim(), /^$/);
-    // Fourth column (DSL Line, index 3) should be all spaces
-    assert.match(actionParts[3].trim(), /^$/);
-
-    // Line 7 = action[1]
-    assert.include(lines[7], "action[1]");
-    assert.include(lines[7], "call playSFX()");
-
-    // Line 8 = action[2]
-    assert.include(lines[8], "action[2]");
-    assert.include(lines[8], "// comment text");
-  });
-
-  it("block with mix of comment and script actions indexes all actions correctly", () => {
+  it("block with mix of actions has searchText populated with all action content", () => {
     const event: BlockEvent = {
       eventType: "block",
       conditions: [],
       actions: [
         { type: "comment", text: "Initialize vars" },
         { type: "script", language: "typescript", script: ["const x = 1;", "console.log(x);"] } as ScriptAction,
-        { type: "comment", text: "Call handler" },
         { callFunction: "handleInit", sid: 10, parameters: [] },
       ],
       sid: 100,
     };
-    const entries = makeEntries();
-    formatEvent(event, "", "MySheet", makeCounter(), "events[2]", 10, entries);
+    const entries: DslIndexEntry[] = [];
+    formatEvent(event, "", "MySheet", makeCounter(), "events[0]", 1, entries);
 
-    // 1 event + 4 actions = 5 entries
-    assert.equal(entries.length, 5);
-
-    // Event entry
+    // Still exactly 1 entry
+    assert.equal(entries.length, 1);
     assert.equal(entries[0].actionIndex, undefined);
-    assert.equal(entries[0].description, "block");
-
-    // Action 0: comment
-    assert.equal(entries[1].actionIndex, 0);
-    assert.equal(entries[1].description, "// Initialize vars");
-
-    // Action 1: multi-line script (event counter was 1 after block increment)
-    assert.equal(entries[2].actionIndex, 1);
-    assert.equal(entries[2].description, "script \u2192 MySheet_Event1_Act2");
-
-    // Action 2: comment
-    assert.equal(entries[3].actionIndex, 2);
-    assert.equal(entries[3].description, "// Call handler");
-
-    // Action 3: function call
-    assert.equal(entries[4].actionIndex, 3);
-    assert.equal(entries[4].description, "call handleInit()");
+    assert.include(entries[0].searchText!, "handleInit");
   });
 
-  it("describeAction returns [unknown action] for unrecognized action shape", () => {
-    const action = { someWeirdKey: "value" };
-    const desc = describeAction(action, "Sheet", 1, 1);
-    assert.equal(desc, "[unknown action]");
-  });
-
-  it("describeAction truncates long single-line scripts", () => {
-    const longLine = "a".repeat(100);
-    const action: ScriptAction = {
-      type: "script",
-      language: "typescript",
-      script: [longLine],
+  it("block with no conditions and no actions has empty searchText", () => {
+    const event: BlockEvent = {
+      eventType: "block",
+      conditions: [],
+      actions: [],
+      sid: 200,
     };
-    const desc = describeAction(action, "Sheet", 1, 1);
-    assert.include(desc, "script {");
-    assert.include(desc, "...");
-    // Should be truncated, not the full 100 chars
-    assert.isBelow(desc.length, 80);
+    const entries: DslIndexEntry[] = [];
+    formatEvent(event, "", "TestSheet", makeCounter(), "events[0]", 1, entries);
+
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].searchText, "");
   });
 
-  it("describeAction truncates long comment text", () => {
-    const longComment = "b".repeat(100);
-    const action = { type: "comment", text: longComment };
-    const desc = describeAction(action, "Sheet", 1, 1);
-    assert.include(desc, "// ");
-    assert.include(desc, "...");
-    assert.isBelow(desc.length, 80);
+  it("formatIndex renders block row with sentinel + flattened searchText in Description column", () => {
+    const searchText = `System.on-start-of-layout()
+System.go-to-layout(layout="Main Layout")`;
+    const entries: DslIndexEntry[] = [
+      {
+        eventNumber: 1,
+        jsonPath: "events[0]",
+        dslLineNumber: 4,
+        description: "block",
+        sid: 100000000000001,
+        searchText,
+      },
+    ];
+    const result = formatIndex("TestSheet", entries);
+    const lines = result.split("\n");
+
+    // Line 5 = the single data row
+    const dataRow = lines[5];
+    // Sentinel must appear
+    assert.include(dataRow, SEARCH_SENTINEL);
+    // Newlines in searchText must be flattened to spaces
+    assert.notInclude(dataRow, "\n");
+    // Both action components present after the sentinel
+    assert.include(dataRow, "System.go-to-layout");
+    assert.include(dataRow, "Main Layout");
+    // Visible description still at the start of the Description column
+    assert.include(dataRow, "block");
+    // No action[N] path should appear
+    assert.notInclude(dataRow, "action[");
+  });
+
+  it("formatIndex omits sentinel when searchText is absent or empty", () => {
+    const entries: DslIndexEntry[] = [
+      {
+        eventNumber: null,
+        jsonPath: "events[0]",
+        dslLineNumber: 4,
+        description: "include CommonEvents",
+      },
+    ];
+    const result = formatIndex("TestSheet", entries);
+    assert.notInclude(result, SEARCH_SENTINEL);
+  });
+
+  it("filterIndex grep on a param value (only in searchText, not in visible description) returns the block row", () => {
+    // Construct an index string that mimics formatIndex output with a block row
+    // whose Description contains the sentinel + hidden tail.
+    const blockRowDesc = `block${SEARCH_SENTINEL}System.go-to-layout(layout="Main Layout")`;
+    const indexLines = [
+      "# TestSheet — DSL Coordinate Index",
+      "# Regenerate: npm run generate-dsl",
+      "#",
+      "# Event | JSON Path | SID              | DSL Line | Description",
+      "#-------|-----------|------------------|----------|-----------",
+      `  1     | events[0] | §910000000000001 | 4        | ${blockRowDesc}`,
+      "",
+    ];
+    const indexText = indexLines.join("\n");
+
+    // "Main Layout" only exists in the hidden tail — filterIndex should still find the row
+    const result = filterIndex(indexText, "Main Layout");
+    assert.notInclude(result, "No matches");
+    assert.include(result, "events[0]");
+    assert.include(result, "block");
   });
 });
 
@@ -1720,9 +1672,7 @@ describe("buildShallowSidMap", () => {
   it("NOT condition is reflected in searchText (formatCondition NOT prefix)", () => {
     const event: BlockEvent = {
       eventType: "block",
-      conditions: [
-        { id: "compare-eventvar", objectClass: "System", sid: 4, isInverted: true },
-      ],
+      conditions: [{ id: "compare-eventvar", objectClass: "System", sid: 4, isInverted: true }],
       actions: [],
       sid: 203,
     };
@@ -1883,5 +1833,63 @@ describe("buildShallowSidMap", () => {
     assert.equal(result.length, 2);
     // The block entry (index 1) should embed the Event2_Act1 synthetic name.
     assert.include(result[1].searchText, "TestSheet_Event2_Act1");
+  });
+});
+
+describe("buildBlockSearchText", () => {
+  function makeSheet(name: string = "TestSheet"): EventSheet {
+    return { name, sid: 999, events: [] };
+  }
+
+  it("purity — same input twice produces identical string", () => {
+    const event: BlockEvent = {
+      eventType: "block",
+      conditions: [{ id: "on-start-of-layout", objectClass: "System", sid: 1 }],
+      actions: [{ id: "GoToLayout", objectClass: "System", sid: 2, parameters: { layout: "BattleLayout" } }],
+      sid: 100,
+    };
+    const sheet = makeSheet();
+    const first = buildBlockSearchText(event, sheet, 1);
+    const second = buildBlockSearchText(event, sheet, 1);
+    assert.equal(first, second);
+  });
+
+  it("parity — block with parameterized action contains parameter value", () => {
+    const event: BlockEvent = {
+      eventType: "block",
+      conditions: [],
+      actions: [{ id: "GoToLayout", objectClass: "System", sid: 2, parameters: { layout: "BattleLayout" } }],
+      sid: 101,
+    };
+    const result = buildBlockSearchText(event, makeSheet(), 1);
+    assert.include(result, "BattleLayout");
+  });
+
+  it("empty — block with no conditions and no actions returns empty string", () => {
+    const event: BlockEvent = {
+      eventType: "block",
+      conditions: [],
+      actions: [],
+      sid: 102,
+    };
+    const result = buildBlockSearchText(event, makeSheet(), 1);
+    assert.equal(result, "");
+  });
+
+  it("function-block variant — both conditions and actions appear in output", () => {
+    const event: FunctionBlockEvent = {
+      eventType: "function-block",
+      functionName: "doSetup",
+      functionReturnType: "none",
+      functionCopyPicked: false,
+      functionIsAsync: false,
+      functionParameters: [],
+      conditions: [{ id: "on-start-of-layout", objectClass: "System", sid: 10 }],
+      actions: [{ id: "GoToLayout", objectClass: "System", sid: 11, parameters: { layout: "BattleLayout" } }],
+      sid: 103,
+    };
+    const result = buildBlockSearchText(event, makeSheet(), 1);
+    assert.include(result, "System.on-start-of-layout");
+    assert.include(result, "BattleLayout");
   });
 });

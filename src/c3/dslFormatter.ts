@@ -1,11 +1,5 @@
 import path from "node:path";
-import {
-  formatCondition,
-  formatAction,
-  normalizeLineEndings,
-  generateFunctionName,
-  visitEvents,
-} from "@genvid/c3source";
+import { formatCondition, formatAction, normalizeLineEndings, visitEvents } from "@genvid/c3source";
 import type {
   EventSheetEvent,
   EventSheet,
@@ -14,8 +8,6 @@ import type {
   CustomAceBlockEvent,
   GroupEvent,
   FunctionParameter,
-  ScriptAction,
-  Condition,
 } from "@genvid/c3source";
 
 /**
@@ -41,7 +33,21 @@ export interface DslIndexEntry {
   actionIndex?: number;
   /** SID of the event. Present for block/function-block/custom-ace-block/group/variable events. Absent for include, comment, and action-level entries. */
   sid?: number;
+  /**
+   * Grep-only search tail — present only on block/function-block/custom-ace-block rows.
+   * Contains the full condition + action text (parameter values included) so that
+   * `filterIndex` can match hidden content (e.g. `grep=BattleLayout`).
+   * Never displayed; stripped by `parseIndexText` in anchorResolver.
+   */
+  searchText?: string;
 }
+
+/**
+ * In-band sentinel that separates the visible Description from the hidden grep tail
+ * in `.dsl.idx.txt` block rows.
+ * `⟪` = U+27EA, `⟫` = U+27EB — not present in normal C3 identifiers or strings.
+ */
+export const SEARCH_SENTINEL = " ⟪search⟫ ";
 
 /** Return type for formatEventSheet — DSL text plus coordinate index. */
 export interface DslResult {
@@ -123,10 +129,7 @@ export function formatVariableDescription(event: EventSheetEvent & { eventType: 
   return `${keyword} ${event.name}: ${event.type} = ${value}`;
 }
 
-function formatVariable(
-  event: EventSheetEvent & { eventType: "variable" },
-  indent: string,
-): string {
+function formatVariable(event: EventSheetEvent & { eventType: "variable" }, indent: string): string {
   return `${indent}${formatVariableDescription(event)}`;
 }
 
@@ -160,9 +163,7 @@ function formatGroup(
     for (let i = 0; i < event.children.length; i++) {
       const child = event.children[i];
       const childPath = `${jsonPath}.children[${i}]`;
-      const childLines = formatEvent(
-        child, indent + "  ", sheetName, counter, childPath, currentLine, indexEntries,
-      );
+      const childLines = formatEvent(child, indent + "  ", sheetName, counter, childPath, currentLine, indexEntries);
       lines.push(...childLines);
       currentLine += childLines.length;
       // Add blank line between sibling children (but not after the last one)
@@ -174,58 +175,6 @@ function formatGroup(
   }
 
   return lines;
-}
-
-/**
- * Return a brief description of an action for the DSL coordinate index.
- * Much shorter than `formatAction` — just enough to identify the action type.
- */
-export function describeAction(
-  action: ScriptAction | Record<string, unknown>,
-  sheetName: string,
-  eventIndex: number,
-  actionNumber: number,
-): string {
-  // Comment action
-  if ("type" in action && action.type === "comment") {
-    const text = normalizeLineEndings(String((action as Record<string, unknown>).text ?? ""));
-    const firstLine = text.split("\n")[0];
-    const truncated = firstLine.length > 60 ? firstLine.slice(0, 57) + "..." : firstLine;
-    return `// ${truncated}`;
-  }
-
-  // Script action
-  if (
-    (action as ScriptAction).type === "script" &&
-    (action as ScriptAction).language === "typescript"
-  ) {
-    const lines = (action as ScriptAction).script;
-    if (lines.length > 1) {
-      const funcName = generateFunctionName(sheetName, eventIndex, actionNumber);
-      return `script \u2192 ${funcName}`;
-    }
-    // Single-line: truncate
-    const oneLiner = normalizeLineEndings(lines[0]);
-    const truncated = oneLiner.length > 60 ? oneLiner.slice(0, 57) + "..." : oneLiner;
-    return `script { ${truncated} }`;
-  }
-
-  // Function call action
-  if ("callFunction" in action) {
-    return `call ${action.callFunction as string}()`;
-  }
-
-  // Custom ACE action
-  if ("customAction" in action) {
-    return `ace ${action.objectClass as string}.${action.customAction as string}()`;
-  }
-
-  // Standard action (has id + objectClass)
-  if ("id" in action && "objectClass" in action) {
-    return `${action.objectClass as string}.${action.id as string}()`;
-  }
-
-  return "[unknown action]";
 }
 
 function formatBlockLike(
@@ -266,15 +215,6 @@ function formatBlockLike(
         lines.push(`${indent}  ${actionLines[j]}`);
       }
     }
-
-    // Push action-level index entry
-    indexEntries.push({
-      eventNumber: null,
-      jsonPath,
-      dslLineNumber: 0,
-      description: describeAction(action, sheetName, currentEventIndex, i + 1),
-      actionIndex: i,
-    });
   }
 
   // Format children
@@ -290,9 +230,7 @@ function formatBlockLike(
     for (let i = 0; i < event.children.length; i++) {
       const child = event.children[i];
       const childPath = `${jsonPath}.children[${i}]`;
-      const childLines = formatEvent(
-        child, indent + "  ", sheetName, counter, childPath, currentLine, indexEntries,
-      );
+      const childLines = formatEvent(child, indent + "  ", sheetName, counter, childPath, currentLine, indexEntries);
       lines.push(...childLines);
       currentLine += childLines.length;
       if (i < event.children.length - 1) {
@@ -332,15 +270,14 @@ function formatBlock(
     dslLineNumber: startLine,
     description: `block${flagStr}`,
     sid: event.sid,
+    searchText: buildBlockSearchText(event, { name: sheetName } as EventSheet, counter.value),
   });
 
   return formatBlockLike(event, headerLine, indent, sheetName, counter, jsonPath, startLine, indexEntries);
 }
 
 function formatFunctionParams(params: FunctionParameter[]): string {
-  return params
-    .map((p) => `${p.name}: ${p.type} = ${p.initialValue}`)
-    .join(", ");
+  return params.map((p) => `${p.name}: ${p.type} = ${p.initialValue}`).join(", ");
 }
 
 function formatFunctionBlock(
@@ -367,6 +304,7 @@ function formatFunctionBlock(
     dslLineNumber: startLine,
     description: `function ${event.functionName}()`,
     sid: event.sid,
+    searchText: buildBlockSearchText(event, { name: sheetName } as EventSheet, counter.value),
   });
 
   return formatBlockLike(event, headerLine, indent, sheetName, counter, jsonPath, startLine, indexEntries);
@@ -395,6 +333,7 @@ function formatCustomAceBlock(
     dslLineNumber: startLine,
     description: `ace ${event.objectClass}.${event.aceName}()`,
     sid: event.sid,
+    searchText: buildBlockSearchText(event, { name: sheetName } as EventSheet, counter.value),
   });
 
   return formatBlockLike(event, headerLine, indent, sheetName, counter, jsonPath, startLine, indexEntries);
@@ -431,9 +370,7 @@ export function formatEventSheet(sheet: EventSheet, sourcePath: string): DslResu
   for (let i = 0; i < sheet.events.length; i++) {
     const event = sheet.events[i];
     const jsonPath = `events[${i}]`;
-    const eventLines = formatEvent(
-      event, "", sheet.name, counter, jsonPath, currentLine, indexEntries,
-    );
+    const eventLines = formatEvent(event, "", sheet.name, counter, jsonPath, currentLine, indexEntries);
     lines.push(...eventLines);
     currentLine += eventLines.length;
     // Add blank line between top-level events (but not after the last one)
@@ -457,19 +394,16 @@ export function formatEventSheet(sheet: EventSheet, sourcePath: string): DslResu
  */
 export function formatIndex(sheetName: string, entries: DslIndexEntry[]): string {
   const lines: string[] = [];
-  lines.push(`# ${sheetName} \u2014 DSL Coordinate Index`);
+  lines.push(`# ${sheetName} — DSL Coordinate Index`);
   lines.push(`# Regenerate: npm run generate-dsl`);
   lines.push(`#`);
 
   // Compute column widths (minimum widths match header labels)
-  // For action entries, the path column shows "  action[N]" (2-space indent + action[N])
   const SID_COL_WIDTH = 16; // "§XXXXXXXXXXXXXXX" = 16 chars
   const eventW = Math.max(5, ...entries.map((e) => (e.eventNumber !== null ? String(e.eventNumber).length : 1)));
   const pathW = Math.max(
     9,
-    ...entries.map((e) =>
-      e.actionIndex !== undefined ? `  action[${e.actionIndex}]`.length : e.jsonPath.length,
-    ),
+    ...entries.map((e) => (e.actionIndex !== undefined ? `  action[${e.actionIndex}]`.length : e.jsonPath.length)),
   );
   const sidW = Math.max(3, SID_COL_WIDTH); // "SID" header vs "§XXXXXXXXXXXXXXX"
   const lineW = Math.max(8, ...entries.map((e) => String(e.dslLineNumber).length));
@@ -484,26 +418,18 @@ export function formatIndex(sheetName: string, entries: DslIndexEntry[]): string
     `#${"-".repeat(eventW + 2)}|${"-".repeat(pathW + 2)}|${"-".repeat(sidW + 2)}|${"-".repeat(lineW + 2)}|${"-".repeat(11)}`,
   );
 
-  // Data rows
+  // Data rows (no action-level rows — those were removed in favour of searchText)
   for (const entry of entries) {
-    const sidStr =
-      entry.sid !== undefined
-        ? `\u00a7${String(entry.sid).padStart(15, "0")}`.padEnd(sidW)
-        : " ".repeat(sidW);
+    const sidStr = entry.sid !== undefined ? `§${String(entry.sid).padStart(15, "0")}`.padEnd(sidW) : " ".repeat(sidW);
 
-    if (entry.actionIndex !== undefined) {
-      // Action-level row: empty event, indented action path, empty SID, empty DSL line
-      const eventStr = " ".repeat(eventW);
-      const pathStr = `  action[${entry.actionIndex}]`.padEnd(pathW);
-      const lineStr = " ".repeat(lineW);
-      lines.push(`  ${eventStr} | ${pathStr} | ${sidStr} | ${lineStr} | ${entry.description}`);
-    } else {
-      // Event-level row
-      const eventStr = (entry.eventNumber !== null ? String(entry.eventNumber) : "-").padEnd(eventW);
-      const pathStr = entry.jsonPath.padEnd(pathW);
-      const lineStr = String(entry.dslLineNumber).padEnd(lineW);
-      lines.push(`  ${eventStr} | ${pathStr} | ${sidStr} | ${lineStr} | ${entry.description}`);
-    }
+    // Event-level row
+    const eventStr = (entry.eventNumber !== null ? String(entry.eventNumber) : "-").padEnd(eventW);
+    const pathStr = entry.jsonPath.padEnd(pathW);
+    const lineStr = String(entry.dslLineNumber).padEnd(lineW);
+    const descStr = entry.searchText
+      ? `${entry.description}${SEARCH_SENTINEL}${entry.searchText.replace(/\n/g, " ")}`
+      : entry.description;
+    lines.push(`  ${eventStr} | ${pathStr} | ${sidStr} | ${lineStr} | ${descStr}`);
   }
 
   lines.push("");
@@ -527,6 +453,40 @@ export interface SidMapEntry {
 }
 
 /**
+ * Build a grep-friendly search string for a block-like event (block, function-block,
+ * or custom-ace-block). Concatenates all condition summaries and action summaries,
+ * newline-separated.
+ *
+ * This is a pure function: same inputs always produce the same output.
+ * The result is intended for grep filtering only — it is never displayed directly.
+ */
+export function buildBlockSearchText(
+  event: BlockEvent | FunctionBlockEvent | CustomAceBlockEvent,
+  sheet: EventSheet,
+  eventNumber: number,
+): string {
+  const parts: string[] = [];
+  // Defensive `?? []`: c3source types both arrays as required, but read-event-sids
+  // parses untrusted source JSON without runtime validation — a hand-edited or
+  // legacy sheet with a missing array previously fell through here harmlessly
+  // because the shallow map didn't touch them.
+  for (const cond of event.conditions ?? []) {
+    parts.push(formatCondition(cond));
+  }
+  const actions = event.actions ?? [];
+  for (let i = 0; i < actions.length; i++) {
+    // Use formatAction (not describeAction) so searchText includes parameter
+    // values, [DISABLED] prefix, [behaviorType] segment, and full (untruncated)
+    // comment/script text — the original gap report's `grep=BattleLayout` query
+    // is an action parameter value and would silently fail with describeAction.
+    parts.push(formatAction(actions[i], sheet.name, eventNumber, i + 1));
+  }
+  // Newline keeps tokens from fusing across boundaries; searchText is grep-only
+  // (never displayed) so the separator choice is purely a regex concern.
+  return parts.join("\n");
+}
+
+/**
  * Build a shallow SID map from an event sheet's parsed JSON.
  * Walks the event tree recursively, collecting jsonPath/sid/description for each node.
  * Does NOT generate DSL text or line numbers — this is a fast lookup for recipe targeting.
@@ -538,27 +498,6 @@ export function buildShallowSidMap(sheet: EventSheet): SidMapEntry[] {
   // custom-ace-block) the same 1-based eventNumber extractScriptsFromSheet uses,
   // so the synthetic script function name embedded by formatAction (e.g.
   // `Sheet_Event2_Act1`) matches what the DSL extractor emits.
-  function summarize(event: BlockEvent | FunctionBlockEvent | CustomAceBlockEvent, eventNumber: number): string {
-    const parts: string[] = [];
-    // Defensive `?? []`: c3source types both arrays as required, but read-event-sids
-    // parses untrusted source JSON without runtime validation — a hand-edited or
-    // legacy sheet with a missing array previously fell through here harmlessly
-    // because the shallow map didn't touch them.
-    for (const cond of event.conditions ?? []) {
-      parts.push(formatCondition(cond));
-    }
-    const actions = event.actions ?? [];
-    for (let i = 0; i < actions.length; i++) {
-      // Use formatAction (not describeAction) so searchText includes parameter
-      // values, [DISABLED] prefix, [behaviorType] segment, and full (untruncated)
-      // comment/script text — the original gap report's `grep=BattleLayout` query
-      // is an action parameter value and would silently fail with describeAction.
-      parts.push(formatAction(actions[i], sheet.name, eventNumber, i + 1));
-    }
-    // Newline keeps tokens from fusing across boundaries; searchText is grep-only
-    // (never displayed) so the separator choice is purely a regex concern.
-    return parts.join("\n");
-  }
 
   visitEvents(sheet.events, (event, ctx) => {
     const { jsonPath } = ctx;
@@ -612,7 +551,7 @@ export function buildShallowSidMap(sheet: EventSheet): SidMapEntry[] {
           jsonPath,
           sid: event.sid,
           description: `block${flagStr}`,
-          searchText: summarize(event, ctx.eventNumber ?? 0),
+          searchText: buildBlockSearchText(event, sheet, ctx.eventNumber ?? 0),
         });
         break;
       }
@@ -622,7 +561,7 @@ export function buildShallowSidMap(sheet: EventSheet): SidMapEntry[] {
           jsonPath,
           sid: event.sid,
           description: `function "${event.functionName}"`,
-          searchText: summarize(event, ctx.eventNumber ?? 0),
+          searchText: buildBlockSearchText(event, sheet, ctx.eventNumber ?? 0),
         });
         break;
 
@@ -631,7 +570,7 @@ export function buildShallowSidMap(sheet: EventSheet): SidMapEntry[] {
           jsonPath,
           sid: event.sid,
           description: `ace "${event.objectClass}.${event.aceName}"`,
-          searchText: summarize(event, ctx.eventNumber ?? 0),
+          searchText: buildBlockSearchText(event, sheet, ctx.eventNumber ?? 0),
         });
         break;
     }
@@ -650,9 +589,7 @@ export function filterIndex(text: string, pattern: string): string {
   try {
     regex = new RegExp(pattern, "i");
   } catch {
-    const headers = text
-      .split("\n")
-      .filter((l) => l.startsWith("#"));
+    const headers = text.split("\n").filter((l) => l.startsWith("#"));
     return [...headers, "", `Invalid regex pattern: ${pattern}`, ""].join("\n");
   }
   const lines = text.split("\n");

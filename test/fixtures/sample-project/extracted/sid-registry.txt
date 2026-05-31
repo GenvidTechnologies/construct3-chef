@@ -37,5 +37,8 @@
 805026402058515	objectTypes/Sprite2.json	animations.items[0]
 813030058561989	layouts/Main Layout.json	nonworld-instances[0]
 901279105542585	layouts/Second Layout.json	layout
+910000000000001	eventSheets/Event sheet 2.json	events[0]
+910000000000002	eventSheets/Event sheet 2.json	events[0].conditions[0]
+910000000000003	eventSheets/Event sheet 2.json	events[0].actions[0]
 924050401428943	objectTypes/Text2.json	objectType
 999146211249428	layouts/Templates Layout.json	layout

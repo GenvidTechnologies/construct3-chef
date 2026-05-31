@@ -15,7 +15,7 @@ Claude Code  <--stdio-->  MCP Server (Node.js, local)
                               ├── reads extracted/ files (DSL, scripts, layout summaries, indexes)
                               ├── reads eventSheets/ / layouts/ / objectTypes/ JSON
                               ├── applies recipes (mutates source JSON)
-                              └── runs the 5 generators (regenerates extracted/)
+                              └── runs the 6 generators (regenerates extracted/)
 ```
 
 ## Design decisions

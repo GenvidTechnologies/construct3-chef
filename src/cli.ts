@@ -11,6 +11,7 @@ import {
   generateLayoutSummaries,
   generateTemplateScope,
   generateSidRegistry,
+  generateGlobalLayers,
 } from "./c3/generators.js";
 import { applyParsed, renameSymbols } from "./c3/recipeApplier.js";
 import type { Recipe } from "./c3/recipeInterpreter.js";
@@ -26,7 +27,7 @@ import {
 import { findTemplates } from "./c3/templateLister.js";
 import { buildLayoutEventSheetMap, findGoToLayoutCalls, generatePlantUML } from "./c3/navigationGraph.js";
 
-const GENERATOR_NAMES = ["scripts", "dsl", "layouts", "templates", "sid-registry"] as const;
+const GENERATOR_NAMES = ["scripts", "dsl", "layouts", "templates", "sid-registry", "global-layers"] as const;
 type GeneratorName = (typeof GENERATOR_NAMES)[number];
 
 function resolveProjectDir(argv: { projectDir: string }): string {
@@ -42,6 +43,7 @@ function runGenerators(rootDir: string, only?: GeneratorName): void {
     { name: "layouts", run: () => generateLayoutSummaries(rootDir, outDir, console.log) },
     { name: "templates", run: () => generateTemplateScope(rootDir, outDir, console.log) },
     { name: "sid-registry", run: () => generateSidRegistry(rootDir, console.log) },
+    { name: "global-layers", run: () => generateGlobalLayers(rootDir, outDir, console.log) },
   ];
 
   const toRun = only ? generators.filter((g) => g.name === only) : generators;

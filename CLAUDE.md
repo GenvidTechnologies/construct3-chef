@@ -52,7 +52,9 @@ ESM throughout (`"type": "module"`, `NodeNext`). **Relative imports must use the
 This is the central idea. There are two views of the project:
 
 - **Source JSON** (`eventSheets/`, `layouts/`, `objectTypes/`) — the write surface. The actual C3 project. Never hand-edit blindly; mutate via recipes.
-- **`extracted/`** (DSL `.dsl.txt`, index `.dsl.idx.txt`, TypeScript `.ts`, layout summaries, `template-scope.txt`, `sid-registry.txt`) — the read surface. Human/AI-readable, regenerated from source by the 5 generators in `src/c3/generators.ts`. Committed alongside source for diffing.
+- **`extracted/`** (DSL `.dsl.txt`, index `.dsl.idx.txt`, TypeScript `.ts`, layout summaries, `template-scope.txt`, `sid-registry.txt`) — the read surface. Human/AI-readable, regenerated from source by the 6 generators in `src/c3/generators.ts`. Committed alongside source for diffing.
+
+> **Adding a generator touches ~9 sites in lockstep.** `GENERATOR_STEPS` in `src/mcp/server.ts` is the only real driver (the regenerate loop iterates it); the rest are a hardcoded count that silently drifts if missed: `GENERATOR_NAMES` + the `generators` array in `cli.ts`; the four `totalSteps`/`progressTotal` constants in `server.ts` (the `runGenerators` default and the apply-recipe / clone-layout / workflow tool handlers — each is "N + generators", so all bump by one) and the `regenerate` tool's description string; the golden test's `before` hook (`test/c3/sampleProjectGolden.test.ts`); plus `docs/generators.md` / `docs/cli.md` / `docs/TOC.md` / `docs/mcp-architecture.md` and the count in this file. Grep `totalSteps`/`progressTotal`/`GENERATOR_STEPS` after wiring a new one. (Cf. the objectType lockstep note below.)
 
 Workflow loop: **read `extracted/` to locate a target → write a recipe targeting it by SID → apply to source JSON → regenerate `extracted/` → sync `project.c3proj`.** After any source mutation, `extracted/` is stale until regenerated.
 

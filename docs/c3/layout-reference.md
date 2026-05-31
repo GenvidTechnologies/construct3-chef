@@ -105,9 +105,15 @@ All consuming layouts that inherit the global layer pick up the effect automatic
 
 Global layers persist their visibility and interactivity state across layout transitions. Every layout that uses a global layer must explicitly reset it in `on-start-of-layout` — typically `set-layer-visible(invisible)` and/or `set-layer-interactive(false)` — then open it only when needed. Forgetting the reset causes the layer to appear with stale data when navigating back to a layout.
 
-### Tooling gap
+### Global-layer tooling
 
-There is no extracted file that lists global layers, their originating layouts, and which layouts override them — unlike templates, which have `template-scope.txt`. When investigating a global layer, check the originating layout JSON directly (the one where `"global": true` appears without `"overriden": 1`). This gap is filed as issue [#20 global-layers.txt extraction](https://github.com/genvid-holdings/construct3-chef/issues/20).
+The `extracted/global-layers.txt` report (6th generator) lists every global layer with its originating (source) layout, the layouts that override it, and its instance count (counted deep, from the source layer's sublayers where the instances actually live). The `list-global-layers` MCP tool returns the same report on demand. A layer is treated as the source where `"global": true` appears without `"overriden": 1`; overriding layouts carry the same-named layer with `"overriden": 1` and empty instances. Format:
+
+```
+global layer: source="Second Layout", overridingLayouts=[Main Layout], instanceCount=2
+```
+
+(Closed the former tooling gap, issue [#20](https://github.com/genvid-holdings/construct3-chef/issues/20).)
 
 ## Localization in Layouts
 

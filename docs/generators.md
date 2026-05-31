@@ -1,6 +1,6 @@
 # Generators Reference
 
-Reference for the five C3 generators that produce `extracted/` files from C3 JSON. Useful for contributors extending the generators. For day-to-day usage, see the CLI reference.
+Reference for the six C3 generators that produce `extracted/` files from C3 JSON. Useful for contributors extending the generators. For day-to-day usage, see the CLI reference.
 
 The `extracted/` directory should be committed alongside C3 source files. If you change event sheets, layouts, or scripts, run `generate` and commit the updated files.
 
@@ -11,12 +11,13 @@ The `extracted/` directory should be committed alongside C3 source files. If you
 ## Running the Generators
 
 ```bash
-npx construct3-chef generate                        # Run all 5 generators
+npx construct3-chef generate                        # Run all 6 generators
 npx construct3-chef generate --only scripts         # Extract TypeScript from eventSheet JSON
 npx construct3-chef generate --only dsl             # Generate human-readable DSL
 npx construct3-chef generate --only layouts         # Generate layout summaries
 npx construct3-chef generate --only templates       # Generate template scope reference
 npx construct3-chef generate --only sid-registry    # Generate SID registry
+npx construct3-chef generate --only global-layers   # Generate global-layer report
 ```
 
 All accept `--project-dir <path>` (defaults to `cwd`).
@@ -31,6 +32,7 @@ Extracted files mirror the event sheet directory structure:
 extracted/
 ├── template-scope.txt                  <- cross-layout template map
 ├── sid-registry.txt                    <- sorted global SID list
+├── global-layers.txt                   <- global layers: source + overriding layouts + instance counts
 ├── Goals/
 │   ├── GoalsEvents.dsl.txt             <- human-readable DSL
 │   ├── GoalsEvents.dsl.idx.txt         <- JSON-path / SID index
@@ -85,21 +87,23 @@ DSL cross-references in `.dsl.txt` files (e.g., `// -> SheetName_Event3_Act1`) l
 
 ## DSL Index Format (`.dsl.idx.txt`)
 
-The index file maps every event tree node to its JSON path and SID. This is the primary source for recipe targeting.
+The index file maps every event tree node to its JSON path and SID. This is the primary source for recipe targeting. Each row is a pipe-delimited record: `Event | JSON Path | SID | DSL Line | Description`.
 
 ```
-# GoalsEvents — DSL Index
-# JSON Path                   | SID              | Description
-events[0]                     §100234567890123   on-start
-events[0].children[0]         §100234567890456   block: [Is playing]
-events[0].children[0]         action[0]          Act1: script
-events[1]                     §100234567890789   function: LoadGoals
-  events[1]                   action[0]          Act1: script
+# GoalsEvents — DSL Coordinate Index
+# Regenerate: npm run generate-dsl
+#
+# Event | JSON Path | SID              | DSL Line | Description
+#-------|-----------|------------------|----------|-----------
+  1     | events[0] | §100234567890123 | 4        | block ⟪search⟫ System.on-start-of-layout() System.go-to-layout(layout="Main Layout")
+  2     | events[1] | §100234567890789 | 9        | function "LoadGoals" ⟪search⟫ System.compare(...) Functions.call("fetch")
 ```
 
-- SIDs appear with a `§` prefix
-- To use a SID in a recipe: strip the `§` and write `"in": "sid:100234567890123"`
-- `action[N]` rows (0-based) show action indices for `patch-script` and `patch-action-param`
+- SIDs appear with a `§` prefix. To use one in a recipe: strip the `§` and write `"in": "sid:100234567890123"`.
+- **Hidden search tail.** Each block / function-block / custom-ace-block row carries a `⟪search⟫` sentinel followed by the block's full conditions and actions content (parameter values, `[behaviorType]`, `[DISABLED]`, `NOT`), produced by `buildBlockSearchText`. The visible Description column stays short; the tail makes the row's content greppable. `read-dsl-index`'s `filterIndex` regex-tests the whole line, so `grep` now matches condition/action content — parity with `read-event-sids` (both derive their search text from the same `buildBlockSearchText` helper). `resolve-anchor` strips the tail before matching/displaying names, so name lookups stay clean.
+- **No per-action rows.** The index lists one row per event node, not a row per action. To find an `actionIndex` for `patch-script` / `patch-action-param`, read the action ordering in the corresponding `.dsl.txt` (actions are 1-indexed within their block's `actions` array).
+
+> **Format coupling — don't add pipe columns.** `resolve-anchor`'s `parseIndexText` (`src/c3/anchorResolver.ts`) parses each row positionally: it splits on `|` and treats *everything after the 4th `|`* as the Description (`descParts.join("|")`). So a new trailing `|`-delimited column would silently fold into the Description and corrupt name matching/display. That is why the #18 search content is appended **in-band** behind the `SEARCH_SENTINEL` (`" ⟪search⟫ "`, defined in `dslFormatter.ts` and imported by `anchorResolver.ts`) rather than as a 6th column — and why `parseIndexText` strips from the sentinel onward before assigning the Description. Any future index-format change must keep the first four columns (`Event | JSON Path | SID | DSL Line`) stable and put new content inside the Description, behind a sentinel, or `resolve-anchor` breaks.
 
 Use the `resolve-anchor` MCP tool to look up a specific SID, line number, or name pattern without reading the full index.
 

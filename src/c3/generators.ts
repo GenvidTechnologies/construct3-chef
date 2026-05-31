@@ -14,7 +14,13 @@ import {
   formatCondition,
 } from "@genvid/c3source";
 import { formatEventSheet, formatIndex } from "./dslFormatter.js";
-import { formatLayout, buildGlobalLayerMap, formatContainersFile } from "./layoutFormatter.js";
+import {
+  formatLayout,
+  buildGlobalLayerMap,
+  formatContainersFile,
+  buildGlobalLayerReport,
+  formatGlobalLayers,
+} from "./layoutFormatter.js";
 import { walkFiles, type Logger } from "@genvid/mcp-utils";
 export { type Logger } from "@genvid/mcp-utils";
 
@@ -350,9 +356,7 @@ export function generateLayoutSummaries(rootDir: string, outDir: string, log: Lo
   // Read containers from project.c3proj
   const projectContent = readFileSync(projectFilePath, "utf-8");
   const project = JSON.parse(projectContent);
-  const containerGroups: string[][] = (project.containers ?? []).map(
-    (c: { members: string[] }) => c.members,
-  );
+  const containerGroups: string[][] = (project.containers ?? []).map((c: { members: string[] }) => c.members);
   const containerMap = new Map<string, string[]>();
   for (const group of containerGroups) {
     for (const member of group) {
@@ -445,6 +449,26 @@ export function generateTemplateScope(rootDir: string, outDir: string, log: Logg
   const outPath = path.join(outDir, "template-scope.txt");
   writeFileSync(outPath, lines.join("\n"));
   log(`Generated template-scope.txt (${results.length} templates across ${byLayout.size} layouts)`);
+}
+
+// ─── Global layers generation ───
+
+export function generateGlobalLayers(rootDir: string, outDir: string, log: Logger = console.log): void {
+  const layoutPaths = find_all_layouts_path(path.join(rootDir, "layouts"));
+
+  const parsedLayouts: Array<{ layout: Layout; filePath: string }> = [];
+  for (const layoutPath of layoutPaths) {
+    const content = readFileSync(layoutPath, "utf-8");
+    const layout: Layout = JSON.parse(content);
+    parsedLayouts.push({ layout, filePath: layoutPath });
+  }
+
+  const reports = buildGlobalLayerReport(parsedLayouts);
+  const formatted = formatGlobalLayers(reports);
+
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(path.join(outDir, "global-layers.txt"), formatted);
+  log(`Generated global-layers.txt (${reports.length} global layer(s))`);
 }
 
 // ─── SID registry generation ───
@@ -564,4 +588,3 @@ export function generateSidRegistry(projectRoot: string, log: Logger = console.l
 
   log(`Generated sid-registry.txt (${allEntries.length} SID entries from ${allFiles.length} files)`);
 }
-
