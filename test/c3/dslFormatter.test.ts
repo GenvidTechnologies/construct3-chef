@@ -20,6 +20,7 @@ import {
   filterIndex,
   describeAction,
   buildShallowSidMap,
+  buildBlockSearchText,
   type EventCounter,
   type DslIndexEntry,
   type SidMapEntry,
@@ -1883,5 +1884,63 @@ describe("buildShallowSidMap", () => {
     assert.equal(result.length, 2);
     // The block entry (index 1) should embed the Event2_Act1 synthetic name.
     assert.include(result[1].searchText, "TestSheet_Event2_Act1");
+  });
+});
+
+describe("buildBlockSearchText", () => {
+  function makeSheet(name: string = "TestSheet"): EventSheet {
+    return { name, sid: 999, events: [] };
+  }
+
+  it("purity — same input twice produces identical string", () => {
+    const event: BlockEvent = {
+      eventType: "block",
+      conditions: [{ id: "on-start-of-layout", objectClass: "System", sid: 1 }],
+      actions: [{ id: "GoToLayout", objectClass: "System", sid: 2, parameters: { layout: "BattleLayout" } }],
+      sid: 100,
+    };
+    const sheet = makeSheet();
+    const first = buildBlockSearchText(event, sheet, 1);
+    const second = buildBlockSearchText(event, sheet, 1);
+    assert.equal(first, second);
+  });
+
+  it("parity — block with parameterized action contains parameter value", () => {
+    const event: BlockEvent = {
+      eventType: "block",
+      conditions: [],
+      actions: [{ id: "GoToLayout", objectClass: "System", sid: 2, parameters: { layout: "BattleLayout" } }],
+      sid: 101,
+    };
+    const result = buildBlockSearchText(event, makeSheet(), 1);
+    assert.include(result, "BattleLayout");
+  });
+
+  it("empty — block with no conditions and no actions returns empty string", () => {
+    const event: BlockEvent = {
+      eventType: "block",
+      conditions: [],
+      actions: [],
+      sid: 102,
+    };
+    const result = buildBlockSearchText(event, makeSheet(), 1);
+    assert.equal(result, "");
+  });
+
+  it("function-block variant — both conditions and actions appear in output", () => {
+    const event: FunctionBlockEvent = {
+      eventType: "function-block",
+      functionName: "doSetup",
+      functionReturnType: "none",
+      functionCopyPicked: false,
+      functionIsAsync: false,
+      functionParameters: [],
+      conditions: [{ id: "on-start-of-layout", objectClass: "System", sid: 10 }],
+      actions: [{ id: "GoToLayout", objectClass: "System", sid: 11, parameters: { layout: "BattleLayout" } }],
+      sid: 103,
+    };
+    const result = buildBlockSearchText(event, makeSheet(), 1);
+    assert.include(result, "System.on-start-of-layout");
+    assert.include(result, "BattleLayout");
   });
 });

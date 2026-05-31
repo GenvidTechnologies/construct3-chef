@@ -527,6 +527,40 @@ export interface SidMapEntry {
 }
 
 /**
+ * Build a grep-friendly search string for a block-like event (block, function-block,
+ * or custom-ace-block). Concatenates all condition summaries and action summaries,
+ * newline-separated.
+ *
+ * This is a pure function: same inputs always produce the same output.
+ * The result is intended for grep filtering only — it is never displayed directly.
+ */
+export function buildBlockSearchText(
+  event: BlockEvent | FunctionBlockEvent | CustomAceBlockEvent,
+  sheet: EventSheet,
+  eventNumber: number,
+): string {
+  const parts: string[] = [];
+  // Defensive `?? []`: c3source types both arrays as required, but read-event-sids
+  // parses untrusted source JSON without runtime validation — a hand-edited or
+  // legacy sheet with a missing array previously fell through here harmlessly
+  // because the shallow map didn't touch them.
+  for (const cond of event.conditions ?? []) {
+    parts.push(formatCondition(cond));
+  }
+  const actions = event.actions ?? [];
+  for (let i = 0; i < actions.length; i++) {
+    // Use formatAction (not describeAction) so searchText includes parameter
+    // values, [DISABLED] prefix, [behaviorType] segment, and full (untruncated)
+    // comment/script text — the original gap report's `grep=BattleLayout` query
+    // is an action parameter value and would silently fail with describeAction.
+    parts.push(formatAction(actions[i], sheet.name, eventNumber, i + 1));
+  }
+  // Newline keeps tokens from fusing across boundaries; searchText is grep-only
+  // (never displayed) so the separator choice is purely a regex concern.
+  return parts.join("\n");
+}
+
+/**
  * Build a shallow SID map from an event sheet's parsed JSON.
  * Walks the event tree recursively, collecting jsonPath/sid/description for each node.
  * Does NOT generate DSL text or line numbers — this is a fast lookup for recipe targeting.
@@ -538,27 +572,6 @@ export function buildShallowSidMap(sheet: EventSheet): SidMapEntry[] {
   // custom-ace-block) the same 1-based eventNumber extractScriptsFromSheet uses,
   // so the synthetic script function name embedded by formatAction (e.g.
   // `Sheet_Event2_Act1`) matches what the DSL extractor emits.
-  function summarize(event: BlockEvent | FunctionBlockEvent | CustomAceBlockEvent, eventNumber: number): string {
-    const parts: string[] = [];
-    // Defensive `?? []`: c3source types both arrays as required, but read-event-sids
-    // parses untrusted source JSON without runtime validation — a hand-edited or
-    // legacy sheet with a missing array previously fell through here harmlessly
-    // because the shallow map didn't touch them.
-    for (const cond of event.conditions ?? []) {
-      parts.push(formatCondition(cond));
-    }
-    const actions = event.actions ?? [];
-    for (let i = 0; i < actions.length; i++) {
-      // Use formatAction (not describeAction) so searchText includes parameter
-      // values, [DISABLED] prefix, [behaviorType] segment, and full (untruncated)
-      // comment/script text — the original gap report's `grep=BattleLayout` query
-      // is an action parameter value and would silently fail with describeAction.
-      parts.push(formatAction(actions[i], sheet.name, eventNumber, i + 1));
-    }
-    // Newline keeps tokens from fusing across boundaries; searchText is grep-only
-    // (never displayed) so the separator choice is purely a regex concern.
-    return parts.join("\n");
-  }
 
   visitEvents(sheet.events, (event, ctx) => {
     const { jsonPath } = ctx;
@@ -612,7 +625,7 @@ export function buildShallowSidMap(sheet: EventSheet): SidMapEntry[] {
           jsonPath,
           sid: event.sid,
           description: `block${flagStr}`,
-          searchText: summarize(event, ctx.eventNumber ?? 0),
+          searchText: buildBlockSearchText(event, sheet, ctx.eventNumber ?? 0),
         });
         break;
       }
@@ -622,7 +635,7 @@ export function buildShallowSidMap(sheet: EventSheet): SidMapEntry[] {
           jsonPath,
           sid: event.sid,
           description: `function "${event.functionName}"`,
-          searchText: summarize(event, ctx.eventNumber ?? 0),
+          searchText: buildBlockSearchText(event, sheet, ctx.eventNumber ?? 0),
         });
         break;
 
@@ -631,7 +644,7 @@ export function buildShallowSidMap(sheet: EventSheet): SidMapEntry[] {
           jsonPath,
           sid: event.sid,
           description: `ace "${event.objectClass}.${event.aceName}"`,
-          searchText: summarize(event, ctx.eventNumber ?? 0),
+          searchText: buildBlockSearchText(event, sheet, ctx.eventNumber ?? 0),
         });
         break;
     }
