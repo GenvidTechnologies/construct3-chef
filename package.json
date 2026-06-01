@@ -1,6 +1,6 @@
 {
 	"name": "@genvid/construct3-chef",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"license": "MIT-0",
 	"author": "Genvid Technologies, inc. <support@genvidtech.com>",
 	"description": "CLI + MCP server that mutates Construct 3 projects (event sheets, layouts, objectTypes) stored as on-disk JSON, via SID-addressed recipes and a read-side extracted/ generator pipeline.",
@@ -62,7 +62,7 @@
 	},
 	"dependencies": {
 		"@genvid/mcp-utils": "^0.2.0",
-		"@genvid/c3source": "^0.3.1",
+		"@genvid/c3source": "^0.4.0",
 		"@modelcontextprotocol/sdk": "^1.27.1",
 		"yargs": "^17.7.2",
 		"zod": "^3.23.0"
