@@ -6,18 +6,8 @@ import type {
   BlockEvent,
   FunctionBlockEvent,
   CustomAceBlockEvent,
-  GroupEvent,
   FunctionParameter,
 } from "@genvid/c3source";
-
-/**
- * Mutable counter object passed by reference so child events correctly
- * increment the event index across recursion (same pattern as
- * extractScriptsFromSheet).
- */
-export interface EventCounter {
-  value: number;
-}
 
 /** One row of the DSL coordinate index. */
 export interface DslIndexEntry {
@@ -55,74 +45,6 @@ export interface DslResult {
   index: DslIndexEntry[];
 }
 
-/**
- * Format a single event into DSL lines.
- *
- * @param event - The event to format
- * @param indent - Current indentation string (e.g. "" or "  ")
- * @param sheetName - Name of the containing event sheet (for script cross-refs)
- * @param counter - Mutable event counter for C3 coordinate tracking
- * @param jsonPath - JSON path for this event (e.g. "events[0]" or "events[1].children[2]")
- * @param startLine - 1-indexed DSL line number where this event begins
- * @param indexEntries - Mutable array collecting index entries
- * @returns Array of DSL lines (without trailing newline)
- */
-export function formatEvent(
-  event: EventSheetEvent,
-  indent: string,
-  sheetName: string,
-  counter: EventCounter,
-  jsonPath: string,
-  startLine: number,
-  indexEntries: DslIndexEntry[],
-): string[] {
-  switch (event.eventType) {
-    case "include":
-      indexEntries.push({
-        eventNumber: null,
-        jsonPath,
-        dslLineNumber: startLine,
-        description: `include ${event.includeSheet}`,
-      });
-      return [`${indent}include ${event.includeSheet}`];
-
-    case "comment": {
-      const commentLines = normalizeLineEndings(event.text).split("\n");
-      const firstLine = commentLines[0];
-      const desc = commentLines.length > 1 ? `// ${firstLine}...` : `// ${firstLine}`;
-      indexEntries.push({
-        eventNumber: null,
-        jsonPath,
-        dslLineNumber: startLine,
-        description: desc,
-      });
-      return commentLines.map((line) => `${indent}// ${line}`);
-    }
-
-    case "variable":
-      indexEntries.push({
-        eventNumber: null,
-        jsonPath,
-        dslLineNumber: startLine,
-        description: formatVariableDescription(event),
-        sid: event.sid,
-      });
-      return [formatVariable(event, indent)];
-
-    case "group":
-      return formatGroup(event, indent, sheetName, counter, jsonPath, startLine, indexEntries);
-
-    case "block":
-      return formatBlock(event, indent, sheetName, counter, jsonPath, startLine, indexEntries);
-
-    case "function-block":
-      return formatFunctionBlock(event, indent, sheetName, counter, jsonPath, startLine, indexEntries);
-
-    case "custom-ace-block":
-      return formatCustomAceBlock(event, indent, sheetName, counter, jsonPath, startLine, indexEntries);
-  }
-}
-
 export function formatVariableDescription(event: EventSheetEvent & { eventType: "variable" }): string {
   const keyword = event.isConstant ? "const" : event.isStatic ? "static" : "var";
   const value = normalizeLineEndings(String(event.initialValue));
@@ -138,8 +60,8 @@ function formatVariable(event: EventSheetEvent & { eventType: "variable" }, inde
  *
  * For block/function-block/custom-ace-block this is the header line plus the
  * `when:` condition lines and the `do:`/comment action lines.  For group it is
- * the single group header line.  For include/comment/variable it mirrors the
- * corresponding branch in `formatEvent`.
+ * the single group header line.  For include/comment/variable it renders the
+ * single DSL line for that event type.
  *
  * @param event       - The event to render.
  * @param indent      - Current indentation string (e.g. "" or "  ").
@@ -244,165 +166,8 @@ function buildBlockLikeSelfLines(
   return lines;
 }
 
-function formatGroup(
-  event: GroupEvent,
-  indent: string,
-  sheetName: string,
-  counter: EventCounter,
-  jsonPath: string,
-  startLine: number,
-  indexEntries: DslIndexEntry[],
-): string[] {
-  counter.value++;
-
-  indexEntries.push({
-    eventNumber: counter.value,
-    jsonPath,
-    dslLineNumber: startLine,
-    description: `group "${event.title}"`,
-    sid: event.sid,
-  });
-
-  const lines: string[] = [...renderNodeSelf(event, indent, sheetName, counter.value)];
-
-  if (event.children) {
-    let currentLine = startLine + lines.length;
-
-    for (let i = 0; i < event.children.length; i++) {
-      const child = event.children[i];
-      const childPath = `${jsonPath}.children[${i}]`;
-      const childLines = formatEvent(child, indent + "  ", sheetName, counter, childPath, currentLine, indexEntries);
-      lines.push(...childLines);
-      currentLine += childLines.length;
-      // Add blank line between sibling children (but not after the last one)
-      if (i < event.children.length - 1) {
-        lines.push("");
-        currentLine += 1;
-      }
-    }
-  }
-
-  return lines;
-}
-
-function formatBlockLike(
-  event: BlockEvent | FunctionBlockEvent | CustomAceBlockEvent,
-  indent: string,
-  sheetName: string,
-  counter: EventCounter,
-  jsonPath: string,
-  startLine: number,
-  indexEntries: DslIndexEntry[],
-): string[] {
-  const currentEventIndex = counter.value;
-  const lines: string[] = [...renderNodeSelf(event, indent, sheetName, currentEventIndex)];
-
-  // Format children
-  if (event.children && event.children.length > 0) {
-    // Blank line between parent actions/conditions and children,
-    // but only if parent had actions or conditions
-    if (event.actions.length > 0 || event.conditions.length > 0) {
-      lines.push("");
-    }
-
-    let currentLine = startLine + lines.length;
-
-    for (let i = 0; i < event.children.length; i++) {
-      const child = event.children[i];
-      const childPath = `${jsonPath}.children[${i}]`;
-      const childLines = formatEvent(child, indent + "  ", sheetName, counter, childPath, currentLine, indexEntries);
-      lines.push(...childLines);
-      currentLine += childLines.length;
-      if (i < event.children.length - 1) {
-        lines.push("");
-        currentLine += 1;
-      }
-    }
-  }
-
-  return lines;
-}
-
-function formatBlock(
-  event: BlockEvent,
-  indent: string,
-  sheetName: string,
-  counter: EventCounter,
-  jsonPath: string,
-  startLine: number,
-  indexEntries: DslIndexEntry[],
-): string[] {
-  counter.value++;
-
-  const flags: string[] = [];
-  if (event.isOrBlock === true) {
-    flags.push("OR");
-  }
-  if (event.disabled === true) {
-    flags.push("DISABLED");
-  }
-  const flagStr = flags.length > 0 ? ` [${flags.join(", ")}]` : "";
-
-  indexEntries.push({
-    eventNumber: counter.value,
-    jsonPath,
-    dslLineNumber: startLine,
-    description: `block${flagStr}`,
-    sid: event.sid,
-    searchText: buildBlockSearchText(event, { name: sheetName } as EventSheet, counter.value),
-  });
-
-  return formatBlockLike(event, indent, sheetName, counter, jsonPath, startLine, indexEntries);
-}
-
 function formatFunctionParams(params: FunctionParameter[]): string {
   return params.map((p) => `${p.name}: ${p.type} = ${p.initialValue}`).join(", ");
-}
-
-function formatFunctionBlock(
-  event: FunctionBlockEvent,
-  indent: string,
-  sheetName: string,
-  counter: EventCounter,
-  jsonPath: string,
-  startLine: number,
-  indexEntries: DslIndexEntry[],
-): string[] {
-  counter.value++;
-
-  indexEntries.push({
-    eventNumber: counter.value,
-    jsonPath,
-    dslLineNumber: startLine,
-    description: `function ${event.functionName}()`,
-    sid: event.sid,
-    searchText: buildBlockSearchText(event, { name: sheetName } as EventSheet, counter.value),
-  });
-
-  return formatBlockLike(event, indent, sheetName, counter, jsonPath, startLine, indexEntries);
-}
-
-function formatCustomAceBlock(
-  event: CustomAceBlockEvent,
-  indent: string,
-  sheetName: string,
-  counter: EventCounter,
-  jsonPath: string,
-  startLine: number,
-  indexEntries: DslIndexEntry[],
-): string[] {
-  counter.value++;
-
-  indexEntries.push({
-    eventNumber: counter.value,
-    jsonPath,
-    dslLineNumber: startLine,
-    description: `ace ${event.objectClass}.${event.aceName}()`,
-    sid: event.sid,
-    searchText: buildBlockSearchText(event, { name: sheetName } as EventSheet, counter.value),
-  });
-
-  return formatBlockLike(event, indent, sheetName, counter, jsonPath, startLine, indexEntries);
 }
 
 /**
