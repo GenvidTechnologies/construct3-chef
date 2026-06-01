@@ -133,6 +133,117 @@ function formatVariable(event: EventSheetEvent & { eventType: "variable" }, inde
   return `${indent}${formatVariableDescription(event)}`;
 }
 
+/**
+ * Return the node's OWN DSL lines only — no children, no inter-node blank lines.
+ *
+ * For block/function-block/custom-ace-block this is the header line plus the
+ * `when:` condition lines and the `do:`/comment action lines.  For group it is
+ * the single group header line.  For include/comment/variable it mirrors the
+ * corresponding branch in `formatEvent`.
+ *
+ * @param event       - The event to render.
+ * @param indent      - Current indentation string (e.g. "" or "  ").
+ * @param sheetName   - Name of the containing event sheet (for script cross-refs).
+ * @param eventNumber - The post-increment counter value for this event (ignored for
+ *                      non-counting types).
+ */
+export function renderNodeSelf(
+  event: EventSheetEvent,
+  indent: string,
+  sheetName: string,
+  eventNumber: number,
+): string[] {
+  switch (event.eventType) {
+    case "include":
+      return [`${indent}include ${event.includeSheet}`];
+
+    case "comment": {
+      const commentLines = normalizeLineEndings(event.text).split("\n");
+      return commentLines.map((line) => `${indent}// ${line}`);
+    }
+
+    case "variable":
+      return [formatVariable(event, indent)];
+
+    case "group": {
+      const activeLabel = event.isActiveOnStart ? "active" : "inactive";
+      const disabledFlag = event.disabled ? " [DISABLED]" : "";
+      return [`${indent}group "${event.title}"${disabledFlag} (${activeLabel})`];
+    }
+
+    case "block": {
+      const flags: string[] = [];
+      if (event.isOrBlock === true) flags.push("OR");
+      if (event.disabled === true) flags.push("DISABLED");
+      const flagStr = flags.length > 0 ? ` [${flags.join(", ")}]` : "";
+      const headerLine = `${indent}block${flagStr}`;
+      return buildBlockLikeSelfLines(event, headerLine, indent, sheetName, eventNumber);
+    }
+
+    case "function-block": {
+      const asyncPrefix = event.functionIsAsync ? "async " : "";
+      const paramsStr = formatFunctionParams(event.functionParameters);
+      const copyPicked = event.functionCopyPicked ? " [copy-picked]" : "";
+      const category = event.functionCategory ? ` [category: ${event.functionCategory}]` : "";
+      const description = event.functionDescription ? ` -- ${event.functionDescription}` : "";
+      const headerLine = `${indent}${asyncPrefix}function ${event.functionName}(${paramsStr}) -> ${event.functionReturnType}${copyPicked}${category}${description}`;
+      return buildBlockLikeSelfLines(event, headerLine, indent, sheetName, eventNumber);
+    }
+
+    case "custom-ace-block": {
+      const paramsStr = formatFunctionParams(event.functionParameters);
+      const copyPicked = event.functionCopyPicked ? " [copy-picked]" : "";
+      const category = event.functionCategory ? ` [category: ${event.functionCategory}]` : "";
+      const description = event.functionDescription ? ` -- ${event.functionDescription}` : "";
+      const headerLine = `${indent}ace ${event.objectClass}.${event.aceName}(${paramsStr}) -> ${event.functionReturnType}${copyPicked}${category}${description}`;
+      return buildBlockLikeSelfLines(event, headerLine, indent, sheetName, eventNumber);
+    }
+  }
+}
+
+/**
+ * Shared helper for block/function-block/custom-ace-block self-lines:
+ * header + when: conditions + do:/comment actions. No children.
+ */
+function buildBlockLikeSelfLines(
+  event: BlockEvent | FunctionBlockEvent | CustomAceBlockEvent,
+  headerLine: string,
+  indent: string,
+  sheetName: string,
+  eventNumber: number,
+): string[] {
+  const lines: string[] = [];
+  lines.push(headerLine);
+
+  // Format conditions
+  for (const cond of event.conditions) {
+    lines.push(`${indent}  when: ${formatCondition(cond)}`);
+  }
+
+  // Format actions
+  for (let i = 0; i < event.actions.length; i++) {
+    const action = event.actions[i];
+    const isComment = "type" in action && action.type === "comment";
+    const actionStr = formatAction(action, sheetName, eventNumber, i + 1);
+
+    if (isComment) {
+      // Comments use // text format, no "do:" prefix.
+      for (const commentLine of actionStr.split("\n")) {
+        lines.push(`${indent}  ${commentLine}`);
+      }
+    } else {
+      // Multi-line script actions need indentation on each line
+      const actionLines = actionStr.split("\n");
+      lines.push(`${indent}  do: ${actionLines[0]}`);
+      for (let j = 1; j < actionLines.length; j++) {
+        lines.push(`${indent}  ${actionLines[j]}`);
+      }
+    }
+  }
+
+  return lines;
+}
+
 function formatGroup(
   event: GroupEvent,
   indent: string,
@@ -152,10 +263,7 @@ function formatGroup(
     sid: event.sid,
   });
 
-  const activeLabel = event.isActiveOnStart ? "active" : "inactive";
-  const disabledFlag = event.disabled ? " [DISABLED]" : "";
-  const lines: string[] = [];
-  lines.push(`${indent}group "${event.title}"${disabledFlag} (${activeLabel})`);
+  const lines: string[] = [...renderNodeSelf(event, indent, sheetName, counter.value)];
 
   if (event.children) {
     let currentLine = startLine + lines.length;
@@ -179,7 +287,6 @@ function formatGroup(
 
 function formatBlockLike(
   event: BlockEvent | FunctionBlockEvent | CustomAceBlockEvent,
-  headerLine: string,
   indent: string,
   sheetName: string,
   counter: EventCounter,
@@ -188,34 +295,7 @@ function formatBlockLike(
   indexEntries: DslIndexEntry[],
 ): string[] {
   const currentEventIndex = counter.value;
-  const lines: string[] = [];
-  lines.push(headerLine);
-
-  // Format conditions
-  for (const cond of event.conditions) {
-    lines.push(`${indent}  when: ${formatCondition(cond)}`);
-  }
-
-  // Format actions
-  for (let i = 0; i < event.actions.length; i++) {
-    const action = event.actions[i];
-    const isComment = "type" in action && action.type === "comment";
-    const actionStr = formatAction(action, sheetName, currentEventIndex, i + 1);
-
-    if (isComment) {
-      // Comments use // text format, no "do:" prefix.
-      for (const commentLine of actionStr.split("\n")) {
-        lines.push(`${indent}  ${commentLine}`);
-      }
-    } else {
-      // Multi-line script actions need indentation on each line
-      const actionLines = actionStr.split("\n");
-      lines.push(`${indent}  do: ${actionLines[0]}`);
-      for (let j = 1; j < actionLines.length; j++) {
-        lines.push(`${indent}  ${actionLines[j]}`);
-      }
-    }
-  }
+  const lines: string[] = [...renderNodeSelf(event, indent, sheetName, currentEventIndex)];
 
   // Format children
   if (event.children && event.children.length > 0) {
@@ -262,7 +342,6 @@ function formatBlock(
     flags.push("DISABLED");
   }
   const flagStr = flags.length > 0 ? ` [${flags.join(", ")}]` : "";
-  const headerLine = `${indent}block${flagStr}`;
 
   indexEntries.push({
     eventNumber: counter.value,
@@ -273,7 +352,7 @@ function formatBlock(
     searchText: buildBlockSearchText(event, { name: sheetName } as EventSheet, counter.value),
   });
 
-  return formatBlockLike(event, headerLine, indent, sheetName, counter, jsonPath, startLine, indexEntries);
+  return formatBlockLike(event, indent, sheetName, counter, jsonPath, startLine, indexEntries);
 }
 
 function formatFunctionParams(params: FunctionParameter[]): string {
@@ -291,13 +370,6 @@ function formatFunctionBlock(
 ): string[] {
   counter.value++;
 
-  const asyncPrefix = event.functionIsAsync ? "async " : "";
-  const paramsStr = formatFunctionParams(event.functionParameters);
-  const copyPicked = event.functionCopyPicked ? " [copy-picked]" : "";
-  const category = event.functionCategory ? ` [category: ${event.functionCategory}]` : "";
-  const description = event.functionDescription ? ` -- ${event.functionDescription}` : "";
-  const headerLine = `${indent}${asyncPrefix}function ${event.functionName}(${paramsStr}) -> ${event.functionReturnType}${copyPicked}${category}${description}`;
-
   indexEntries.push({
     eventNumber: counter.value,
     jsonPath,
@@ -307,7 +379,7 @@ function formatFunctionBlock(
     searchText: buildBlockSearchText(event, { name: sheetName } as EventSheet, counter.value),
   });
 
-  return formatBlockLike(event, headerLine, indent, sheetName, counter, jsonPath, startLine, indexEntries);
+  return formatBlockLike(event, indent, sheetName, counter, jsonPath, startLine, indexEntries);
 }
 
 function formatCustomAceBlock(
@@ -321,12 +393,6 @@ function formatCustomAceBlock(
 ): string[] {
   counter.value++;
 
-  const paramsStr = formatFunctionParams(event.functionParameters);
-  const copyPicked = event.functionCopyPicked ? " [copy-picked]" : "";
-  const category = event.functionCategory ? ` [category: ${event.functionCategory}]` : "";
-  const description = event.functionDescription ? ` -- ${event.functionDescription}` : "";
-  const headerLine = `${indent}ace ${event.objectClass}.${event.aceName}(${paramsStr}) -> ${event.functionReturnType}${copyPicked}${category}${description}`;
-
   indexEntries.push({
     eventNumber: counter.value,
     jsonPath,
@@ -336,7 +402,47 @@ function formatCustomAceBlock(
     searchText: buildBlockSearchText(event, { name: sheetName } as EventSheet, counter.value),
   });
 
-  return formatBlockLike(event, headerLine, indent, sheetName, counter, jsonPath, startLine, indexEntries);
+  return formatBlockLike(event, indent, sheetName, counter, jsonPath, startLine, indexEntries);
+}
+
+/**
+ * Render a subtree of events into DSL lines plus index entries.
+ *
+ * Thin shim over the existing `formatEvent` path — produces the same lines and
+ * index entries that `formatEventSheet` would for these top-level events, starting
+ * at the given `startLine` (1-indexed).  Blank lines between siblings are
+ * inserted exactly as in the top-level loop, with no trailing blank pushed.
+ *
+ * This shim is replaced in F1; keep it minimal.
+ *
+ * @param events    - The top-level event array to render.
+ * @param sheetName - Name of the containing event sheet.
+ * @param startLine - 1-indexed DSL line where the first event begins.
+ */
+export function renderSubtree(
+  events: EventSheetEvent[],
+  sheetName: string,
+  startLine: number,
+): { lines: string[]; index: DslIndexEntry[] } {
+  const counter: EventCounter = { value: 0 };
+  const index: DslIndexEntry[] = [];
+  const lines: string[] = [];
+  let currentLine = startLine;
+
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
+    const jsonPath = `events[${i}]`;
+    const eventLines = formatEvent(event, "", sheetName, counter, jsonPath, currentLine, index);
+    lines.push(...eventLines);
+    currentLine += eventLines.length;
+    // Add blank line between sibling events (but not after the last one)
+    if (i < events.length - 1) {
+      lines.push("");
+      currentLine += 1;
+    }
+  }
+
+  return { lines, index };
 }
 
 /**
