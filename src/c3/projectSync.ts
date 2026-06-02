@@ -1,7 +1,7 @@
-import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
+import { writeFileSync, readdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import type { Logger } from "@genvid/mcp-utils";
-import { isEditorLocalPath } from "@genvid/c3source";
+import { isEditorLocalPath, readProjectManifest } from "@genvid/c3source";
 import { mintUniqueSid } from "./sidUtils.js";
 
 // ---------------------------------------------------------------------------
@@ -540,17 +540,21 @@ export function runSync(
 ): SyncResult {
 	const projectPath = path.join(rootDir, "project.c3proj");
 
-	let projectContent: string;
-	try {
-		projectContent = readFileSync(projectPath, "utf-8");
-	} catch {
-		throw new Error(`Could not read ${projectPath}`);
-	}
-
+	// readProjectManifest reads + parses + validates the manifest shape in one call.
+	// Preserve our two-message contract by discriminating on the error type: a
+	// filesystem read failure carries an errno `code` (ENOENT/EACCES/...), whereas
+	// both a JSON SyntaxError and c3source's shape-violation Error do not. So a
+	// coded error → "Could not read"; anything else → "Could not parse". The shape
+	// check is new behavior: a valid-JSON-but-malformed manifest (missing required
+	// fields) previously slipped past JSON.parse and crashed downstream — it now
+	// fails fast here.
 	let project: any;
 	try {
-		project = JSON.parse(projectContent);
-	} catch {
+		project = readProjectManifest(projectPath) as any;
+	} catch (err: unknown) {
+		if (err instanceof Error && typeof (err as NodeJS.ErrnoException).code === "string") {
+			throw new Error(`Could not read ${projectPath}`);
+		}
 		throw new Error(`Could not parse ${projectPath} as JSON`);
 	}
 
