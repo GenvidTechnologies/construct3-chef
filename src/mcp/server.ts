@@ -34,7 +34,7 @@ import {
   findJsonFiles,
   SID_SOURCE_DIRS,
 } from "../c3/generators.js";
-import { runSync } from "../c3/projectSync.js";
+import { runSync, reportImageDrift } from "../c3/projectSync.js";
 import { readRegistryFile, mintUniqueSid } from "../c3/sidUtils.js";
 import { filterIndex, buildShallowSidMap, type SidMapEntry } from "../c3/dslFormatter.js";
 import type { EventSheet } from "@genvid/c3source";
@@ -945,6 +945,7 @@ server.registerTool(
       const { log, text } = bufferingLogger();
       try {
         runSync(PROJECT_ROOT, true, log);
+        reportImageDrift(PROJECT_ROOT, log);
         return {
           content: [
             { type: "text", text: text() },

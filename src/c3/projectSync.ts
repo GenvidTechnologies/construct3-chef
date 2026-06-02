@@ -1,7 +1,7 @@
 import { writeFileSync, readdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import type { Logger } from "@genvid/mcp-utils";
-import { isEditorLocalPath, readProjectManifest } from "@genvid/c3source";
+import { isEditorLocalPath, readProjectManifest, detectImageDrift } from "@genvid/c3source";
 import { mintUniqueSid } from "./sidUtils.js";
 
 // ---------------------------------------------------------------------------
@@ -624,4 +624,32 @@ export function runSync(
 	}
 
 	return { changes: allChanges, clean: allChanges.length === 0, sections };
+}
+
+// ---------------------------------------------------------------------------
+// Image drift (detection-only report)
+// ---------------------------------------------------------------------------
+
+/**
+ * Report image drift (detection-only). Images are referenced inside objectType
+ * JSON, not declared as manifest file entries, so this NEVER mutates and is NOT
+ * a sync-project write-back target — it surfaces drift for visibility only.
+ * Emits `[images]` lines via `log`; a no-op when there's no images/ dir.
+ */
+export function reportImageDrift(rootDir: string, log: Logger = console.log): void {
+	const drift = detectImageDrift(rootDir);
+	if (!drift || drift.entries.length === 0) {
+		log(`[images]`.padEnd(16) + "(no drift)");
+		return;
+	}
+	for (const e of drift.entries) {
+		// missing = expected by an object type but absent on disk; untracked = on disk, unreferenced.
+		const label =
+			e.kind === "missing"
+				? "missing (expected, not on disk)"
+				: e.kind === "untracked"
+					? "untracked (on disk, unreferenced)"
+					: e.kind;
+		log(`[images]`.padEnd(16) + `! ${e.name} — ${label}`);
+	}
 }

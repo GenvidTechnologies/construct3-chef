@@ -4,7 +4,7 @@ import tmp from "tmp";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { detectManifestDrift } from "@genvid/c3source";
+import { detectManifestDrift, detectImageDrift } from "@genvid/c3source";
 import {
   inferMimeType,
   collectAllSids,
@@ -266,7 +266,14 @@ describe("syncC3Proj", () => {
     // sections it models the same way we do (the name-folder sections). The file
     // sections (rootFileFolders.*) are deliberately excluded: c3source walks them
     // shallowly and unfiltered, so scripts/*.ts + tsconfig.json would read as drift.
-    const NAME_FOLDER_SECTIONS = new Set(["layouts", "eventSheets", "objectTypes", "timelines", "flowcharts", "families"]);
+    const NAME_FOLDER_SECTIONS = new Set([
+      "layouts",
+      "eventSheets",
+      "objectTypes",
+      "timelines",
+      "flowcharts",
+      "families",
+    ]);
 
     it("reports no drift on the name-folder sections", () => {
       const drift = detectManifestDrift(sampleProjectDir);
@@ -283,6 +290,14 @@ describe("syncC3Proj", () => {
       const ot = drift.sections.find((s) => s.section === "objectTypes");
       // If the section is in-sync it may be omitted entirely, or present with no entries.
       assert.deepEqual(ot?.entries ?? [], [], "objectTypes: unexpected drift");
+    });
+  });
+
+  describe("oracle — detectImageDrift on sample-project", () => {
+    it("returns the images section with no drift entries", () => {
+      const drift = detectImageDrift(sampleProjectDir);
+      assert.equal(drift?.section, "images");
+      assert.deepEqual(drift?.entries ?? [], [], "images: unexpected drift");
     });
   });
 
