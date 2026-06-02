@@ -1,7 +1,7 @@
 import { writeFileSync, readdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import type { Logger } from "@genvid/mcp-utils";
-import { isEditorLocalPath, readProjectManifest, detectImageDrift } from "@genvid/c3source";
+import { isEditorLocalPath, readProjectManifest, detectImageDrift, detectManifestDrift, type DriftEntry } from "@genvid/c3source";
 import { mintUniqueSid } from "./sidUtils.js";
 
 // ---------------------------------------------------------------------------
@@ -529,6 +529,127 @@ export function syncNameFolder(
 }
 
 // ---------------------------------------------------------------------------
+// DriftEntry-driven name-section apply engine
+// ---------------------------------------------------------------------------
+
+/**
+ * Navigate from the section root to the subfolder described by `segments`.
+ * Returns the target NameFolder, or undefined if a segment is missing.
+ */
+function navigateFolder(folder: NameFolder, segments: string[]): NameFolder | undefined {
+	let cur: NameFolder = folder;
+	for (const seg of segments) {
+		const found = cur.subfolders.find((s) => s.name === seg);
+		if (!found) return undefined;
+		cur = found;
+	}
+	return cur;
+}
+
+/**
+ * Navigate from the section root to the subfolder described by `segments`,
+ * creating any missing segments along the way.
+ */
+function ensureFolder(folder: NameFolder, segments: string[]): NameFolder {
+	let cur: NameFolder = folder;
+	for (const seg of segments) {
+		let found = cur.subfolders.find((s) => s.name === seg);
+		if (!found) {
+			found = { items: [], subfolders: [], name: seg };
+			cur.subfolders.push(found);
+		}
+		cur = found;
+	}
+	return cur;
+}
+
+function itemDisplay(pathSegs: string[], name: string): string {
+	return pathSegs.length ? `${pathSegs.join("/")}/${name}` : name;
+}
+
+function folderDisplay(pathSegs: string[]): string {
+	return `${pathSegs.join("/")}/`;
+}
+
+/**
+ * Apply a list of DriftEntry records to a NameFolder section.
+ * Handles missing (remove item), untracked (add item), moved (remove+add),
+ * folder-missing (remove subfolder), folder-untracked (add subfolder).
+ * dangling-ref entries are silently ignored (name sections don't produce them).
+ */
+export function applyNameDrift(
+	folder: NameFolder,
+	entries: DriftEntry[],
+	sectionKey: string,
+	changes: Change[],
+	dryRun: boolean,
+): void {
+	for (const entry of entries) {
+		switch (entry.kind) {
+			case "untracked": {
+				// On disk, not in manifest → ADD
+				const target = dryRun ? null : ensureFolder(folder, entry.diskPath ?? []);
+				if (!dryRun && target) {
+					target.items.push(entry.name);
+				}
+				changes.push({ section: sectionKey, action: "+", detail: itemDisplay(entry.diskPath ?? [], entry.name) });
+				break;
+			}
+			case "missing": {
+				// In manifest, not on disk → REMOVE
+				const target = navigateFolder(folder, entry.manifestPath ?? []);
+				if (!target) break; // shouldn't happen; skip gracefully
+				if (!dryRun) {
+					target.items = target.items.filter((n) => n !== entry.name);
+				}
+				changes.push({ section: sectionKey, action: "-", detail: itemDisplay(entry.manifestPath ?? [], entry.name) });
+				break;
+			}
+			case "moved": {
+				// Same name, different path → decompose as remove@manifestPath + add@diskPath
+				const removeTarget = navigateFolder(folder, entry.manifestPath ?? []);
+				if (!dryRun && removeTarget) {
+					removeTarget.items = removeTarget.items.filter((n) => n !== entry.name);
+				}
+				changes.push({ section: sectionKey, action: "-", detail: itemDisplay(entry.manifestPath ?? [], entry.name) });
+
+				const addTarget = dryRun ? null : ensureFolder(folder, entry.diskPath ?? []);
+				if (!dryRun && addTarget) {
+					addTarget.items.push(entry.name);
+				}
+				changes.push({ section: sectionKey, action: "+", detail: itemDisplay(entry.diskPath ?? [], entry.name) });
+				break;
+			}
+			case "folder-untracked": {
+				// Disk subdir with no manifest subfolder → ADD
+				// diskPath includes the new folder name as last segment; ensureFolder creates it
+				if (!dryRun) {
+					ensureFolder(folder, entry.diskPath ?? []);
+				}
+				changes.push({ section: sectionKey, action: "+", detail: `${folderDisplay(entry.diskPath ?? [])} (new folder)` });
+				break;
+			}
+			case "folder-missing": {
+				// Manifest subfolder with no disk dir → REMOVE
+				const pathSegs = entry.manifestPath ?? [];
+				const parentSegs = pathSegs.slice(0, -1);
+				const folderName = pathSegs.at(-1);
+				if (!folderName) break; // shouldn't happen
+				const parent = navigateFolder(folder, parentSegs);
+				if (!dryRun && parent) {
+					parent.subfolders = parent.subfolders.filter((s) => s.name !== folderName);
+				}
+				changes.push({ section: sectionKey, action: "-", detail: folderDisplay(pathSegs) });
+				break;
+			}
+			case "dangling-ref":
+				// Name sections don't produce this; ignore.
+				break;
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Main sync entry point
 // ---------------------------------------------------------------------------
 
@@ -576,15 +697,17 @@ export function runSync(
 		syncFileFolder(folder, diskPath, "", config, existingSids, allChanges, dryRun);
 	}
 
-	// Sync name-based sections
-	for (const config of nameSections) {
-		const folder: NameFolder = project[config.key];
+	// Sync name-based sections via detectManifestDrift + applyNameDrift
+	const nameKeys = new Set(nameSections.map((c) => c.key));
+	const drift = detectManifestDrift(rootDir, project);
+	for (const s of drift.sections) {
+		if (!nameKeys.has(s.section)) continue; // exclude rootFileFolders.*, models3d, containers, images
+		const folder: NameFolder = project[s.section];
 		if (!folder) {
-			log(`Warning: ${config.key} not found in project.c3proj`);
+			log(`Warning: ${s.section} not found in project.c3proj`);
 			continue;
 		}
-		const diskPath = path.join(rootDir, config.diskDir);
-		syncNameFolder(folder, diskPath, "", config, allChanges, dryRun);
+		applyNameDrift(folder, s.entries, s.section, allChanges, dryRun);
 	}
 
 	// Print results

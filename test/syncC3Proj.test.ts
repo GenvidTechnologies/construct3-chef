@@ -1,10 +1,10 @@
 import { describe, it, beforeEach, afterEach } from "mocha";
 import { assert } from "chai";
 import tmp from "tmp";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, cpSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { detectManifestDrift, detectImageDrift } from "@genvid/c3source";
+import { detectManifestDrift, detectImageDrift, type DriftEntry } from "@genvid/c3source";
 import {
   inferMimeType,
   collectAllSids,
@@ -13,6 +13,7 @@ import {
   readDiskDirNames,
   syncFileFolder,
   syncNameFolder,
+  applyNameDrift,
   runSync,
   type FileItem,
   type FileFolder,
@@ -600,6 +601,128 @@ describe("syncC3Proj", () => {
       assert.equal(changes.length, 2);
       // Folder should be unchanged
       assert.deepEqual(folder.items, ["Old"]);
+    });
+  });
+
+  describe("applyNameDrift", () => {
+    it("untracked item at root: adds it and records a '+' change", () => {
+      const folder: NameFolder = { items: [], subfolders: [] };
+      const entries: DriftEntry[] = [{ kind: "untracked", name: "NewEvent", diskPath: [] }];
+      const changes: Change[] = [];
+
+      applyNameDrift(folder, entries, "eventSheets", changes, false);
+
+      assert.deepEqual(folder.items, ["NewEvent"]);
+      assert.equal(changes.length, 1);
+      assert.equal(changes[0].action, "+");
+      assert.equal(changes[0].detail, "NewEvent");
+    });
+
+    it("missing item at root: removes it and records a '-' change", () => {
+      const folder: NameFolder = { items: ["OldEvent"], subfolders: [] };
+      const entries: DriftEntry[] = [{ kind: "missing", name: "OldEvent", manifestPath: [] }];
+      const changes: Change[] = [];
+
+      applyNameDrift(folder, entries, "eventSheets", changes, false);
+
+      assert.deepEqual(folder.items, []);
+      assert.equal(changes.length, 1);
+      assert.equal(changes[0].action, "-");
+      assert.equal(changes[0].detail, "OldEvent");
+    });
+
+    it("folder-untracked + untracked item inside: creates subfolder with item and two '+' changes", () => {
+      const folder: NameFolder = { items: [], subfolders: [] };
+      const entries: DriftEntry[] = [
+        { kind: "folder-untracked", name: "Login", diskPath: ["Login"] },
+        { kind: "untracked", name: "LoginEvents", diskPath: ["Login"] },
+      ];
+      const changes: Change[] = [];
+
+      applyNameDrift(folder, entries, "eventSheets", changes, false);
+
+      assert.equal(folder.subfolders.length, 1);
+      assert.equal(folder.subfolders[0].name, "Login");
+      assert.deepEqual(folder.subfolders[0].items, ["LoginEvents"]);
+      assert.equal(changes.length, 2);
+      assert.isTrue(changes.some((c) => c.action === "+" && c.detail === "Login/ (new folder)"));
+      assert.isTrue(changes.some((c) => c.action === "+" && c.detail === "Login/LoginEvents"));
+    });
+
+    it("moved: emits remove@manifestPath + add@diskPath (two changes)", () => {
+      const folder: NameFolder = { items: ["Sheet"], subfolders: [{ items: [], subfolders: [], name: "Sub" }] };
+      const entries: DriftEntry[] = [{ kind: "moved", name: "Sheet", manifestPath: [], diskPath: ["Sub"] }];
+      const changes: Change[] = [];
+
+      applyNameDrift(folder, entries, "eventSheets", changes, false);
+
+      // Sheet removed from root, added to Sub
+      assert.deepEqual(folder.items, []);
+      assert.equal(folder.subfolders[0].items[0], "Sheet");
+      assert.equal(changes.length, 2);
+      assert.isTrue(changes.some((c) => c.action === "-" && c.detail === "Sheet"));
+      assert.isTrue(changes.some((c) => c.action === "+" && c.detail === "Sub/Sheet"));
+    });
+
+    it("dry-run: changes recorded but folder object unmutated", () => {
+      const folder: NameFolder = { items: ["OldItem"], subfolders: [] };
+      const entries: DriftEntry[] = [
+        { kind: "missing", name: "OldItem", manifestPath: [] },
+        { kind: "untracked", name: "NewItem", diskPath: [] },
+      ];
+      const changes: Change[] = [];
+
+      applyNameDrift(folder, entries, "eventSheets", changes, true);
+
+      // Changes are recorded
+      assert.equal(changes.length, 2);
+      assert.isTrue(changes.some((c) => c.action === "-" && c.detail === "OldItem"));
+      assert.isTrue(changes.some((c) => c.action === "+" && c.detail === "NewItem"));
+      // But folder is unmutated
+      assert.deepEqual(folder.items, ["OldItem"]);
+      assert.equal(folder.subfolders.length, 0);
+    });
+  });
+
+  describe("runSync name-section integration", () => {
+    it("full-project dry-run on fixture: name sections report no changes (inSync)", () => {
+      const result = runSync(sampleProjectDir, true, () => {}, undefined);
+      const nameSectionKeys = ["layouts", "eventSheets", "families", "objectTypes", "timelines", "flowcharts"];
+      for (const key of nameSectionKeys) {
+        const sectionChanges = result.changes.filter((c) => c.section === key);
+        assert.deepEqual(sectionChanges, [], `${key}: unexpected changes`);
+      }
+      assert.equal(result.clean, true);
+    });
+
+    it("R6 section filter: eventSheets stray only surfaces when that section is requested", () => {
+      const tmpDir = createTmpDir();
+      cpSync(sampleProjectDir, tmpDir, { recursive: true });
+      // Add a stray eventSheet on disk
+      touchFile(tmpDir, "eventSheets", "Stray.json");
+
+      const layoutsResult = runSync(tmpDir, true, () => {}, "layouts");
+      const esInLayouts = layoutsResult.changes.filter((c) => c.section === "eventSheets");
+      assert.deepEqual(esInLayouts, [], "layouts-only run should not report eventSheets drift");
+
+      const esResult = runSync(tmpDir, true, () => {}, "eventSheets");
+      const esChanges = esResult.changes.filter((c) => c.section === "eventSheets");
+      assert.isTrue(
+        esChanges.some((c) => c.action === "+" && c.detail.includes("Stray")),
+        "eventSheets-only run should report Stray as untracked",
+      );
+    });
+
+    it("R8 non-name-section exclusion: images-only drift does not produce name-section changes", () => {
+      const tmpDir = createTmpDir();
+      cpSync(sampleProjectDir, tmpDir, { recursive: true });
+      // Add an unreferenced image on disk (images/ drift is detection-only, not a sync target)
+      touchFile(tmpDir, "images", "orphan.png");
+
+      const result = runSync(tmpDir, true, () => {}, undefined);
+      // No change should be emitted for the images section
+      const imageChanges = result.changes.filter((c) => c.section === "images");
+      assert.deepEqual(imageChanges, [], "images drift should not produce sync changes");
     });
   });
 });
