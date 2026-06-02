@@ -3,6 +3,8 @@ import { assert } from "chai";
 import tmp from "tmp";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { detectManifestDrift } from "@genvid/c3source";
 import {
   inferMimeType,
   collectAllSids,
@@ -11,6 +13,7 @@ import {
   readDiskDirNames,
   syncFileFolder,
   syncNameFolder,
+  runSync,
   type FileItem,
   type FileFolder,
   type NameFolder,
@@ -18,6 +21,8 @@ import {
   type NameSectionConfig,
   type Change,
 } from "../src/c3/projectSync.js";
+
+const sampleProjectDir = path.join(fileURLToPath(new URL(".", import.meta.url)), "fixtures", "sample-project");
 
 // Helper to create a temp directory
 function createTmpDir(): string {
@@ -218,6 +223,58 @@ describe("syncC3Proj", () => {
       mkdirSync(path.join(dir, "uistate"));
       const result = readDiskDirNames(dir, false);
       assert.deepEqual(result.dirs, ["uistate"]);
+    });
+
+    it("excludes both editor-local forms (uistate dir + *.uistate.json) in one call", () => {
+      // Parity guard: the dir-form and the file-suffix form are both editor-local
+      // and must be excluded together when ignoreUistate is true. This pins the
+      // behavior across the swap to c3source's isEditorLocalPath.
+      const dir = createTmpDir();
+      touchFile(dir, "foo.json");
+      touchFile(dir, "foo.uistate.json");
+      mkdirSync(path.join(dir, "uistate"));
+      mkdirSync(path.join(dir, "bar"));
+      const result = readDiskDirNames(dir, true);
+      assert.deepEqual(result.files, ["foo"]);
+      assert.deepEqual(result.dirs, ["bar"]);
+    });
+  });
+
+  describe("runSync error contract", () => {
+    it("throws 'Could not read' when project.c3proj is missing", () => {
+      const dir = createTmpDir();
+      assert.throws(() => runSync(dir, true), /Could not read/);
+    });
+
+    it("throws 'Could not parse' on malformed JSON", () => {
+      const dir = createTmpDir();
+      writeFileSync(path.join(dir, "project.c3proj"), "{ not valid json");
+      assert.throws(() => runSync(dir, true), /Could not parse/);
+    });
+
+    it("throws 'Could not parse' on a structurally-invalid manifest (valid JSON, missing fields)", () => {
+      // Valid JSON but not a well-formed manifest (no name/runtime/...). Before the
+      // readProjectManifest adoption this slipped through; it now fails fast.
+      const dir = createTmpDir();
+      writeFileSync(path.join(dir, "project.c3proj"), JSON.stringify({ foo: "bar" }));
+      assert.throws(() => runSync(dir, true), /Could not parse/);
+    });
+  });
+
+  describe("oracle — detectManifestDrift on sample-project", () => {
+    // Cross-check our sync against c3source's upstream drift detector for the
+    // sections it models the same way we do (the name-folder sections). The file
+    // sections (rootFileFolders.*) are deliberately excluded: c3source walks them
+    // shallowly and unfiltered, so scripts/*.ts + tsconfig.json would read as drift.
+    const NAME_FOLDER_SECTIONS = new Set(["layouts", "eventSheets", "objectTypes", "timelines", "flowcharts"]);
+
+    it("reports no drift on the name-folder sections", () => {
+      const drift = detectManifestDrift(sampleProjectDir);
+      const nameSections = drift.sections.filter((s) => NAME_FOLDER_SECTIONS.has(s.section));
+      for (const s of nameSections) {
+        assert.deepEqual(s.missingOnDisk, [], `${s.section}: unexpected missingOnDisk`);
+        assert.deepEqual(s.untracked, [], `${s.section}: unexpected untracked`);
+      }
     });
   });
 
