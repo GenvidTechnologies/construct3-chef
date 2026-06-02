@@ -14,6 +14,7 @@ import {
   formatCondition,
   walkSids,
   formatSidPath,
+  isEditorLocalPath,
 } from "@genvid/c3source";
 import { formatEventSheet, formatIndex } from "./dslFormatter.js";
 import {
@@ -507,7 +508,16 @@ export function generateSidRegistry(projectRoot: string, log: Logger = console.l
 
   // Walk all SID-bearing source dirs (single source of truth: SID_SOURCE_DIRS).
   // findJsonFiles returns [] for missing dirs so partial projects work.
-  const allFiles = SID_SOURCE_DIRS.flatMap((dir) => findJsonFiles(path.join(projectRoot, dir)));
+  // Exclude editor-local state (e.g. `layouts/uistate/*.instancesBar.json`): it
+  // only *references* instance SIDs the layout already owns, so walking it would
+  // register duplicate SID rows. Mirrors projectSync's `isEditorLocalPath` skip.
+  const allFiles = SID_SOURCE_DIRS.flatMap((dir) => findJsonFiles(path.join(projectRoot, dir))).filter(
+    (filePath) =>
+      !path
+        .relative(projectRoot, filePath)
+        .split(/[\\/]/)
+        .some((segment) => isEditorLocalPath(segment)),
+  );
 
   const allEntries: SidEntry[] = [];
 

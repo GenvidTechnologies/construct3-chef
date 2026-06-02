@@ -1,27 +1,5 @@
 {
 	"name": "Event sheet 2",
-	"events": [
-		{
-			"eventType": "block",
-			"conditions": [
-				{
-					"id": "on-start-of-layout",
-					"objectClass": "System",
-					"sid": 910000000000002
-				}
-			],
-			"actions": [
-				{
-					"id": "go-to-layout",
-					"objectClass": "System",
-					"sid": 910000000000003,
-					"parameters": {
-						"layout": "\"Main Layout\""
-					}
-				}
-			],
-			"sid": 910000000000001
-		}
-	],
+	"events": [],
 	"sid": 694811528070136
 }
