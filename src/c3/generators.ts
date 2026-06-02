@@ -12,6 +12,9 @@ import {
   extractScriptsFromSheet,
   generateFunctionName,
   formatCondition,
+  walkSids,
+  formatSidPath,
+  isEditorLocalPath,
 } from "@genvid/c3source";
 import { formatEventSheet, formatIndex } from "./dslFormatter.js";
 import {
@@ -476,34 +479,6 @@ export function generateGlobalLayers(rootDir: string, outDir: string, log: Logge
 type SidEntry = { sid: number; sourceFile: string; location: string };
 
 /**
- * Recursively walk a JSON value and emit (sid, location) pairs.
- * `location` is the human-readable path within the file.
- */
-function collectSids(value: unknown, location: string, entries: Array<{ sid: number; location: string }>): void {
-  if (value === null || typeof value !== "object") return;
-
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) {
-      collectSids(value[i], `${location}[${i}]`, entries);
-    }
-    return;
-  }
-
-  const obj = value as Record<string, unknown>;
-
-  // If this object has a sid, record it at the current location
-  if (typeof obj["sid"] === "number") {
-    entries.push({ sid: obj["sid"] as number, location });
-  }
-
-  // Recurse into all properties (except sid itself, which is a leaf value)
-  for (const [key, child] of Object.entries(obj)) {
-    if (key === "sid") continue;
-    collectSids(child, location === "" ? key : `${location}.${key}`, entries);
-  }
-}
-
-/**
  * Determine the root location label for a file type.
  */
 /**
@@ -533,7 +508,16 @@ export function generateSidRegistry(projectRoot: string, log: Logger = console.l
 
   // Walk all SID-bearing source dirs (single source of truth: SID_SOURCE_DIRS).
   // findJsonFiles returns [] for missing dirs so partial projects work.
-  const allFiles = SID_SOURCE_DIRS.flatMap((dir) => findJsonFiles(path.join(projectRoot, dir)));
+  // Exclude editor-local state (e.g. `layouts/uistate/*.instancesBar.json`): it
+  // only *references* instance SIDs the layout already owns, so walking it would
+  // register duplicate SID rows. Mirrors projectSync's `isEditorLocalPath` skip.
+  const allFiles = SID_SOURCE_DIRS.flatMap((dir) => findJsonFiles(path.join(projectRoot, dir))).filter(
+    (filePath) =>
+      !path
+        .relative(projectRoot, filePath)
+        .split(/[\\/]/)
+        .some((segment) => isEditorLocalPath(segment)),
+  );
 
   const allEntries: SidEntry[] = [];
 
@@ -549,26 +533,13 @@ export function generateSidRegistry(projectRoot: string, log: Logger = console.l
       continue;
     }
 
-    const rawEntries: Array<{ sid: number; location: string }> = [];
-
-    // Check if the top-level object itself has a sid (use rootLabel as location)
-    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const obj = parsed as Record<string, unknown>;
-      if (typeof obj["sid"] === "number") {
-        rawEntries.push({ sid: obj["sid"] as number, location: rootLabel });
-      }
-      // Recurse into properties (skip top-level sid — already handled)
-      for (const [key, child] of Object.entries(obj)) {
-        if (key === "sid") continue;
-        collectSids(child, key, rawEntries);
-      }
-    } else {
-      collectSids(parsed, rootLabel, rawEntries);
-    }
-
-    for (const { sid, location } of rawEntries) {
+    // Traversal/numbering is c3source's job (walkSids); rendering stays local.
+    // Empty segments = the file's top-level sid, which we label with the
+    // semantic root (sheet/layout/objectType) derived from the source dir.
+    walkSids(parsed, (sid, segments) => {
+      const location = segments.length === 0 ? rootLabel : formatSidPath(segments);
       allEntries.push({ sid, sourceFile: relativePath, location });
-    }
+    });
   }
 
   // Sort by SID ascending

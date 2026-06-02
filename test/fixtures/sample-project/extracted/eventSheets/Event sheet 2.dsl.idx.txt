@@ -3,4 +3,3 @@
 #
 # Event | JSON Path | SID              | DSL Line | Description
 #-------|-----------|------------------|----------|-----------
-  1     | events[0] | §910000000000001 | 4        | block ⟪search⟫ System.on-start-of-layout() System.go-to-layout(layout="Main Layout")

@@ -2,3 +2,4 @@
 # Source: project.c3proj
 # All members of a container are created together at runtime.
 
+{Sprite2, Text2}

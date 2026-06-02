@@ -40,27 +40,71 @@
 			"name": "Text input",
 			"author": "Scirra",
 			"bundled": false
+		},
+		{
+			"type": "plugin",
+			"id": "TiledBg",
+			"name": "Tiled Background",
+			"author": "Scirra",
+			"bundled": false
+		},
+		{
+			"type": "plugin",
+			"id": "Tilemap",
+			"name": "Tilemap",
+			"author": "Scirra",
+			"bundled": false
 		}
 	],
 	"uniqueId": "je2an0z14z6",
 	"objectTypes": {
 		"items": [
-			"Sprite",
-			"Sprite2",
 			"Text",
 			"TextInput",
-			"9patch",
-			"JSON",
-			"Sprite3",
 			"Text2"
 		],
-		"subfolders": []
+		"subfolders": [
+			{
+				"items": [
+					"JSON"
+				],
+				"subfolders": [],
+				"name": "global"
+			},
+			{
+				"items": [
+					"9patch",
+					"Sprite",
+					"Sprite2",
+					"Sprite3"
+				],
+				"subfolders": [],
+				"name": "images"
+			},
+			{
+				"items": [
+					"TiledBackground",
+					"Tilemap"
+				],
+				"subfolders": [],
+				"name": "tiles"
+			}
+		]
 	},
 	"functionsName": "Functions",
 	"autosaveData": null,
-	"containers": [],
+	"containers": [
+		{
+			"members": [
+				"Sprite2",
+				"Text2"
+			]
+		}
+	],
 	"families": {
-		"items": [],
+		"items": [
+			"TextFamily"
+		],
 		"subfolders": []
 	},
 	"layouts": {
@@ -82,19 +126,19 @@
 		"script": {
 			"items": [
 				{
-					"name": "main.js",
-					"type": "application/javascript",
-					"sid": 556719570951547,
+					"name": "importsForEvents.ts",
+					"type": "application/typescript",
+					"sid": 382556966325545,
 					"script-info": {
-						"purpose": "main"
+						"purpose": "imports-for-events"
 					}
 				},
 				{
-					"name": "importsForEvents.js",
-					"type": "application/javascript",
-					"sid": 854030601028940,
+					"name": "main.ts",
+					"type": "application/typescript",
+					"sid": 893316825679838,
 					"script-info": {
-						"purpose": "imports-for-events"
+						"purpose": "main"
 					}
 				}
 			],

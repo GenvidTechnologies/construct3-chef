@@ -5,13 +5,15 @@
 
 ## Layers (3)
 
-layer 0 (1 instance)
+layer 0 (3 instances)
   TextInput x1
+  TiledBackground x1
+  Tilemap x1
 
 global layer (global)
   global layer > sublayer g.1
     global layer > sublayer g.1 > subsublayer g.1.1 (1 instance)
-      Sprite2 x1
+      Sprite2 x1 (container: {Sprite2, ~Text2})
 
 
   global layer > sublayer g.2 (1 instance)
