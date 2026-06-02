@@ -506,6 +506,40 @@ describe("syncC3Proj", () => {
       assert.deepEqual(folder.items, ["OldItem"]);
       assert.equal(folder.subfolders.length, 0);
     });
+
+    it("folder-missing with a multi-segment path: removes the nested subfolder", () => {
+      const folder: NameFolder = {
+        items: [],
+        subfolders: [
+          {
+            items: [],
+            subfolders: [{ items: [], subfolders: [], name: "Nested" }],
+            name: "Sub",
+          },
+        ],
+      };
+      const entries: DriftEntry[] = [{ kind: "folder-missing", name: "Nested", manifestPath: ["Sub", "Nested"] }];
+      const changes: Change[] = [];
+
+      applyNameDrift(folder, entries, "eventSheets", changes, false);
+
+      assert.deepEqual(folder.subfolders[0].subfolders, []);
+      assert.equal(changes.length, 1);
+      assert.isTrue(changes.some((c) => c.action === "-" && c.detail === "Sub/Nested/"));
+    });
+
+    it("folder-missing with a missing parent: records the change but skips gracefully", () => {
+      const folder: NameFolder = { items: [], subfolders: [] };
+      const entries: DriftEntry[] = [{ kind: "folder-missing", name: "Nested", manifestPath: ["NonExistent", "Nested"] }];
+      const changes: Change[] = [];
+
+      // navigateFolder returns undefined for the missing parent → no crash, no mutation.
+      applyNameDrift(folder, entries, "eventSheets", changes, false);
+
+      assert.deepEqual(folder.subfolders, []);
+      assert.equal(changes.length, 1);
+      assert.equal(changes[0].action, "-");
+    });
   });
 
   describe("runSync name-section integration", () => {
