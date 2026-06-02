@@ -266,15 +266,23 @@ describe("syncC3Proj", () => {
     // sections it models the same way we do (the name-folder sections). The file
     // sections (rootFileFolders.*) are deliberately excluded: c3source walks them
     // shallowly and unfiltered, so scripts/*.ts + tsconfig.json would read as drift.
-    const NAME_FOLDER_SECTIONS = new Set(["layouts", "eventSheets", "objectTypes", "timelines", "flowcharts"]);
+    const NAME_FOLDER_SECTIONS = new Set(["layouts", "eventSheets", "objectTypes", "timelines", "flowcharts", "families"]);
 
     it("reports no drift on the name-folder sections", () => {
       const drift = detectManifestDrift(sampleProjectDir);
       const nameSections = drift.sections.filter((s) => NAME_FOLDER_SECTIONS.has(s.section));
       for (const s of nameSections) {
-        assert.deepEqual(s.missingOnDisk, [], `${s.section}: unexpected missingOnDisk`);
-        assert.deepEqual(s.untracked, [], `${s.section}: unexpected untracked`);
+        assert.deepEqual(s.entries, [], `${s.section}: unexpected drift`);
       }
+    });
+
+    it("covers objectTypes-as-directories without drift", () => {
+      // The fixture stores objectTypes in named subfolders (global/images/tiles).
+      // Confirm detectManifestDrift resolves that layout without reporting drift.
+      const drift = detectManifestDrift(sampleProjectDir);
+      const ot = drift.sections.find((s) => s.section === "objectTypes");
+      // If the section is in-sync it may be omitted entirely, or present with no entries.
+      assert.deepEqual(ot?.entries ?? [], [], "objectTypes: unexpected drift");
     });
   });
 
