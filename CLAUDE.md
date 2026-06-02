@@ -85,6 +85,8 @@ C3 nodes carry a stable `sid` (a random integer in `[1e14, 1e15)`). Recipes targ
 - **`workflowExpansion.ts`** — composite **workflow ops** (`extract-template`, `templatize-in-place`, `clone-replica-to-layouts`, `replace-instance-with-replica`) expand into primitive layout ops in a pre-pass before the layout-file loop runs, fanning out across multiple layout keys when needed. Dispatch and dry-run logging iterate the expanded `Map`, so workflows are validated as their primitive sequence.
 - **`eventSheetMutator.ts`** — low-level builders (`buildBlock`, `buildAction`, …) and tree edits (`insertEvent`, `resolveNode`, SID-index building) over a single sheet.
 
+> **`SidIndexEntry.indexInParent` is a snapshot, not a live index.** `buildSidIndex` records each node's position once; the `parentArray` reference stays valid but the stored index goes stale the moment an earlier op in the same recipe batch splices that array. Any op that positions relative to a resolved node (insert-after, remove, move) must recompute with `parentArray.indexOf(node)` — never trust `indexInParent` for placement. (This was gotcha #34: the `insert-event` `after: "sid:X"` branch used the stale snapshot and misplaced/appended.)
+
 The recipe reference (all event-sheet + layout ops, SID addressing, builder shorthands) lives in `docs/recipe-reference.md`; generator internals in `docs/generators.md`.
 
 ## MCP server state model (`src/mcp/server.ts`)
