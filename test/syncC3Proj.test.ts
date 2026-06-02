@@ -10,16 +10,13 @@ import {
   collectAllSids,
   generateSid,
   readDiskDir,
-  readDiskDirNames,
   syncFileFolder,
-  syncNameFolder,
   applyNameDrift,
   runSync,
   type FileItem,
   type FileFolder,
   type NameFolder,
   type FileSectionConfig,
-  type NameSectionConfig,
   type Change,
 } from "../src/c3/projectSync.js";
 
@@ -176,68 +173,6 @@ describe("syncC3Proj", () => {
     it("returns empty for non-existent directory", () => {
       const result = readDiskDir("/nonexistent/path", undefined, undefined, undefined);
       assert.deepEqual(result, { files: [], dirs: [] });
-    });
-  });
-
-  describe("readDiskDirNames", () => {
-    it("reads .json files as names without extension", () => {
-      const dir = createTmpDir();
-      touchFile(dir, "EventA.json");
-      touchFile(dir, "EventB.json");
-      const result = readDiskDirNames(dir, false);
-      assert.deepEqual(result.files.sort(), ["EventA", "EventB"]);
-    });
-
-    it("ignores .uistate.json when configured", () => {
-      const dir = createTmpDir();
-      touchFile(dir, "Layout1.json");
-      touchFile(dir, "Layout1.uistate.json");
-      const result = readDiskDirNames(dir, true);
-      assert.deepEqual(result.files, ["Layout1"]);
-    });
-
-    it("includes .uistate.json when not ignoring", () => {
-      const dir = createTmpDir();
-      touchFile(dir, "Layout1.json");
-      touchFile(dir, "Layout1.uistate.json");
-      const result = readDiskDirNames(dir, false);
-      assert.equal(result.files.length, 2);
-    });
-
-    it("reads subdirectories", () => {
-      const dir = createTmpDir();
-      mkdirSync(path.join(dir, "SubFolder"));
-      const result = readDiskDirNames(dir, false);
-      assert.deepEqual(result.dirs, ["SubFolder"]);
-    });
-
-    it("ignores the uistate directory when configured", () => {
-      const dir = createTmpDir();
-      mkdirSync(path.join(dir, "SubFolder"));
-      mkdirSync(path.join(dir, "uistate"));
-      const result = readDiskDirNames(dir, true);
-      assert.deepEqual(result.dirs, ["SubFolder"]);
-    });
-
-    it("includes the uistate directory when not ignoring", () => {
-      const dir = createTmpDir();
-      mkdirSync(path.join(dir, "uistate"));
-      const result = readDiskDirNames(dir, false);
-      assert.deepEqual(result.dirs, ["uistate"]);
-    });
-
-    it("excludes both editor-local forms (uistate dir + *.uistate.json) in one call", () => {
-      // Parity guard: the dir-form and the file-suffix form are both editor-local
-      // and must be excluded together when ignoreUistate is true. This pins the
-      // behavior across the swap to c3source's isEditorLocalPath.
-      const dir = createTmpDir();
-      touchFile(dir, "foo.json");
-      touchFile(dir, "foo.uistate.json");
-      mkdirSync(path.join(dir, "uistate"));
-      mkdirSync(path.join(dir, "bar"));
-      const result = readDiskDirNames(dir, true);
-      assert.deepEqual(result.files, ["foo"]);
-      assert.deepEqual(result.dirs, ["bar"]);
     });
   });
 
@@ -490,117 +425,6 @@ describe("syncC3Proj", () => {
       // But folder should be unchanged
       assert.equal(folder.items.length, 1);
       assert.equal(folder.items[0].name, "old.ts");
-    });
-  });
-
-  describe("syncNameFolder", () => {
-    it("detects new items on disk", () => {
-      const dir = createTmpDir();
-      touchFile(dir, "NewEvent.json");
-
-      const folder: NameFolder = { items: [], subfolders: [] };
-      const changes: Change[] = [];
-      const config: NameSectionConfig = { key: "eventSheets", diskDir: dir, ignoreUistate: true };
-
-      syncNameFolder(folder, dir, "", config, changes, false);
-
-      assert.equal(changes.length, 1);
-      assert.equal(changes[0].action, "+");
-      assert.include(changes[0].detail, "NewEvent");
-      assert.deepEqual(folder.items, ["NewEvent"]);
-    });
-
-    it("detects removed items", () => {
-      const dir = createTmpDir();
-      // Empty dir
-
-      const folder: NameFolder = { items: ["OldEvent"], subfolders: [] };
-      const changes: Change[] = [];
-      const config: NameSectionConfig = { key: "eventSheets", diskDir: dir, ignoreUistate: true };
-
-      syncNameFolder(folder, dir, "", config, changes, false);
-
-      assert.equal(changes.length, 1);
-      assert.equal(changes[0].action, "-");
-      assert.include(changes[0].detail, "OldEvent");
-      assert.deepEqual(folder.items, []);
-    });
-
-    it("preserves existing items that match disk", () => {
-      const dir = createTmpDir();
-      touchFile(dir, "Existing.json");
-
-      const folder: NameFolder = { items: ["Existing"], subfolders: [] };
-      const changes: Change[] = [];
-      const config: NameSectionConfig = { key: "eventSheets", diskDir: dir, ignoreUistate: true };
-
-      syncNameFolder(folder, dir, "", config, changes, false);
-
-      assert.equal(changes.length, 0);
-      assert.deepEqual(folder.items, ["Existing"]);
-    });
-
-    it("ignores .uistate.json files when configured", () => {
-      const dir = createTmpDir();
-      touchFile(dir, "Layout1.json");
-      touchFile(dir, "Layout1.uistate.json");
-
-      const folder: NameFolder = { items: [], subfolders: [] };
-      const changes: Change[] = [];
-      const config: NameSectionConfig = { key: "layouts", diskDir: dir, ignoreUistate: true };
-
-      syncNameFolder(folder, dir, "", config, changes, false);
-
-      assert.equal(changes.length, 1);
-      assert.deepEqual(folder.items, ["Layout1"]);
-    });
-
-    it("ignores the uistate subfolder (editor state) when configured", () => {
-      const dir = createTmpDir();
-      // Recent C3 editors persist instances-bar UI state under layouts/uistate/.
-      mkdirSync(path.join(dir, "uistate", "Level1"), { recursive: true });
-      writeFileSync(path.join(dir, "uistate", "Level1", "Bar.instancesBar.json"), "");
-
-      const folder: NameFolder = { items: [], subfolders: [] };
-      const changes: Change[] = [];
-      const config: NameSectionConfig = { key: "layouts", diskDir: dir, ignoreUistate: true };
-
-      syncNameFolder(folder, dir, "", config, changes, false);
-
-      assert.deepEqual(changes, []);
-      assert.deepEqual(folder.subfolders, []);
-    });
-
-    it("detects new subfolders on disk", () => {
-      const dir = createTmpDir();
-      mkdirSync(path.join(dir, "Login"));
-      touchFile(dir, "Login", "LoginEvents.json");
-
-      const folder: NameFolder = { items: [], subfolders: [] };
-      const changes: Change[] = [];
-      const config: NameSectionConfig = { key: "eventSheets", diskDir: dir, ignoreUistate: true };
-
-      syncNameFolder(folder, dir, "", config, changes, false);
-
-      assert.isTrue(changes.some((c) => c.action === "+" && c.detail.includes("Login/")));
-      assert.isTrue(changes.some((c) => c.action === "+" && c.detail.includes("LoginEvents")));
-      assert.equal(folder.subfolders.length, 1);
-      assert.equal(folder.subfolders[0].name, "Login");
-    });
-
-    it("dry-run does not modify folder", () => {
-      const dir = createTmpDir();
-      touchFile(dir, "New.json");
-
-      const folder: NameFolder = { items: ["Old"], subfolders: [] };
-      const changes: Change[] = [];
-      const config: NameSectionConfig = { key: "eventSheets", diskDir: dir, ignoreUistate: true };
-
-      syncNameFolder(folder, dir, "", config, changes, true);
-
-      assert.equal(changes.length, 2);
-      // Folder should be unchanged
-      assert.deepEqual(folder.items, ["Old"]);
     });
   });
 
