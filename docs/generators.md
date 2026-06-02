@@ -31,7 +31,7 @@ Extracted files mirror the event sheet directory structure:
 ```
 extracted/
 ├── template-scope.txt                  <- cross-layout template map
-├── sid-registry.txt                    <- sorted global SID list
+├── sid-registry.txt                    <- sorted global SID list (one row per owning node)
 ├── global-layers.txt                   <- global layers: source + overriding layouts + instance counts
 ├── Goals/
 │   ├── GoalsEvents.dsl.txt             <- human-readable DSL
@@ -52,6 +52,8 @@ Event sheet file names encode the C3 event/action coordinates: `{SheetName}_e{ev
 - The original script body, with a header comment showing the C3 location and human-readable event path
 
 The generator also produces a `tsconfig.json` under `extracted/` that includes all C3 type definitions, so editors can resolve types without per-file `/// <reference>` directives.
+
+**`sid-registry.txt` excludes editor-local state.** The SID walk over `eventSheets/`/`layouts/`/`objectTypes/` skips editor-local paths (e.g. `layouts/uistate/*.instancesBar.json`) via c3source's `isEditorLocalPath` — mirroring the skip `projectSync` applies. Those files only *reference* instance SIDs the layout already owns, so walking them would emit duplicate rows; the registry lists each SID once at its owning node.
 
 ---
 
