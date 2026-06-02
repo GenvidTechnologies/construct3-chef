@@ -301,6 +301,21 @@ describe("syncC3Proj", () => {
     });
   });
 
+  describe("timelines nameless subfolder", () => {
+    // The fixture's `timelines` manifest section has items ["Timeline 1"] plus one
+    // NAMELESS subfolder ({items:[], subfolders:[]}) with no disk counterpart, while
+    // disk has only `Timeline 1.json` (+ an editor-local `.uistate.json`). runSync must
+    // report ZERO changes: it must not try to remove the nameless subfolder (name ===
+    // undefined) nor mistake the editor-local file for drift. This pins the behavior
+    // the `findNamelessDiskDirs` heuristic provides today, so the upcoming swap to
+    // c3source `walkDiskNameTree` (and the later DriftEntry apply engine) must preserve it.
+    it("reports no changes syncing the fixture timelines section", () => {
+      const result = runSync(sampleProjectDir, true, () => {}, "timelines");
+      assert.deepEqual(result.changes, [], "timelines: unexpected changes");
+      assert.equal(result.clean, true);
+    });
+  });
+
   describe("syncFileFolder", () => {
     it("detects new files on disk", () => {
       const dir = createTmpDir();
