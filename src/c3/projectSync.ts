@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import type { Logger } from "@genvid/mcp-utils";
+import { isEditorLocalPath } from "@genvid/c3source";
 import { mintUniqueSid } from "./sidUtils.js";
 
 // ---------------------------------------------------------------------------
@@ -194,13 +195,12 @@ export function readDiskDirNames(dirPath: string, ignoreUistate: boolean): DiskT
 
 	for (const entry of entries) {
 		if (entry.isDirectory()) {
-			// Recent C3 editors persist instances-bar UI state to a `uistate/`
-			// subfolder (e.g. layouts/uistate/**/*.instancesBar.json). It is
-			// local editor state, not C3 source, so skip it like *.uistate.json.
-			if (ignoreUistate && entry.name === "uistate") continue;
+			// Editor-local membership (the `uistate/` subfolder, *.uistate.json files)
+			// is owned by c3source's isEditorLocalPath / EDITOR_LOCAL_EXCLUSIONS.
+			if (ignoreUistate && isEditorLocalPath(entry.name)) continue;
 			dirs.push(entry.name);
 		} else if (entry.isFile() && entry.name.endsWith(".json")) {
-			if (ignoreUistate && entry.name.endsWith(".uistate.json")) continue;
+			if (ignoreUistate && isEditorLocalPath(entry.name)) continue;
 			// Strip .json extension to get the name
 			files.push(entry.name.replace(/\.json$/, ""));
 		}
