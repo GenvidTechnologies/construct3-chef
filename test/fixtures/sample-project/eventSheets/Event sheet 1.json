@@ -6,6 +6,7 @@
 			"name": "score",
 			"type": "number",
 			"initialValue": "0",
+			"comment": "",
 			"isStatic": false,
 			"isConstant": false,
 			"sid": 100000000000020
@@ -14,6 +15,7 @@
 			"eventType": "group",
 			"disabled": false,
 			"title": "GameLoop",
+			"description": "",
 			"isActiveOnStart": true,
 			"children": [
 				{
@@ -21,6 +23,7 @@
 					"name": "temp",
 					"type": "number",
 					"initialValue": "0",
+					"comment": "",
 					"isStatic": false,
 					"isConstant": false,
 					"sid": 100000000000021
