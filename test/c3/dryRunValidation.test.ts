@@ -574,5 +574,128 @@ describe("applyRecipeInner dry-run: surfaces apply-time errors", () => {
       // Dry-run must not have altered the file
       assert.strictEqual(readFileSync(layoutPath, "utf-8"), layoutBefore, "dry-run must not write to disk");
     });
+
+    // ─── cascade remove-layer ───
+    //
+    // Layout shape used by cascade tests:
+    //   "Parent" layer (no instances)
+    //     └─ "Child" sublayer (no instances, unless withInstances: true)
+    // makeLayoutWithSublayer(withInstances) builds this shape so Task 7 can reuse it.
+
+    function makeLayoutWithSublayer(opts: { withInstances?: boolean } = {}) {
+      const childLayer: Record<string, unknown> = {
+        name: "Child",
+        sid: 800000000000020,
+        instances: opts.withInstances
+          ? [{ type: "Sprite", sid: 800000000000021, x: 0, y: 0, width: 100, height: 100 }]
+          : [],
+        subLayers: [],
+      };
+      return {
+        name: "Lay1",
+        sid: 800000000000001,
+        layers: [
+          {
+            name: "Layer 0",
+            sid: 800000000000010,
+            instances: [],
+            subLayers: [],
+          },
+          {
+            name: "Parent",
+            sid: 800000000000011,
+            instances: [],
+            subLayers: [childLayer],
+          },
+        ],
+      };
+    }
+
+    it("cascade:true on an empty sublayer subtree — validateRecipe clean and apply removes it", () => {
+      const dir = makeProject({ layouts: { Lay1: makeLayoutWithSublayer() } });
+      const recipe = {
+        layouts: { "layouts/Lay1.json": [{ op: "remove-layer", layer: "Parent", cascade: true }] },
+      };
+      const errors = validateRecipe(recipe);
+      assert.deepEqual(errors, [], "validateRecipe should produce no errors");
+      applyRecipeInner(sidGen, dir, recipe, { dryRun: false, regenerate: false, log: noop });
+      const written = JSON.parse(readFileSync(path.join(dir, "layouts", "Lay1.json"), "utf-8")) as {
+        layers: Array<{ name: string }>;
+      };
+      assert.deepEqual(
+        written.layers.map((l) => l.name),
+        ["Layer 0"],
+        "Parent (and its Child sublayer) should have been removed; Layer 0 should remain",
+      );
+    });
+
+    it("cascade:true on a subtree with instances, no removeInstances — apply throws the refusal error", () => {
+      const dir = makeProject({ layouts: { Lay1: makeLayoutWithSublayer({ withInstances: true }) } });
+      const recipe = {
+        layouts: { "layouts/Lay1.json": [{ op: "remove-layer", layer: "Parent", cascade: true }] },
+      };
+      assert.throws(
+        () => applyRecipeInner(sidGen, dir, recipe, { dryRun: false, regenerate: false, log: noop }),
+        /removeLayerCascade.*subtree contains \d+ instance\(s\)/,
+      );
+    });
+
+    it("cascade:true + removeInstances:true on a subtree with instances — succeeds, layer gone", () => {
+      const dir = makeProject({ layouts: { Lay1: makeLayoutWithSublayer({ withInstances: true }) } });
+      const recipe = {
+        layouts: {
+          "layouts/Lay1.json": [{ op: "remove-layer", layer: "Parent", cascade: true, removeInstances: true }],
+        },
+      };
+      assert.doesNotThrow(() => applyRecipeInner(sidGen, dir, recipe, { dryRun: false, regenerate: false, log: noop }));
+      const written = JSON.parse(readFileSync(path.join(dir, "layouts", "Lay1.json"), "utf-8")) as {
+        layers: Array<{ name: string }>;
+      };
+      assert.deepEqual(
+        written.layers.map((l) => l.name),
+        ["Layer 0"],
+        "Parent (and its instances) should have been force-removed; Layer 0 should remain",
+      );
+    });
+
+    it("validateRecipe rejects removeInstances:true without cascade", () => {
+      const recipe = {
+        layouts: {
+          "layouts/Lay1.json": [{ op: "remove-layer", layer: "Layer 0", removeInstances: true }],
+        },
+      };
+      const errors = validateRecipe(recipe);
+      assert.ok(errors.length > 0, "expected at least one validation error");
+      assert.ok(
+        errors.some((e) => e.includes('"removeInstances" is only meaningful when cascade is true for remove-layer')),
+        `expected the "only meaningful when cascade" error, got: ${JSON.stringify(errors)}`,
+      );
+    });
+
+    it("dry-run log shows (cascade) suffix when cascade is set", () => {
+      const dir = makeProject({ layouts: { Lay1: makeLayoutWithSublayer() } });
+      const recipe = {
+        layouts: { "layouts/Lay1.json": [{ op: "remove-layer", layer: "Parent", cascade: true }] },
+      };
+      const lines: string[] = [];
+      const log = (...args: unknown[]) => lines.push(args.map(String).join(" "));
+      applyRecipeInner(sidGen, dir, recipe, { dryRun: true, regenerate: false, log });
+      const output = lines.join("\n");
+      assert.match(output, /- remove-layer layer="Parent" \(cascade\)/);
+    });
+
+    it("dry-run log shows (cascade + removeInstances) when both flags are set", () => {
+      const dir = makeProject({ layouts: { Lay1: makeLayoutWithSublayer({ withInstances: true }) } });
+      const recipe = {
+        layouts: {
+          "layouts/Lay1.json": [{ op: "remove-layer", layer: "Parent", cascade: true, removeInstances: true }],
+        },
+      };
+      const lines: string[] = [];
+      const log = (...args: unknown[]) => lines.push(args.map(String).join(" "));
+      applyRecipeInner(sidGen, dir, recipe, { dryRun: true, regenerate: false, log });
+      const output = lines.join("\n");
+      assert.match(output, /- remove-layer layer="Parent" \(cascade \+ removeInstances\)/);
+    });
   });
 });
