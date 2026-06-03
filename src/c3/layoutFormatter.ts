@@ -580,4 +580,3 @@ export function formatContainersFile(containerGroups: string[][]): string {
   lines.push("");
   return lines.join("\n");
 }
-

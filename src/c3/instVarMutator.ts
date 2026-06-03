@@ -141,11 +141,7 @@ export function addInstVarsToLayout(layout: LayoutJson, typeName: string, newVar
  * If it has one, appends new fields.
  * Returns null if the class was not found.
  */
-export function addInstVarsToTypesDts(
-  content: string,
-  typeName: string,
-  newVars: InstVarDef[],
-): string | null {
+export function addInstVarsToTypesDts(content: string, typeName: string, newVars: InstVarDef[]): string | null {
   if (newVars.length === 0) return content;
 
   // Find the class declaration (C3-generated file with consistent indentation)
@@ -174,9 +170,7 @@ export function addInstVarsToTypesDts(
     // Append to existing instVars block
     const existingFields = instVarsMatch[1];
     // Find existing field names to skip duplicates
-    const existingNames = new Set(
-      [...existingFields.matchAll(/(\w+):/g)].map((m) => m[1]),
-    );
+    const existingNames = new Set([...existingFields.matchAll(/(\w+):/g)].map((m) => m[1]));
     const fieldsToAdd = newFields.filter((f) => {
       const name = f.trim().split(":")[0];
       return !existingNames.has(name);

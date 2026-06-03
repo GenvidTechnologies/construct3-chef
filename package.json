@@ -54,9 +54,11 @@
 		"prepack": "npm run build",
 		"build": "tsc && node -e \"const fs=require('fs');const f='dist/cli.js';const c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!')){fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c)}\"",
 		"test": "mocha --timeout 5000 --import=tsx --require ./test/setup.ts 'test/**/*.test.ts' --exit",
-		"lint": "eslint --ext .ts --max-warnings 0 src/ test/",
+		"lint": "eslint --ext .ts --max-warnings 0 src/ test/ && npm run format:check",
 		"typecheck": "tsc --noEmit",
-		"test:file": "mocha --timeout 5000 --import=tsx --require ./test/setup.ts --exit"
+		"test:file": "mocha --timeout 5000 --import=tsx --require ./test/setup.ts --exit",
+		"format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+		"format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\""
 	},
 	"engines": {
 		"node": ">=22"
@@ -80,6 +82,7 @@
 		"eslint": "^8.36.0",
 		"eslint-config-prettier": "^8.7.0",
 		"mocha": "^10.4.0",
+		"prettier": "^3.8.3",
 		"tmp": "^0.2.3",
 		"tsx": "^4.21.0",
 		"typescript": "^5.4.5"

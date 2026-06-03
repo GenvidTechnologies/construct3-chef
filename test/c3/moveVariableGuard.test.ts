@@ -34,7 +34,15 @@ function globalsSheet() {
     name: "Globals",
     sid: 900000000000001,
     events: [
-      { eventType: "variable", name: "score", type: "number", initialValue: "0", isStatic: true, isConstant: false, sid: 100000000000001 },
+      {
+        eventType: "variable",
+        name: "score",
+        type: "number",
+        initialValue: "0",
+        isStatic: true,
+        isConstant: false,
+        sid: 100000000000001,
+      },
       {
         eventType: "group",
         title: "G",
@@ -91,7 +99,9 @@ describe("move-variable demotion guard (recipeApplier)", () => {
       Globals: globalsSheet(),
       Other: sheetWithScript("Other", 900000000000002, "runtime.globalVars.health = 5;"),
     });
-    assert.doesNotThrow(() => applyRecipeInner(sidGen, dir, demoteRecipe, { dryRun: true, regenerate: false, log: noop }));
+    assert.doesNotThrow(() =>
+      applyRecipeInner(sidGen, dir, demoteRecipe, { dryRun: true, regenerate: false, log: noop }),
+    );
   });
 
   it("does not run the cross-sheet scan for a promotion (to: root)", () => {
@@ -114,7 +124,15 @@ describe("move-variable demotion guard (recipeApplier)", () => {
           isActiveOnStart: true,
           sid: 100000000000002,
           children: [
-            { eventType: "variable", name: "score", type: "number", initialValue: "0", isStatic: false, isConstant: false, sid: 100000000000003 },
+            {
+              eventType: "variable",
+              name: "score",
+              type: "number",
+              initialValue: "0",
+              isStatic: false,
+              isConstant: false,
+              sid: 100000000000003,
+            },
           ],
         },
       ],
@@ -123,6 +141,8 @@ describe("move-variable demotion guard (recipeApplier)", () => {
       Globals: local,
       Other: sheetWithScript("Other", 900000000000002, "runtime.globalVars.score = 5;"),
     });
-    assert.doesNotThrow(() => applyRecipeInner(sidGen, dir, promoteRecipe, { dryRun: true, regenerate: false, log: noop }));
+    assert.doesNotThrow(() =>
+      applyRecipeInner(sidGen, dir, promoteRecipe, { dryRun: true, regenerate: false, log: noop }),
+    );
   });
 });

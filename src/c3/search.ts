@@ -45,7 +45,6 @@ const TYPE_MAP: Record<SearchType, TypeEntry> = {
   json: { baseDir: "project", subDir: "", ext: ".json" },
 };
 
-
 /**
  * Format a set of line windows (with context) for a single file.
  * Returns an array of output lines, with "--" separators between non-adjacent groups.
@@ -54,7 +53,7 @@ function formatWithContext(
   filePath: string,
   fileLines: string[],
   matchIndices: number[],
-  contextSize: number
+  contextSize: number,
 ): string[] {
   if (matchIndices.length === 0) return [];
 
@@ -101,9 +100,7 @@ export function search(config: SearchConfig, options: SearchOptions): SearchResu
 
   // Validate pattern length
   if (options.pattern.length > maxPatternLength) {
-    throw new Error(
-      `Pattern too long (${options.pattern.length} chars, max ${maxPatternLength})`
-    );
+    throw new Error(`Pattern too long (${options.pattern.length} chars, max ${maxPatternLength})`);
   }
 
   // Path traversal check
@@ -120,15 +117,11 @@ export function search(config: SearchConfig, options: SearchOptions): SearchResu
   // json type validation: path must start with eventSheets/ or layouts/
   if (searchType === "json") {
     if (options.path === undefined) {
-      throw new Error(
-        "path is required for json type — must include 'eventSheets/' or 'layouts/' prefix"
-      );
+      throw new Error("path is required for json type — must include 'eventSheets/' or 'layouts/' prefix");
     }
     const normalized = toPosixPath(options.path);
     if (!normalized.startsWith("eventSheets/") && !normalized.startsWith("layouts/")) {
-      throw new Error(
-        `json type path must start with 'eventSheets/' or 'layouts/', got: '${options.path}'`
-      );
+      throw new Error(`json type path must start with 'eventSheets/' or 'layouts/', got: '${options.path}'`);
     }
   }
 
@@ -190,9 +183,7 @@ export function search(config: SearchConfig, options: SearchOptions): SearchResu
 
     const content = fs.readFileSync(filePath, "utf-8").split("\n");
     const relPath = toPosixPath(
-      isExtracted
-        ? path.relative(config.extractedDir, filePath)
-        : path.relative(config.projectRoot, filePath)
+      isExtracted ? path.relative(config.extractedDir, filePath) : path.relative(config.projectRoot, filePath),
     );
 
     if (contextSize > 0) {

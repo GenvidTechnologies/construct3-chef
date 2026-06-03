@@ -137,11 +137,19 @@ export function collectLayoutSids(layout: Record<string, unknown>): Set<number> 
 // Thin wrapper over c3source's remapInstanceIds, which owns the C3 id-remap
 // rules (uid; sid + mirrored instanceFolderItem.sid; sceneGraphData uid /
 // parent-uid (kept at -1 for roots) / children[].uid).
-function remapInstanceInPlace(instance: Record<string, unknown>, uidMap: Map<number, number>, sidMap: Map<number, number>): void {
+function remapInstanceInPlace(
+  instance: Record<string, unknown>,
+  uidMap: Map<number, number>,
+  sidMap: Map<number, number>,
+): void {
   remapInstanceIds(instance as unknown as Instance, uidMap, sidMap);
 }
 
-function remapLayerInPlace(layer: Record<string, unknown>, uidMap: Map<number, number>, sidMap: Map<number, number>): void {
+function remapLayerInPlace(
+  layer: Record<string, unknown>,
+  uidMap: Map<number, number>,
+  sidMap: Map<number, number>,
+): void {
   if (typeof layer.sid === "number") {
     layer.sid = sidMap.get(layer.sid) ?? layer.sid;
   }

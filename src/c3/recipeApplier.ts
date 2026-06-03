@@ -421,11 +421,7 @@ function findVariableNameBySidRef(sheet: EventSheet, ref: string): string | null
  * the global first. `$symbol` refs are skipped (they name an in-recipe variable
  * that cannot have pre-existing external references).
  */
-function checkMoveVariableDemotions(
-  rootDir: string,
-  files: NonNullable<Recipe["files"]>,
-  log: Logger,
-): void {
+function checkMoveVariableDemotions(rootDir: string, files: NonNullable<Recipe["files"]>, log: Logger): void {
   const demotions: Array<{ filePath: string; varName: string }> = [];
   for (const [filePath, entry] of Object.entries(files)) {
     if (isFileCreate(entry)) continue;
@@ -483,11 +479,7 @@ function findSidLocation(sheet: EventSheet, sid: number): SidSlot | null {
  * whether the failure is "SID never existed" vs "SID was just inserted by an
  * earlier op" vs "SID was just removed" — checking both views catches all three.
  */
-function findSidLocationEither(
-  original: EventSheet,
-  clone: EventSheet,
-  sid: number,
-): SidSlot | null {
+function findSidLocationEither(original: EventSheet, clone: EventSheet, sid: number): SidSlot | null {
   // Try clone first — reflects in-batch insertions and most current state.
   return findSidLocation(clone, sid) ?? findSidLocation(original, sid);
 }
@@ -732,9 +724,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
     return cached;
   };
   const layoutsForLoop: Map<string, PrimitiveLayoutOp[]> =
-    recipe.layouts && Object.keys(recipe.layouts).length > 0
-      ? expandWorkflows(recipe, loadLayout)
-      : new Map();
+    recipe.layouts && Object.keys(recipe.layouts).length > 0 ? expandWorkflows(recipe, loadLayout) : new Map();
 
   const objectTypeCount = recipe.objectTypes?.length ?? 0;
   const addInstVarsCount = recipe.addInstVars?.length ?? 0;
@@ -744,9 +734,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   // same shape. The per-layout `MODIFY ... (N ops)` lines in dry-run output
   // are where the expansion fan-out becomes visible.
   const layoutFileCount = recipe.layouts ? Object.keys(recipe.layouts).length : 0;
-  const layoutOpCount = recipe.layouts
-    ? Object.values(recipe.layouts).reduce((sum, ops) => sum + ops.length, 0)
-    : 0;
+  const layoutOpCount = recipe.layouts ? Object.values(recipe.layouts).reduce((sum, ops) => sum + ops.length, 0) : 0;
   const fileOpCount = recipe.files
     ? Object.entries(recipe.files).reduce((sum, [, entry]) => sum + (Array.isArray(entry) ? entry.length : 1), 0)
     : 0;

@@ -191,9 +191,7 @@ describe("applyRecipeInner dry-run: surfaces apply-time errors", () => {
         ],
       },
     };
-    assert.doesNotThrow(() =>
-      applyRecipeInner(sidGen, dir, recipe, { dryRun: true, regenerate: false, log: noop }),
-    );
+    assert.doesNotThrow(() => applyRecipeInner(sidGen, dir, recipe, { dryRun: true, regenerate: false, log: noop }));
   });
 
   // ─── layouts: in-memory mutation validation ───
@@ -202,9 +200,7 @@ describe("applyRecipeInner dry-run: surfaces apply-time errors", () => {
     return {
       name: "Lay1",
       sid: 800000000000001,
-      layers: opts?.layers ?? [
-        { name: "Layer 0", sid: 800000000000010, instances: [], subLayers: [] },
-      ],
+      layers: opts?.layers ?? [{ name: "Layer 0", sid: 800000000000010, instances: [], subLayers: [] }],
     };
   }
 
@@ -403,9 +399,7 @@ describe("applyRecipeInner dry-run: surfaces apply-time errors", () => {
       const dir = makeProject({ sheets: { Sheet1: sheetWithBlockConditionAction() } });
       const recipe = {
         files: {
-          Sheet1: [
-            { op: "insert-actions", in: `sid:${CONDITION_SID}`, after: -1, actions: [{ script: ["// noop"] }] },
-          ],
+          Sheet1: [{ op: "insert-actions", in: `sid:${CONDITION_SID}`, after: -1, actions: [{ script: ["// noop"] }] }],
         },
       };
       assert.throws(

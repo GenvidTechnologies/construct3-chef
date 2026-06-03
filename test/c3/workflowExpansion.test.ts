@@ -58,9 +58,7 @@ describe("expandWorkflows", () => {
       const map = expandWorkflows(recipe, neverLoad);
 
       // Both layout keys are present.
-      expect([...map.keys()].sort()).to.deep.equal(
-        ["layouts/Shop.json", "layouts/UI/Templates.json"].sort(),
-      );
+      expect([...map.keys()].sort()).to.deep.equal(["layouts/Shop.json", "layouts/UI/Templates.json"].sort());
 
       const onTemplates = map.get("layouts/UI/Templates.json")!;
       expect(onTemplates).to.have.lengthOf(2);
@@ -383,12 +381,7 @@ describe("expandWorkflows", () => {
     } as unknown as Recipe;
     const map = expandWorkflows(recipe, neverLoad);
     const onTemplates = map.get("layouts/UI/Templates.json")!;
-    expect(onTemplates.map((o) => o.op)).to.deep.equal([
-      "add-layer",
-      "copy-instance",
-      "templatize",
-      "add-layer",
-    ]);
+    expect(onTemplates.map((o) => o.op)).to.deep.equal(["add-layer", "copy-instance", "templatize", "add-layer"]);
     // The source-layout replicify lives on its own key.
     expect(map.get("layouts/Shop.json")).to.have.lengthOf(1);
     expect(map.get("layouts/Shop.json")![0].op).to.equal("replicify");

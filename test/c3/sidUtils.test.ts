@@ -2,12 +2,7 @@ import { strict as assert } from "node:assert";
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  collectSids,
-  mintUniqueSid,
-  readRegistryFile,
-  freshSidGen,
-} from "../../src/c3/sidUtils.js";
+import { collectSids, mintUniqueSid, readRegistryFile, freshSidGen } from "../../src/c3/sidUtils.js";
 
 const MIN_SID = 1e14;
 const MAX_SID = 1e15;
@@ -135,10 +130,7 @@ describe("sidUtils", () => {
         Math.random = () => 0.5; // deterministic — always yields the same SID
         const colliding = Math.floor(0.5 * (MAX_SID - MIN_SID)) + MIN_SID;
         const used = new Set<number>([colliding]);
-        assert.throws(
-          () => mintUniqueSid(used),
-          /failed to find a unique SID after 100 attempts/,
-        );
+        assert.throws(() => mintUniqueSid(used), /failed to find a unique SID after 100 attempts/);
       } finally {
         Math.random = originalRandom;
       }
@@ -175,10 +167,7 @@ describe("sidUtils", () => {
     it("throws with the correct command name if registry is missing", () => {
       // Guard against the legacy 'npm run generate-c3' message regression.
       const missing = path.join(tmpDir, "nope.txt");
-      assert.throws(
-        () => readRegistryFile(missing),
-        /construct3-chef generate.*sid-registry/,
-      );
+      assert.throws(() => readRegistryFile(missing), /construct3-chef generate.*sid-registry/);
     });
   });
 

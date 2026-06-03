@@ -77,9 +77,7 @@ describe("formatAction", () => {
       script: ["const x = 1;", "console.log(x);"],
     };
     const result = formatAction(action, "SheetName", 1, 1);
-    const expected = ["script { // → SheetName_Event1_Act1", "  const x = 1;", "  console.log(x);", "}"].join(
-      "\n",
-    );
+    const expected = ["script { // → SheetName_Event1_Act1", "  const x = 1;", "  console.log(x);", "}"].join("\n");
     assert.equal(result, expected);
   });
 
@@ -1371,11 +1369,7 @@ describe("renderNodeSelf", () => {
       sid: 100,
     };
     const lines = renderNodeSelf(event, "  ", "Test", 1);
-    assert.deepEqual(lines, [
-      "  block",
-      "    when: System.on-start-of-layout()",
-      "    do: Sprite.destroy()",
-    ]);
+    assert.deepEqual(lines, ["  block", "    when: System.on-start-of-layout()", "    do: Sprite.destroy()"]);
   });
 
   it("indentation — include and comment lines also receive the prefix", () => {

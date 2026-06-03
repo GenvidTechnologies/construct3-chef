@@ -530,7 +530,9 @@ describe("syncC3Proj", () => {
 
     it("folder-missing with a missing parent: records the change but skips gracefully", () => {
       const folder: NameFolder = { items: [], subfolders: [] };
-      const entries: DriftEntry[] = [{ kind: "folder-missing", name: "Nested", manifestPath: ["NonExistent", "Nested"] }];
+      const entries: DriftEntry[] = [
+        { kind: "folder-missing", name: "Nested", manifestPath: ["NonExistent", "Nested"] },
+      ];
       const changes: Change[] = [];
 
       // navigateFolder returns undefined for the missing parent → no crash, no mutation.

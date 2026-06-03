@@ -78,12 +78,7 @@ export interface CommentAction {
   text: string;
 }
 
-export type C3Action =
-  | ScriptAction
-  | StandardAction
-  | FunctionCallAction
-  | CustomAction
-  | CommentAction;
+export type C3Action = ScriptAction | StandardAction | FunctionCallAction | CustomAction | CommentAction;
 
 // --- Internal helpers ---
 
@@ -110,14 +105,18 @@ export function resolveNode(sheet: EventSheet, jsonPath: string): EventSheetEven
     }
 
     if (index < 0 || index >= current.length) {
-      throw new Error(`Invalid jsonPath: index ${index} out of bounds (array length ${current.length}) in "${jsonPath}"`);
+      throw new Error(
+        `Invalid jsonPath: index ${index} out of bounds (array length ${current.length}) in "${jsonPath}"`,
+      );
     }
 
     node = current[index];
 
     if (i < segments.length - 1) {
       if (!("children" in node) || !canHaveChildren(node)) {
-        throw new Error(`Cannot get children of '${node.eventType}' event at "${segments.slice(0, i + 1).join(".")}" in "${jsonPath}"`);
+        throw new Error(
+          `Cannot get children of '${node.eventType}' event at "${segments.slice(0, i + 1).join(".")}" in "${jsonPath}"`,
+        );
       }
       if (!node.children) {
         node.children = [];
@@ -286,12 +285,15 @@ function validateReplaceIndex(index: number, length: number, arrayName: string):
 
 // --- Builders ---
 
-export function buildBlock(sidGen: SidGenerator, opts?: {
-  conditions?: Condition[];
-  actions?: C3Action[];
-  children?: EventSheetEvent[];
-  isOrBlock?: boolean;
-}): BlockEvent {
+export function buildBlock(
+  sidGen: SidGenerator,
+  opts?: {
+    conditions?: Condition[];
+    actions?: C3Action[];
+    children?: EventSheetEvent[];
+    isOrBlock?: boolean;
+  },
+): BlockEvent {
   const block: BlockEvent = {
     eventType: "block",
     conditions: opts?.conditions ?? [],
@@ -307,22 +309,28 @@ export function buildBlock(sidGen: SidGenerator, opts?: {
   return block;
 }
 
-export function buildFunctionBlock(sidGen: SidGenerator, opts: {
-  functionName: string;
-  params?: Array<{ name: string; type: "string" | "number" | "boolean"; initialValue?: string }>;
-  returnType?: string;
-  isAsync?: boolean;
-  description?: string;
-  category?: string;
-  copyPicked?: boolean;
-  actions?: C3Action[];
-  children?: EventSheetEvent[];
-}): FunctionBlockEvent {
+export function buildFunctionBlock(
+  sidGen: SidGenerator,
+  opts: {
+    functionName: string;
+    params?: Array<{ name: string; type: "string" | "number" | "boolean"; initialValue?: string }>;
+    returnType?: string;
+    isAsync?: boolean;
+    description?: string;
+    category?: string;
+    copyPicked?: boolean;
+    actions?: C3Action[];
+    children?: EventSheetEvent[];
+  },
+): FunctionBlockEvent {
   const defaultInitialValue = (type: "string" | "number" | "boolean"): string => {
     switch (type) {
-      case "string": return "";
-      case "number": return "0";
-      case "boolean": return "false";
+      case "string":
+        return "";
+      case "number":
+        return "0";
+      case "boolean":
+        return "false";
     }
   };
 
@@ -354,24 +362,30 @@ export function buildFunctionBlock(sidGen: SidGenerator, opts: {
   return fb;
 }
 
-export function buildCustomAceBlock(sidGen: SidGenerator, opts: {
-  aceName: string;
-  objectClass: string;
-  aceType?: string;
-  params?: Array<{ name: string; type: "string" | "number" | "boolean"; initialValue?: string }>;
-  returnType?: string;
-  isAsync?: boolean;
-  description?: string;
-  category?: string;
-  copyPicked?: boolean;
-  actions?: C3Action[];
-  children?: EventSheetEvent[];
-}): CustomAceBlockEvent {
+export function buildCustomAceBlock(
+  sidGen: SidGenerator,
+  opts: {
+    aceName: string;
+    objectClass: string;
+    aceType?: string;
+    params?: Array<{ name: string; type: "string" | "number" | "boolean"; initialValue?: string }>;
+    returnType?: string;
+    isAsync?: boolean;
+    description?: string;
+    category?: string;
+    copyPicked?: boolean;
+    actions?: C3Action[];
+    children?: EventSheetEvent[];
+  },
+): CustomAceBlockEvent {
   const defaultInitialValue = (type: "string" | "number" | "boolean"): string => {
     switch (type) {
-      case "string": return "";
-      case "number": return "0";
-      case "boolean": return "false";
+      case "string":
+        return "";
+      case "number":
+        return "0";
+      case "boolean":
+        return "false";
     }
   };
 
@@ -405,12 +419,15 @@ export function buildCustomAceBlock(sidGen: SidGenerator, opts: {
   return cab;
 }
 
-export function buildAction(sidGen: SidGenerator, opts: {
-  id: string;
-  objectClass: string;
-  parameters?: Record<string, string>;
-  behaviorType?: string;
-}): StandardAction {
+export function buildAction(
+  sidGen: SidGenerator,
+  opts: {
+    id: string;
+    objectClass: string;
+    parameters?: Record<string, string>;
+    behaviorType?: string;
+  },
+): StandardAction {
   const action: StandardAction = {
     id: opts.id,
     objectClass: opts.objectClass,
@@ -425,10 +442,13 @@ export function buildAction(sidGen: SidGenerator, opts: {
   return action;
 }
 
-export function buildCallAction(sidGen: SidGenerator, opts: {
-  callFunction: string;
-  parameters?: string[];
-}): FunctionCallAction {
+export function buildCallAction(
+  sidGen: SidGenerator,
+  opts: {
+    callFunction: string;
+    parameters?: string[];
+  },
+): FunctionCallAction {
   const action: FunctionCallAction = {
     callFunction: opts.callFunction,
     sid: sidGen(),
@@ -453,31 +473,28 @@ export type VariableEvent = EventSheetVariable;
 
 // --- Builders (phase 2) ---
 
-export function buildVariable(sidGen: SidGenerator, opts: {
-  name: string;
-  type: "string" | "number" | "boolean";
-  value?: string;
-  initialValue?: string;
-  constant?: boolean;
-  isConstant?: boolean;
-  static?: boolean;
-  isStatic?: boolean;
-}): VariableEvent {
+export function buildVariable(
+  sidGen: SidGenerator,
+  opts: {
+    name: string;
+    type: "string" | "number" | "boolean";
+    value?: string;
+    initialValue?: string;
+    constant?: boolean;
+    isConstant?: boolean;
+    static?: boolean;
+    isStatic?: boolean;
+  },
+): VariableEvent {
   // Validate that aliases are not used simultaneously with their shorthand equivalents
   if (opts.value !== undefined && opts.initialValue !== undefined) {
-    throw new Error(
-      `Variable "${opts.name}": cannot specify both "value" and "initialValue" — use one or the other`,
-    );
+    throw new Error(`Variable "${opts.name}": cannot specify both "value" and "initialValue" — use one or the other`);
   }
   if (opts.constant !== undefined && opts.isConstant !== undefined) {
-    throw new Error(
-      `Variable "${opts.name}": cannot specify both "constant" and "isConstant" — use one or the other`,
-    );
+    throw new Error(`Variable "${opts.name}": cannot specify both "constant" and "isConstant" — use one or the other`);
   }
   if (opts.static !== undefined && opts.isStatic !== undefined) {
-    throw new Error(
-      `Variable "${opts.name}": cannot specify both "static" and "isStatic" — use one or the other`,
-    );
+    throw new Error(`Variable "${opts.name}": cannot specify both "static" and "isStatic" — use one or the other`);
   }
 
   const defaultValue = (type: "string" | "number" | "boolean"): string => {
@@ -507,13 +524,16 @@ export function buildVariable(sidGen: SidGenerator, opts: {
   };
 }
 
-export function buildCondition(sidGen: SidGenerator, opts: {
-  id: string;
-  objectClass: string;
-  parameters?: Record<string, string | number | boolean>;
-  isInverted?: boolean;
-  behaviorType?: string;
-}): Condition {
+export function buildCondition(
+  sidGen: SidGenerator,
+  opts: {
+    id: string;
+    objectClass: string;
+    parameters?: Record<string, string | number | boolean>;
+    isInverted?: boolean;
+    behaviorType?: string;
+  },
+): Condition {
   const condition: Condition = {
     id: opts.id,
     objectClass: opts.objectClass,
@@ -531,12 +551,15 @@ export function buildCondition(sidGen: SidGenerator, opts: {
   return condition;
 }
 
-export function buildGroup(sidGen: SidGenerator, opts: {
-  title: string;
-  children?: EventSheetEvent[];
-  activeOnStart?: boolean;
-  disabled?: boolean;
-}): GroupEvent {
+export function buildGroup(
+  sidGen: SidGenerator,
+  opts: {
+    title: string;
+    children?: EventSheetEvent[];
+    activeOnStart?: boolean;
+    disabled?: boolean;
+  },
+): GroupEvent {
   return {
     eventType: "group",
     disabled: opts.disabled ?? false,
@@ -573,11 +596,7 @@ export function walkScriptActionsInArray(events: EventSheetEvent[]): ScriptActio
 
   function traverse(nodes: EventSheetEvent[]): void {
     for (const event of nodes) {
-      if (
-        event.eventType === "variable" ||
-        event.eventType === "comment" ||
-        event.eventType === "include"
-      ) {
+      if (event.eventType === "variable" || event.eventType === "comment" || event.eventType === "include") {
         continue;
       }
 
@@ -627,9 +646,7 @@ export function isCommentAction(action: C3Action): action is CommentAction {
   return (action as CommentAction).type === "comment" && "text" in action && !("language" in action);
 }
 
-export function isParameterizedAction(
-  action: C3Action,
-): action is StandardAction | FunctionCallAction | CustomAction {
+export function isParameterizedAction(action: C3Action): action is StandardAction | FunctionCallAction | CustomAction {
   return isStandardAction(action) || isFunctionCallAction(action) || isCustomAction(action);
 }
 
@@ -641,11 +658,14 @@ export function getActionIdentifier(action: C3Action): string | undefined {
   return undefined;
 }
 
-export function buildCustomAction(sidGen: SidGenerator, opts: {
-  name: string;
-  objectClass: string;
-  parameters?: unknown[];
-}): CustomAction {
+export function buildCustomAction(
+  sidGen: SidGenerator,
+  opts: {
+    name: string;
+    objectClass: string;
+    parameters?: unknown[];
+  },
+): CustomAction {
   const action: CustomAction = {
     customAction: opts.name,
     objectClass: opts.objectClass,

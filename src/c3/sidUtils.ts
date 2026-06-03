@@ -10,23 +10,23 @@ const MAX_ATTEMPTS = 100;
  * Throws if the file does not exist.
  */
 export function readRegistryFile(registryPath: string): Set<number> {
-    if (!existsSync(registryPath)) {
-        throw new Error(
-            `SID registry not found at ${registryPath} — run 'construct3-chef generate --only sid-registry' first`,
-        );
+  if (!existsSync(registryPath)) {
+    throw new Error(
+      `SID registry not found at ${registryPath} — run 'construct3-chef generate --only sid-registry' first`,
+    );
+  }
+  const content = readFileSync(registryPath, "utf-8");
+  const sids = new Set<number>();
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const firstCol = trimmed.split("\t")[0];
+    const sid = parseInt(firstCol, 10);
+    if (!isNaN(sid)) {
+      sids.add(sid);
     }
-    const content = readFileSync(registryPath, "utf-8");
-    const sids = new Set<number>();
-    for (const line of content.split(/\r?\n/)) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith("#")) continue;
-        const firstCol = trimmed.split("\t")[0];
-        const sid = parseInt(firstCol, 10);
-        if (!isNaN(sid)) {
-            sids.add(sid);
-        }
-    }
-    return sids;
+  }
+  return sids;
 }
 
 declare const __sidGenBrand: unique symbol;
@@ -49,7 +49,7 @@ export type SidGenerator = (() => number) & { readonly [__sidGenBrand]: true };
  * same plain function; the cast is purely a type-system marker.
  */
 export function makeSidGen(used: Set<number>): SidGenerator {
-    return (() => mintUniqueSid(used)) as SidGenerator;
+  return (() => mintUniqueSid(used)) as SidGenerator;
 }
 
 /**
@@ -66,7 +66,7 @@ export function makeSidGen(used: Set<number>): SidGenerator {
  * source files.
  */
 export function freshSidGen(): SidGenerator {
-    return makeSidGen(new Set<number>());
+  return makeSidGen(new Set<number>());
 }
 
 /**
@@ -82,16 +82,14 @@ export function freshSidGen(): SidGenerator {
  * `readRegistryFile()`.
  */
 export function mintUniqueSid(usedSids: Set<number>): number {
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-        const sid = Math.floor(Math.random() * (MAX_SID - MIN_SID)) + MIN_SID;
-        if (!usedSids.has(sid)) {
-            usedSids.add(sid);
-            return sid;
-        }
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const sid = Math.floor(Math.random() * (MAX_SID - MIN_SID)) + MIN_SID;
+    if (!usedSids.has(sid)) {
+      usedSids.add(sid);
+      return sid;
     }
-    throw new Error(
-        `mintUniqueSid: failed to find a unique SID after ${MAX_ATTEMPTS} attempts (collision loop)`,
-    );
+  }
+  throw new Error(`mintUniqueSid: failed to find a unique SID after ${MAX_ATTEMPTS} attempts (collision loop)`);
 }
 
 // `collectSids` (collect every numeric `sid` in a C3 JSON subtree, returning an

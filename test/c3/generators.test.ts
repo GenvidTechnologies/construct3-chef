@@ -231,63 +231,57 @@ describe("generateSidRegistry", () => {
 
   const hasProjectRoot = existsSync(path.join(projectRoot, "eventSheets"));
 
-  (hasProjectRoot ? it : it.skip)(
-    "integration: generates sid-registry.txt for the real project",
-    function () {
-      // This test uses the actual project root — may be slow on large projects
-      this.timeout(30000);
+  (hasProjectRoot ? it : it.skip)("integration: generates sid-registry.txt for the real project", function () {
+    // This test uses the actual project root — may be slow on large projects
+    this.timeout(30000);
 
-      generateSidRegistry(projectRoot);
+    generateSidRegistry(projectRoot);
 
-      const outPath = path.join(projectRoot, "extracted", "sid-registry.txt");
-      assert.isTrue(existsSync(outPath), "extracted/sid-registry.txt should exist");
+    const outPath = path.join(projectRoot, "extracted", "sid-registry.txt");
+    assert.isTrue(existsSync(outPath), "extracted/sid-registry.txt should exist");
 
-      const lines = readFileSync(outPath, "utf-8").split("\n");
-      const entries = parseDataLines(lines);
+    const lines = readFileSync(outPath, "utf-8").split("\n");
+    const entries = parseDataLines(lines);
 
-      assert.isAbove(entries.length, 100, "real project should have many SID entries");
+    assert.isAbove(entries.length, 100, "real project should have many SID entries");
 
-      // All SIDs parse as numbers
-      for (const e of entries) {
-        assert.isNumber(e.sid);
-        assert.isFalse(isNaN(e.sid), `SID should be a valid number: "${e.sid}"`);
-      }
+    // All SIDs parse as numbers
+    for (const e of entries) {
+      assert.isNumber(e.sid);
+      assert.isFalse(isNaN(e.sid), `SID should be a valid number: "${e.sid}"`);
+    }
 
-      // Entries are sorted ascending
-      for (let i = 1; i < entries.length; i++) {
-        assert.isAtMost(
-          entries[i - 1].sid,
-          entries[i].sid,
-          `entries should be sorted: ${entries[i - 1].sid} > ${entries[i].sid}`,
-        );
-      }
+    // Entries are sorted ascending
+    for (let i = 1; i < entries.length; i++) {
+      assert.isAtMost(
+        entries[i - 1].sid,
+        entries[i].sid,
+        `entries should be sorted: ${entries[i - 1].sid} > ${entries[i].sid}`,
+      );
+    }
 
-      // Source files all start with eventSheets/ or objectTypes/
-      for (const e of entries) {
-        assert.isTrue(
-          e.sourceFile.startsWith("eventSheets/") || e.sourceFile.startsWith("objectTypes/"),
-          `sourceFile should be relative to project root: "${e.sourceFile}"`,
-        );
-      }
-    },
-  );
+    // Source files all start with eventSheets/ or objectTypes/
+    for (const e of entries) {
+      assert.isTrue(
+        e.sourceFile.startsWith("eventSheets/") || e.sourceFile.startsWith("objectTypes/"),
+        `sourceFile should be relative to project root: "${e.sourceFile}"`,
+      );
+    }
+  });
 
-  (hasProjectRoot ? it : it.skip)(
-    "integration: known objectType SIDs appear in registry",
-    function () {
-      this.timeout(10000);
+  (hasProjectRoot ? it : it.skip)("integration: known objectType SIDs appear in registry", function () {
+    this.timeout(10000);
 
-      // AJAX.json has sid 524908132553448 at the root
-      generateSidRegistry(projectRoot);
-      const outPath = path.join(projectRoot, "extracted", "sid-registry.txt");
-      const lines = readFileSync(outPath, "utf-8").split("\n");
-      const entries = parseDataLines(lines);
+    // AJAX.json has sid 524908132553448 at the root
+    generateSidRegistry(projectRoot);
+    const outPath = path.join(projectRoot, "extracted", "sid-registry.txt");
+    const lines = readFileSync(outPath, "utf-8").split("\n");
+    const entries = parseDataLines(lines);
 
-      const ajaxRootSid = 524908132553448;
-      const ajaxEntry = entries.find((e) => e.sid === ajaxRootSid);
-      assert.isOk(ajaxEntry, `AJAX objectType root SID ${ajaxRootSid} should appear in registry`);
-      assert.equal(ajaxEntry!.location, "objectType");
-      assert.include(ajaxEntry!.sourceFile, "AJAX.json");
-    },
-  );
+    const ajaxRootSid = 524908132553448;
+    const ajaxEntry = entries.find((e) => e.sid === ajaxRootSid);
+    assert.isOk(ajaxEntry, `AJAX objectType root SID ${ajaxRootSid} should appear in registry`);
+    assert.equal(ajaxEntry!.location, "objectType");
+    assert.include(ajaxEntry!.sourceFile, "AJAX.json");
+  });
 });
