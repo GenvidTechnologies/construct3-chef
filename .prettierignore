@@ -1,0 +1,7 @@
+# Real C3 export + generated golden read-surface — must stay byte-identical.
+# Includes the SDK runtime/plugin *.d.ts, fixture scripts, and extracted/ output
+# that the golden test (test/c3/sampleProjectGolden.test.ts) diffs against.
+test/fixtures/
+
+# Build output
+dist/
