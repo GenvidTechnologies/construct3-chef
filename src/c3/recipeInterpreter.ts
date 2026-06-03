@@ -394,6 +394,8 @@ export interface MoveInstanceOp {
 export interface RemoveLayerOp {
   op: "remove-layer";
   layer: string;
+  cascade?: boolean;
+  removeInstances?: boolean;
 }
 
 export interface RenameLayerOp {
@@ -2969,6 +2971,17 @@ export function validateRecipe(recipe: Recipe): string[] {
             case "remove-layer":
               if (!op.layer || typeof op.layer !== "string") {
                 errors.push(`layouts["${filePath}"][${i}]: "layer" field is required for remove-layer`);
+              }
+              if (op.cascade !== undefined && typeof op.cascade !== "boolean") {
+                errors.push(`layouts["${filePath}"][${i}]: "cascade" must be a boolean for remove-layer`);
+              }
+              if (op.removeInstances !== undefined && typeof op.removeInstances !== "boolean") {
+                errors.push(`layouts["${filePath}"][${i}]: "removeInstances" must be a boolean for remove-layer`);
+              }
+              if (op.removeInstances === true && op.cascade !== true) {
+                errors.push(
+                  `layouts["${filePath}"][${i}]: "removeInstances" is only meaningful when cascade is true for remove-layer`,
+                );
               }
               break;
             case "move-instance":

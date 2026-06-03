@@ -243,6 +243,42 @@ yargs(hideBin(process.argv))
     },
   )
   .command(
+    "remove-layer",
+    "Remove a layer from a layout",
+    (y) =>
+      y
+        .option("layout", {
+          type: "string",
+          demandOption: true,
+          describe: "Relative path to the layout JSON within layouts/ (e.g. 'Main Layout.json')",
+        })
+        .option("layer", { type: "string", demandOption: true, describe: "Name of the layer to remove" })
+        .option("cascade", { type: "boolean", describe: "Remove the entire sublayer subtree recursively" })
+        .option("remove-instances", { type: "boolean", describe: "Force removal even when the layer has instances" })
+        .option("dry-run", { type: "boolean", default: false, describe: "Validate and preview without writing" })
+        .option("regenerate", {
+          type: "boolean",
+          default: true,
+          describe: "Regenerate extracted files after applying",
+        }),
+    (argv) => {
+      const rootDir = resolveProjectDir(argv);
+      const recipe: Recipe = {
+        layouts: {
+          [argv.layout]: [
+            {
+              op: "remove-layer",
+              layer: argv.layer,
+              ...(argv.cascade !== undefined ? { cascade: argv.cascade } : {}),
+              ...(argv.removeInstances !== undefined ? { removeInstances: argv.removeInstances } : {}),
+            },
+          ],
+        },
+      };
+      applyParsed(rootDir, recipe, { dryRun: argv.dryRun, regenerate: argv.regenerate, log: console.log });
+    },
+  )
+  .command(
     "list-templates",
     "List template instances across all layouts",
     () => {},

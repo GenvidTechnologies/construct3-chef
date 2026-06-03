@@ -32,6 +32,7 @@ import {
   addReplica,
   removeInstance,
   removeLayer,
+  removeLayerCascade,
   moveInstance,
   renameLayer,
   type LayoutJson as MutatorLayoutJson,
@@ -664,7 +665,11 @@ function applyLayoutOp(
       break;
 
     case "remove-layer":
-      removeLayer(layout as MutatorLayoutJson, op.layer);
+      if (op.cascade === true) {
+        removeLayerCascade(layout as MutatorLayoutJson, op.layer, { removeInstances: op.removeInstances });
+      } else {
+        removeLayer(layout as MutatorLayoutJson, op.layer);
+      }
       log(`  MODIFIED ${layoutPath} (-layer ${op.layer})`);
       break;
 
@@ -823,9 +828,16 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
             case "remove-instance":
               log(`    - ${op.op} type=${op.type}`);
               break;
-            case "remove-layer":
-              log(`    - ${op.op} layer="${op.layer}"`);
+            case "remove-layer": {
+              const cascadeSuffix =
+                op.cascade === true
+                  ? op.removeInstances === true
+                    ? " (cascade + removeInstances)"
+                    : " (cascade)"
+                  : "";
+              log(`    - ${op.op} layer="${op.layer}"${cascadeSuffix}`);
               break;
+            }
             case "move-instance":
               log(`    - ${op.op} type=${op.type} targetLayer="${op.targetLayer}"`);
               break;

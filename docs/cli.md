@@ -189,6 +189,47 @@ The command:
 
 ---
 
+## remove-layer
+
+Remove a layer from a layout. Strict by default — fails if the layer has instances or sublayers unless the appropriate flag is passed.
+
+```bash
+npx construct3-chef remove-layer \
+  --layout <layout.json> \
+  --layer <LayerName> \
+  [--cascade] \
+  [--remove-instances] \
+  [--dry-run] \
+  [--no-regenerate] \
+  [--project-dir <path>]
+```
+
+| Option | Description |
+| ------ | ----------- |
+| `--layout <path>` | Relative path to the layout JSON within `layouts/` (e.g. `'Main Layout.json'`) |
+| `--layer <name>` | Name of the layer to remove |
+| `--cascade` | Remove the entire sublayer subtree recursively |
+| `--remove-instances` | Force removal even when the layer contains instances |
+| `--dry-run` | Validate and preview without writing any files |
+| `--regenerate` / `--no-regenerate` | Regenerate `extracted/` after applying (default: `true`) |
+
+```bash
+# Remove an empty layer from a layout
+npx construct3-chef remove-layer \
+  --layout "Main Layout.json" \
+  --layer "layer 0" \
+  --dry-run
+
+# Cascade-remove a parent layer and all its sublayers (even with instances)
+npx construct3-chef remove-layer \
+  --layout "Main Layout.json" \
+  --layer "UI" \
+  --cascade \
+  --remove-instances
+```
+
+---
+
 ## list-templates
 
 List all template instances across layouts, grouped by layout.

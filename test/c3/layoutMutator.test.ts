@@ -12,6 +12,7 @@ import {
   buildTemplateBlock,
   removeInstance,
   removeLayer,
+  removeLayerCascade,
   moveInstance,
   renameLayer,
   templatize,
@@ -1554,6 +1555,62 @@ describe("layoutMutator", () => {
         layers: [makeTestLayer("Layer1", [], [makeTestLayer("Sub")])],
       };
       expect(() => removeLayer(layout as LayoutJson, "Layer1")).to.throw("has 1 sublayer(s)");
+    });
+  });
+
+  describe("removeLayerCascade", () => {
+    it("removes a layer with empty sublayers (no instances anywhere)", () => {
+      const sub1 = makeTestLayer("Sub1");
+      const sub2 = makeTestLayer("Sub2");
+      const parent = makeTestLayer("Parent", [], [sub1, sub2]);
+      const layout = makeTestLayout([parent, makeTestLayer("Other")]);
+      removeLayerCascade(layout as LayoutJson, "Parent");
+      expect(layout.layers).to.have.length(1);
+      expect((layout.layers[0] as LayerJson).name).to.equal("Other");
+    });
+
+    it("removes a layer with deeply nested empty sublayers", () => {
+      const deep = makeTestLayer("Deep");
+      const mid = makeTestLayer("Mid", [], [deep]);
+      const root = makeTestLayer("Root", [], [mid]);
+      const layout = makeTestLayout([root]);
+      removeLayerCascade(layout as LayoutJson, "Root");
+      expect(layout.layers).to.have.length(0);
+    });
+
+    it("refuses when the layer itself has instances and removeInstances is not set", () => {
+      const layer = makeTestLayer("Layer1", [makeTestInstance(1, "Sprite")]);
+      const layout = makeTestLayout([layer]);
+      expect(() => removeLayerCascade(layout as LayoutJson, "Layer1")).to.throw(
+        'removeLayerCascade: layer "Layer1" subtree contains 1 instance(s) — pass removeInstances: true to force removal',
+      );
+    });
+
+    it("refuses when a descendant sublayer has instances and removeInstances is not set", () => {
+      const deep = makeTestLayer("Deep", [makeTestInstance(2, "Tile")]);
+      const mid = makeTestLayer("Mid", [], [deep]);
+      const root = makeTestLayer("Root", [], [mid]);
+      const layout = makeTestLayout([root]);
+      expect(() => removeLayerCascade(layout as LayoutJson, "Root")).to.throw(
+        'removeLayerCascade: layer "Root" subtree contains 1 instance(s) — pass removeInstances: true to force removal',
+      );
+    });
+
+    it("removes the subtree containing instances when removeInstances: true", () => {
+      const deep = makeTestLayer("Deep", [makeTestInstance(3, "Sprite")]);
+      const mid = makeTestLayer("Mid", [], [deep]);
+      const root = makeTestLayer("Root", [makeTestInstance(4, "Tile")], [mid]);
+      const layout = makeTestLayout([root, makeTestLayer("Keep")]);
+      removeLayerCascade(layout as LayoutJson, "Root", { removeInstances: true });
+      expect(layout.layers).to.have.length(1);
+      expect((layout.layers[0] as LayerJson).name).to.equal("Keep");
+    });
+
+    it("throws if the layer is not found", () => {
+      const layout = makeTestLayout([makeTestLayer("Existing")]);
+      expect(() => removeLayerCascade(layout as LayoutJson, "Missing")).to.throw(
+        'removeLayerCascade: layer "Missing" not found in layout',
+      );
     });
   });
 });
