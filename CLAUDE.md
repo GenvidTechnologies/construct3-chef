@@ -103,6 +103,7 @@ The CLI is stateless; the server adds a concurrency layer worth understanding be
 
 - C3 JSON is written tab-indented with a trailing newline: `JSON.stringify(x, null, "\t") + "\n"`. Match this when writing project files.
 - Prettier: 120 cols, spaces for `.ts`, **tabs** for `.json`. ESLint extends prettier and disables `no-unused-vars` / `no-explicit-any`.
+- **Formatting is NOT gated by `npm run lint`.** The lint script runs ESLint with `eslint-config-prettier`, which *disables* ESLint's formatting rules — it does **not** run Prettier — so Prettier conformance is unchecked in CI. `npx prettier --check "src/**/*.ts" "test/**/*.ts"` currently flags ~21 files (plus the C3-generated `test/fixtures/**/ts-defs/*.d.ts`, which must **not** be reformatted — they're real-export fixture data). Notably `src/c3/projectSync.ts` is **tab-indented** even though `.prettierrc` says spaces for `.ts`. **Don't let a format-on-save / `prettier --write` silently reflow a non-conforming file** (esp. `projectSync.ts`) — it produces a huge whitespace diff that buries the real change. Match each file's existing indentation; conforming the repo to Prettier (and adding a `prettier --check` to lint) is a deliberate standalone cleanup, never smuggled into a feature commit.
 - All file I/O is rooted at a `--project-dir` (defaults to cwd); paths inside recipes/tools are relative to that root. Mutate tools include path-traversal guards — keep them.
 
 ## Commit Format
