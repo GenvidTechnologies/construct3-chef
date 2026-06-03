@@ -109,6 +109,21 @@ describe("resolveIncludeTree", () => {
     assert.equal(tree.includes[1].name, "ChildB");
   });
 
+  it("resolves includes nested inside a group", () => {
+    writeSheet("eventSheets/Root.json", [
+      { eventType: "include", includeSheet: "TopLevel" },
+      { eventType: "group", children: [{ eventType: "include", includeSheet: "Nested" }] },
+    ]);
+    writeSheet("eventSheets/TopLevel.json", []);
+    writeSheet("eventSheets/Nested.json", []);
+
+    const tree = resolveIncludeTree("Root", tmpDir);
+    assert.deepEqual(
+      tree.includes.map((c) => c.name),
+      ["TopLevel", "Nested"],
+    );
+  });
+
   it("resolves transitive includes", () => {
     writeSheet("eventSheets/Root.json", [{ eventType: "include", includeSheet: "Mid" }]);
     writeSheet("eventSheets/Mid.json", [{ eventType: "include", includeSheet: "Leaf" }]);

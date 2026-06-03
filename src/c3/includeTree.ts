@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { EventSheet } from "@genvid/c3source";
-import { visitEvents } from "@genvid/c3source";
+import { visitEvents, extractIncludes } from "@genvid/c3source";
 
 export interface IncludeTreeNode {
   /** Sheet name (e.g., "CommonEvents") */
@@ -113,10 +113,10 @@ export function resolveIncludeTree(
         node.functions = extractFunctions(sheet.events);
       }
 
-      for (const event of sheet.events) {
-        if (event.eventType === "include") {
-          node.includes.push(resolve(event.includeSheet));
-        }
+      // extractIncludes walks the whole tree (visitEvents), so includes nested
+      // inside groups are discovered too — the prior top-level-only loop missed them.
+      for (const ref of extractIncludes(sheet)) {
+        node.includes.push(resolve(ref.includeSheet));
       }
     } catch {
       // File read/parse error — return partial node
