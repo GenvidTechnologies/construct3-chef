@@ -65,9 +65,7 @@ function makeShopLayout(): LayoutShape {
   const c3 = makeInstance(4, "BackgroundSprite", 1, [], 200000000000004);
   const c4 = makeInstance(5, "BorderSprite", 1, [], 200000000000005);
   return {
-    layers: [
-      { name: "Layer 0", instances: [root, c1, c2, c3, c4], subLayers: [], sid: 200000000000100 },
-    ],
+    layers: [{ name: "Layer 0", instances: [root, c1, c2, c3, c4], subLayers: [], sid: 200000000000100 }],
     "scene-graphs-folder-root": { items: [{ sid: 200000000000001 }] },
   };
 }
@@ -87,10 +85,7 @@ function makeProject(): string {
   mkdirSync(path.join(dir, "layouts"), { recursive: true });
   mkdirSync(path.join(dir, "eventSheets"), { recursive: true });
   mkdirSync(path.join(dir, "objectTypes"), { recursive: true });
-  writeFileSync(
-    path.join(dir, "layouts", "ShopLayout.json"),
-    JSON.stringify(makeShopLayout(), null, "\t") + "\n",
-  );
+  writeFileSync(path.join(dir, "layouts", "ShopLayout.json"), JSON.stringify(makeShopLayout(), null, "\t") + "\n");
   writeFileSync(
     path.join(dir, "layouts", "UI_ComponentsLayout.json"),
     JSON.stringify(makeUiComponentsLayout(), null, "\t") + "\n",
@@ -125,9 +120,7 @@ describe("extract-template integration: fix-goal-layout regression", () => {
     const uiLayout = JSON.parse(
       readFileSync(path.join(dir, "layouts", "UI_ComponentsLayout.json"), "utf-8"),
     ) as LayoutShape;
-    const shopLayout = JSON.parse(
-      readFileSync(path.join(dir, "layouts", "ShopLayout.json"), "utf-8"),
-    ) as LayoutShape;
+    const shopLayout = JSON.parse(readFileSync(path.join(dir, "layouts", "ShopLayout.json"), "utf-8")) as LayoutShape;
 
     // ── UI_ComponentsLayout: 1 root + 4 children on Layer 0 ──
     const uiLayer = uiLayout.layers.find((l) => l.name === "Layer 0")!;

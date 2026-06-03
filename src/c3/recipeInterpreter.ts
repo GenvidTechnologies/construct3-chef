@@ -485,12 +485,25 @@ export type BuilderAction =
   | { call: string; params?: (string | number | boolean)[] }
   | { "custom-action": string; object?: string; objectClass?: string; params?: unknown[] }
   | { comment: string }
-  | { id: string; object?: string; objectClass?: string; params?: Record<string, string | number | boolean>; behavior?: string };
+  | {
+      id: string;
+      object?: string;
+      objectClass?: string;
+      params?: Record<string, string | number | boolean>;
+      behavior?: string;
+    };
 
 export type BuilderCondition =
   | { else: true }
   | { "trigger-once": true }
-  | { id: string; object?: string; objectClass?: string; params?: Record<string, string | number | boolean>; inverted?: boolean; behavior?: string };
+  | {
+      id: string;
+      object?: string;
+      objectClass?: string;
+      params?: Record<string, string | number | boolean>;
+      inverted?: boolean;
+      behavior?: string;
+    };
 
 export type BuilderEvent =
   | { variable: VariableShorthand }
@@ -559,12 +572,7 @@ export interface GroupShorthand {
  * auto-resolves to `objectClass: "System"`. Kept deliberately small — only ids that can never
  * legitimately target a non-System object — so the default never masks a real missing-object error.
  */
-export const SYSTEM_ACTION_IDS = new Set<string>([
-  "wait",
-  "wait-for-previous-actions",
-  "wait-for-signal",
-  "signal",
-]);
+export const SYSTEM_ACTION_IDS = new Set<string>(["wait", "wait-for-previous-actions", "wait-for-signal", "signal"]);
 
 export function expandAction(sidGen: SidGenerator, shorthand: BuilderAction): C3Action {
   if ("script" in shorthand) {
@@ -738,10 +746,14 @@ function extractInlineEvent(op: InsertEventOp | ReplaceEventOp): BuilderEvent {
   if (op.comment !== undefined) keys.push("comment" as keyof BuilderEvent);
 
   if (keys.length === 0) {
-    throw new Error(`No inline event key found in ${op.op} operation. Expected one of: block, function-block, custom-ace-block, variable, group, comment`);
+    throw new Error(
+      `No inline event key found in ${op.op} operation. Expected one of: block, function-block, custom-ace-block, variable, group, comment`,
+    );
   }
   if (keys.length > 1) {
-    throw new Error(`Multiple inline event keys found in ${op.op} operation: ${keys.join(", ")}. Exactly one is required`);
+    throw new Error(
+      `Multiple inline event keys found in ${op.op} operation: ${keys.join(", ")}. Exactly one is required`,
+    );
   }
 
   const key = keys[0];
@@ -765,7 +777,9 @@ const PATH_TAIL_RE = /^(.*?)\.?(events|children)\[(\d+)\]$/;
 function splitNodePath(fullPath: string): { container: string; index: number } {
   const m = PATH_TAIL_RE.exec(fullPath);
   if (!m) {
-    throw new Error(`Cannot split node path "${fullPath}" — expected format like "events[N]" or "events[N].children[M]"`);
+    throw new Error(
+      `Cannot split node path "${fullPath}" — expected format like "events[N]" or "events[N].children[M]"`,
+    );
   }
   const [, prefix, _segment, indexStr] = m;
   return { container: prefix, index: Number(indexStr) };
@@ -781,7 +795,9 @@ function resolveEventTarget(path: string | undefined, index: number | undefined)
     return { container: path ?? "", index };
   }
   if (path === undefined || path === "") {
-    throw new Error("Either 'index' must be provided, or 'path' must be a full node path (e.g., 'events[4].children[1]')");
+    throw new Error(
+      "Either 'index' must be provided, or 'path' must be a full node path (e.g., 'events[4].children[1]')",
+    );
   }
   return splitNodePath(path);
 }
@@ -794,11 +810,7 @@ function resolveEventTarget(path: string | undefined, index: number | undefined)
  *   "sid:XXXXXXXXXXXXXXX" — direct SID lookup
  *   "$symbol"            — symbol table lookup → SID → index lookup
  */
-function resolveEventRef(
-  ref: string,
-  sidIndex: SidIndex,
-  symbolTable: Map<string, number>,
-): SidIndexEntry {
+function resolveEventRef(ref: string, sidIndex: SidIndex, symbolTable: Map<string, number>): SidIndexEntry {
   if (ref.startsWith("sid:")) {
     const sid = Number(ref.slice(4));
     if (!Number.isFinite(sid)) {
@@ -861,9 +873,8 @@ export function executeOp(
       const expanded = expandEvent(sidGen, builderEvent);
 
       // Register symbol if `id` is set (for later $symbol lookups)
-      const newSid = typeof (expanded as { sid?: unknown }).sid === "number"
-        ? (expanded as { sid: number }).sid
-        : undefined;
+      const newSid =
+        typeof (expanded as { sid?: unknown }).sid === "number" ? (expanded as { sid: number }).sid : undefined;
       if (op.id !== undefined && op.id.startsWith("$")) {
         if (newSid === undefined) {
           throw new Error(`insert-event: cannot register symbol "${op.id}" — expanded event has no SID`);
@@ -879,7 +890,9 @@ export function executeOp(
         const containerEntry = resolveEventRef(op.in, _sidIndex, _symbolTable);
         const containerNode = containerEntry.node;
         if (!canHaveChildren(containerNode)) {
-          throw new Error(`insert-event: target "${op.in}" (eventType: "${containerNode.eventType}") is not a container`);
+          throw new Error(
+            `insert-event: target "${op.in}" (eventType: "${containerNode.eventType}") is not a container`,
+          );
         }
         if (!containerNode.children) {
           (containerNode as { children: EventSheetEvent[] }).children = [];
@@ -942,7 +955,9 @@ export function executeOp(
         const containerEntry = resolveEventRef(op.in, _sidIndex, _symbolTable);
         const containerNode = containerEntry.node;
         if (!canHaveChildren(containerNode)) {
-          throw new Error(`insert-variables: target "${op.in}" (eventType: "${containerNode.eventType}") is not a container`);
+          throw new Error(
+            `insert-variables: target "${op.in}" (eventType: "${containerNode.eventType}") is not a container`,
+          );
         }
         if (!containerNode.children) {
           (containerNode as { children: EventSheetEvent[] }).children = [];
@@ -970,7 +985,9 @@ export function executeOp(
       if (op.in !== undefined) {
         const targetNode = resolveNodeFromRef(sheet, op.in, undefined, _sidIndex, _symbolTable);
         if (!hasActions(targetNode)) {
-          throw new Error(`insert-actions: target "${op.in}" (eventType: "${targetNode.eventType}") does not support actions`);
+          throw new Error(
+            `insert-actions: target "${op.in}" (eventType: "${targetNode.eventType}") does not support actions`,
+          );
         }
         const actions = targetNode.actions as C3Action[];
         for (let i = 0; i < op.actions.length; i++) {
@@ -994,14 +1011,23 @@ export function executeOp(
     case "insert-conditions": {
       if (op.in !== undefined) {
         const targetNode = resolveNodeFromRef(sheet, op.in, undefined, _sidIndex, _symbolTable);
-        if (!(targetNode.eventType === "block" || targetNode.eventType === "function-block" || targetNode.eventType === "custom-ace-block")) {
-          throw new Error(`insert-conditions: target "${op.in}" (eventType: "${targetNode.eventType}") does not support conditions`);
+        if (
+          !(
+            targetNode.eventType === "block" ||
+            targetNode.eventType === "function-block" ||
+            targetNode.eventType === "custom-ace-block"
+          )
+        ) {
+          throw new Error(
+            `insert-conditions: target "${op.in}" (eventType: "${targetNode.eventType}") does not support conditions`,
+          );
         }
         const condBlock = targetNode as { conditions: Condition[] };
         for (let i = 0; i < op.conditions.length; i++) {
           const condition = expandCondition(sidGen, op.conditions[i]);
           const insertIdx = op.after + 1 + i;
-          const resolved = insertIdx < 0 ? condBlock.conditions.length : Math.min(insertIdx, condBlock.conditions.length);
+          const resolved =
+            insertIdx < 0 ? condBlock.conditions.length : Math.min(insertIdx, condBlock.conditions.length);
           condBlock.conditions.splice(resolved, 0, condition);
         }
       } else {
@@ -1021,7 +1047,9 @@ export function executeOp(
       if (op.in !== undefined) {
         const targetNode = resolveNodeFromRef(sheet, op.in, undefined, _sidIndex, _symbolTable);
         if (!hasActions(targetNode)) {
-          throw new Error(`replace-action: target "${op.in}" (eventType: "${targetNode.eventType}") does not support actions`);
+          throw new Error(
+            `replace-action: target "${op.in}" (eventType: "${targetNode.eventType}") does not support actions`,
+          );
         }
         const actions = targetNode.actions as C3Action[];
         if (op.index < 0 || op.index >= actions.length) {
@@ -1041,12 +1069,22 @@ export function executeOp(
       const condition = expandCondition(sidGen, op.condition);
       if (op.in !== undefined) {
         const targetNode = resolveNodeFromRef(sheet, op.in, undefined, _sidIndex, _symbolTable);
-        if (!(targetNode.eventType === "block" || targetNode.eventType === "function-block" || targetNode.eventType === "custom-ace-block")) {
-          throw new Error(`replace-condition: target "${op.in}" (eventType: "${targetNode.eventType}") does not support conditions`);
+        if (
+          !(
+            targetNode.eventType === "block" ||
+            targetNode.eventType === "function-block" ||
+            targetNode.eventType === "custom-ace-block"
+          )
+        ) {
+          throw new Error(
+            `replace-condition: target "${op.in}" (eventType: "${targetNode.eventType}") does not support conditions`,
+          );
         }
         const condBlock = targetNode as { conditions: Condition[] };
         if (op.index < 0 || op.index >= condBlock.conditions.length) {
-          throw new Error(`replace-condition: index ${op.index} out of bounds (${condBlock.conditions.length} conditions) in "${op.in}"`);
+          throw new Error(
+            `replace-condition: index ${op.index} out of bounds (${condBlock.conditions.length} conditions) in "${op.in}"`,
+          );
         }
         condBlock.conditions[op.index] = condition;
       } else {
@@ -1073,9 +1111,7 @@ export function executeOp(
         // earlier splices in the same batch shift siblings. Look up current position.
         const currentIndex = entry.parentArray.indexOf(entry.node);
         if (currentIndex === -1) {
-          throw new Error(
-            `remove-event: node for "${op.in}" is no longer in its parent array (already removed?)`,
-          );
+          throw new Error(`remove-event: node for "${op.in}" is no longer in its parent array (already removed?)`);
         }
         entry.parentArray.splice(currentIndex, 1);
       } else {
@@ -1089,7 +1125,9 @@ export function executeOp(
       if (op.in !== undefined) {
         const targetNode = resolveNodeFromRef(sheet, op.in, undefined, _sidIndex, _symbolTable);
         if (!hasActions(targetNode)) {
-          throw new Error(`remove-action: target "${op.in}" (eventType: "${targetNode.eventType}") does not support actions`);
+          throw new Error(
+            `remove-action: target "${op.in}" (eventType: "${targetNode.eventType}") does not support actions`,
+          );
         }
         const actions = targetNode.actions as C3Action[];
         if (op.index < 0 || op.index >= actions.length) {
@@ -1108,12 +1146,22 @@ export function executeOp(
     case "remove-condition": {
       if (op.in !== undefined) {
         const targetNode = resolveNodeFromRef(sheet, op.in, undefined, _sidIndex, _symbolTable);
-        if (!(targetNode.eventType === "block" || targetNode.eventType === "function-block" || targetNode.eventType === "custom-ace-block")) {
-          throw new Error(`remove-condition: target "${op.in}" (eventType: "${targetNode.eventType}") does not support conditions`);
+        if (
+          !(
+            targetNode.eventType === "block" ||
+            targetNode.eventType === "function-block" ||
+            targetNode.eventType === "custom-ace-block"
+          )
+        ) {
+          throw new Error(
+            `remove-condition: target "${op.in}" (eventType: "${targetNode.eventType}") does not support conditions`,
+          );
         }
         const condBlock = targetNode as { conditions: Condition[] };
         if (op.index < 0 || op.index >= condBlock.conditions.length) {
-          throw new Error(`remove-condition: index ${op.index} out of bounds (${condBlock.conditions.length} conditions) in "${op.in}"`);
+          throw new Error(
+            `remove-condition: index ${op.index} out of bounds (${condBlock.conditions.length} conditions) in "${op.in}"`,
+          );
         }
         condBlock.conditions.splice(op.index, 1);
       } else {
@@ -1144,12 +1192,13 @@ export function executeOp(
       const paths = op.in !== undefined ? [op.in] : resolvePaths(op);
       const useSidRef = op.in !== undefined;
       for (const p of paths) {
-        const targetNode = useSidRef
-          ? resolveNodeFromRef(sheet, p, undefined, _sidIndex, _symbolTable)
-          : undefined;
-        const actionIdx = op.matchScript !== undefined
-          ? (useSidRef ? findScriptActionByNode(targetNode!, op.matchScript) : findScriptActionByContent(sheet, p, op.matchScript))
-          : op.actionIndex;
+        const targetNode = useSidRef ? resolveNodeFromRef(sheet, p, undefined, _sidIndex, _symbolTable) : undefined;
+        const actionIdx =
+          op.matchScript !== undefined
+            ? useSidRef
+              ? findScriptActionByNode(targetNode!, op.matchScript)
+              : findScriptActionByContent(sheet, p, op.matchScript)
+            : op.actionIndex;
         if (actionIdx === undefined) {
           throw new Error(`patch-script: either "actionIndex" or "matchScript" must be provided`);
         }
@@ -1166,12 +1215,13 @@ export function executeOp(
       const paths = op.in !== undefined ? [op.in] : resolvePaths(op);
       const useSidRef = op.in !== undefined;
       for (const p of paths) {
-        const targetNode = useSidRef
-          ? resolveNodeFromRef(sheet, p, undefined, _sidIndex, _symbolTable)
-          : undefined;
-        const actionIdx = op.matchAction !== undefined
-          ? (useSidRef ? findActionByIdentifierOnNode(targetNode!, op.matchAction) : findActionByIdentifier(sheet, p, op.matchAction))
-          : op.actionIndex;
+        const targetNode = useSidRef ? resolveNodeFromRef(sheet, p, undefined, _sidIndex, _symbolTable) : undefined;
+        const actionIdx =
+          op.matchAction !== undefined
+            ? useSidRef
+              ? findActionByIdentifierOnNode(targetNode!, op.matchAction)
+              : findActionByIdentifier(sheet, p, op.matchAction)
+            : op.actionIndex;
         if (actionIdx === undefined) {
           throw new Error(`patch-action-param: either "actionIndex" or "matchAction" must be provided`);
         }
@@ -1230,9 +1280,10 @@ export function executeOp(
     }
 
     case "patch-function-block": {
-      const node = op.in !== undefined
-        ? resolveNodeFromRef(sheet, op.in, undefined, _sidIndex, _symbolTable)
-        : resolveNode(sheet, op.path ?? "");
+      const node =
+        op.in !== undefined
+          ? resolveNodeFromRef(sheet, op.in, undefined, _sidIndex, _symbolTable)
+          : resolveNode(sheet, op.path ?? "");
       if (node.eventType !== "function-block" && node.eventType !== "custom-ace-block") {
         throw new Error(
           `patch-function-block: expected function-block or custom-ace-block at "${op.in ?? op.path}", got "${node.eventType}"`,
@@ -1242,9 +1293,12 @@ export function executeOp(
       if (op.addParam) {
         const defaultInitialValue = (type: "string" | "number" | "boolean"): string => {
           switch (type) {
-            case "string": return "";
-            case "number": return "0";
-            case "boolean": return "false";
+            case "string":
+              return "";
+            case "number":
+              return "0";
+            case "boolean":
+              return "false";
           }
         };
         // Validate uniqueness BEFORE minting a SID so a rejected op doesn't burn
@@ -1300,9 +1354,7 @@ export function executeOp(
         if (seenSids.has(sid)) continue; // deduplicate
         seenSids.add(sid);
         if (!parentArray.includes(entry.node)) {
-          throw new Error(
-            `wrap-in-group: event "${ref}" is not in the specified parent container`,
-          );
+          throw new Error(`wrap-in-group: event "${ref}" is not in the specified parent container`);
         }
         targets.push({ node: entry.node, entry });
       }
@@ -1320,9 +1372,7 @@ export function executeOp(
       });
 
       // Remove events from parent and add to group children (preserve original order)
-      const sorted = [...targets].sort(
-        (a, b) => parentArray.indexOf(a.node) - parentArray.indexOf(b.node),
-      );
+      const sorted = [...targets].sort((a, b) => parentArray.indexOf(a.node) - parentArray.indexOf(b.node));
       for (const t of sorted) {
         const idx = parentArray.indexOf(t.node);
         parentArray.splice(idx, 1);
@@ -1352,9 +1402,7 @@ export function executeOp(
       const varEntry = resolveEventRef(op.variable, _sidIndex, _symbolTable);
       const varNode = varEntry.node;
       if (varNode.eventType !== "variable") {
-        throw new Error(
-          `move-variable: "${op.variable}" resolves to a "${varNode.eventType}" event, not a variable`,
-        );
+        throw new Error(`move-variable: "${op.variable}" resolves to a "${varNode.eventType}" event, not a variable`);
       }
       const variable = varNode as EventSheetVariable;
       const sourceArray = varEntry.parentArray;
@@ -1458,9 +1506,7 @@ function patchScript(
 
   const action = actions[actionIndex];
   if (!isScriptAction(action)) {
-    throw new Error(
-      `patch-script: action at index ${actionIndex} is not a script action at "${jsonPath}"`,
-    );
+    throw new Error(`patch-script: action at index ${actionIndex} is not a script action at "${jsonPath}"`);
   }
 
   const joined = action.script.join("\n");
@@ -1479,11 +1525,7 @@ function patchScript(
   action.script = patched.split("\n");
 }
 
-function findScriptActionByContent(
-  sheet: EventSheet,
-  jsonPath: string,
-  matchScript: string,
-): number {
+function findScriptActionByContent(sheet: EventSheet, jsonPath: string, matchScript: string): number {
   const node = resolveNode(sheet, jsonPath);
   if (!hasActions(node)) {
     throw new Error(`patch-script: cannot access actions on '${node.eventType}' event at "${jsonPath}"`);
@@ -1559,7 +1601,9 @@ function patchScriptOnNode(
   const joined = action.script.join("\n");
   const findIndex = joined.indexOf(find);
   if (findIndex === -1) {
-    throw new Error(`patch-script: find string not found in script at action index ${actionIndex}, ref "${ref}". Find: "${find}"`);
+    throw new Error(
+      `patch-script: find string not found in script at action index ${actionIndex}, ref "${ref}". Find: "${find}"`,
+    );
   }
   const replaceStr = Array.isArray(replace) ? replace.join("\n") : replace;
   const patched = replaceAll
@@ -1589,18 +1633,15 @@ function findActionByIdentifierOnNode(node: EventSheetEvent, matchAction: string
   return matches[0];
 }
 
-function patchActionParamOnNode(
-  node: EventSheetEvent,
-  ref: string,
-  actionIndex: number,
-  op: PatchActionParamOp,
-): void {
+function patchActionParamOnNode(node: EventSheetEvent, ref: string, actionIndex: number, op: PatchActionParamOp): void {
   if (!hasActions(node)) {
     throw new Error(`patch-action-param: cannot access actions on '${node.eventType}' event at "${ref}"`);
   }
   const actions = node.actions;
   if (actionIndex < 0 || actionIndex >= actions.length) {
-    throw new Error(`patch-action-param: action index ${actionIndex} out of bounds (${actions.length} actions) at "${ref}"`);
+    throw new Error(
+      `patch-action-param: action index ${actionIndex} out of bounds (${actions.length} actions) at "${ref}"`,
+    );
   }
   const action = actions[actionIndex] as C3Action;
   if (!isParameterizedAction(action)) {
@@ -1621,11 +1662,7 @@ function patchActionParamOnNode(
 
 // ─── Part 6a: patch-action-param Implementation ───
 
-function findActionByIdentifier(
-  sheet: EventSheet,
-  jsonPath: string,
-  matchAction: string,
-): number {
+function findActionByIdentifier(sheet: EventSheet, jsonPath: string, matchAction: string): number {
   const node = resolveNode(sheet, jsonPath);
   if (!hasActions(node)) {
     throw new Error(`patch-action-param: cannot access actions on '${node.eventType}' event at "${jsonPath}"`);
@@ -1641,9 +1678,7 @@ function findActionByIdentifier(
   }
 
   if (matches.length === 0) {
-    throw new Error(
-      `patch-action-param: matchAction "${matchAction}" not found in any action at "${jsonPath}"`,
-    );
+    throw new Error(`patch-action-param: matchAction "${matchAction}" not found in any action at "${jsonPath}"`);
   }
   if (matches.length > 1) {
     throw new Error(
@@ -1655,12 +1690,7 @@ function findActionByIdentifier(
   return matches[0];
 }
 
-function patchActionParam(
-  sheet: EventSheet,
-  jsonPath: string,
-  actionIndex: number,
-  op: PatchActionParamOp,
-): void {
+function patchActionParam(sheet: EventSheet, jsonPath: string, actionIndex: number, op: PatchActionParamOp): void {
   const node = resolveNode(sheet, jsonPath);
   if (!hasActions(node)) {
     throw new Error(`patch-action-param: cannot access actions on '${node.eventType}' event at "${jsonPath}"`);
@@ -1681,9 +1711,7 @@ function patchActionParam(
   }
 
   // Collect the param updates from either param+value or params
-  const updates: Record<string, unknown> = op.params
-    ? op.params
-    : { [op.param!]: op.value };
+  const updates: Record<string, unknown> = op.params ? op.params : { [op.param!]: op.value };
 
   if (isStandardAction(action)) {
     if (!action.parameters) {
@@ -1713,10 +1741,7 @@ function patchActionParam(
 
 // ─── Part 6b: rename-symbol Implementation ───
 
-export function applyReplacements(
-  sheet: EventSheet,
-  replacements: Array<{ from: string; to: string }>,
-): number {
+export function applyReplacements(sheet: EventSheet, replacements: Array<{ from: string; to: string }>): number {
   if (replacements.length === 0) return 0;
 
   // Sort replacements by `from` length descending to handle substring ordering
@@ -1743,17 +1768,12 @@ export function applyReplacements(
   return totalReplacements;
 }
 
-function renameSymbol(
-  sheet: EventSheet,
-  replacements: Array<{ from: string; to: string }>,
-): void {
+function renameSymbol(sheet: EventSheet, replacements: Array<{ from: string; to: string }>): void {
   const count = applyReplacements(sheet, replacements);
   if (count === 0) {
     const sorted = [...replacements].sort((a, b) => b.from.length - a.from.length);
     const fromList = sorted.map((r) => `"${r.from}"`).join(", ");
-    throw new Error(
-      `rename-symbol: no replacements matched in any script action. Searched for: ${fromList}`,
-    );
+    throw new Error(`rename-symbol: no replacements matched in any script action. Searched for: ${fromList}`);
   }
 }
 
@@ -1763,11 +1783,7 @@ function renameSymbol(
  * does not match `localVars.scoreMultiplier`. Used by move-variable to keep
  * script references in sync with a variable's scope change.
  */
-function rewriteVarRefsInArray(
-  nodes: EventSheetEvent[],
-  name: string,
-  direction: "toGlobal" | "toLocal",
-): void {
+function rewriteVarRefsInArray(nodes: EventSheetEvent[], name: string, direction: "toGlobal" | "toLocal"): void {
   const escaped = escapeRegExp(name);
   const fromRe =
     direction === "toGlobal"
@@ -1857,8 +1873,12 @@ function isAffectedByShift(targetPath: string, arraySegment: string, shiftAt: nu
   return n >= shiftAt;
 }
 
-
-export function executeFileOps(sidGen: SidGenerator, sheet: EventSheet, ops: FileOp[], options?: { autoAdjust?: boolean }): void {
+export function executeFileOps(
+  sidGen: SidGenerator,
+  sheet: EventSheet,
+  ops: FileOp[],
+  options?: { autoAdjust?: boolean },
+): void {
   // autoAdjust is deprecated — SID-based addressing ("in": "sid:X") supersedes it
   if (options?.autoAdjust) {
     console.warn('autoAdjust is deprecated — use SID-based addressing ("in": "sid:X") instead');
@@ -2020,7 +2040,19 @@ export interface OpFieldSchema {
 export const OP_FIELD_SCHEMAS: Record<string, OpFieldSchema> = {
   "insert-event": {
     required: [],
-    optional: ["path", "in", "id", "index", "after", "block", "function-block", "custom-ace-block", "variable", "group", "comment"],
+    optional: [
+      "path",
+      "in",
+      "id",
+      "index",
+      "after",
+      "block",
+      "function-block",
+      "custom-ace-block",
+      "variable",
+      "group",
+      "comment",
+    ],
     misspellings: {},
   },
   "insert-variables": {
@@ -2133,7 +2165,17 @@ export const SHORTHAND_FIELD_SCHEMAS: Record<string, OpFieldSchema> = {
   },
   "custom-ace-block": {
     required: ["name", "object"],
-    optional: ["aceType", "params", "returnType", "async", "copyPicked", "description", "category", "actions", "children"],
+    optional: [
+      "aceType",
+      "params",
+      "returnType",
+      "async",
+      "copyPicked",
+      "description",
+      "category",
+      "actions",
+      "children",
+    ],
     misspellings: {},
   },
   group: {
@@ -2232,7 +2274,8 @@ export const PARAM_TYPE_RULES: Record<string, ParamTypeRule[]> = {
     {
       param: "comparison",
       check: (v) => typeof v === "number" && Number.isInteger(v),
-      message: '"comparison" must be an integer (0=equal, 1=not-equal, 2=less, 3=less-or-equal, 4=greater, 5=greater-or-equal)',
+      message:
+        '"comparison" must be an integer (0=equal, 1=not-equal, 2=less, 3=less-or-equal, 4=greater, 5=greater-or-equal)',
     },
   ],
   "set-layer-visible": [
@@ -2320,7 +2363,12 @@ export function validateActionParams(action: Record<string, unknown>, prefix: st
   }
 
   // Standard actions: { id: "action-id", params: { ... } }
-  if (typeof action.id === "string" && action.params && typeof action.params === "object" && !Array.isArray(action.params)) {
+  if (
+    typeof action.id === "string" &&
+    action.params &&
+    typeof action.params === "object" &&
+    !Array.isArray(action.params)
+  ) {
     const rules = PARAM_TYPE_RULES[action.id as string];
     if (rules) {
       const params = action.params as Record<string, unknown>;
@@ -2337,7 +2385,7 @@ export function validateActionParams(action: Record<string, unknown>, prefix: st
     if (!Array.isArray(action.params)) {
       warnings.push(
         `${prefix}: "call" shorthand "params" must be an array, not ${typeof action.params}. ` +
-        `Use ["arg1", "arg2"], not {"0": "arg1", "1": "arg2"}`,
+          `Use ["arg1", "arg2"], not {"0": "arg1", "1": "arg2"}`,
       );
     }
   }
@@ -2375,7 +2423,12 @@ export function validateConditionParams(condition: Record<string, unknown>, pref
     }
   }
 
-  if (typeof condition.id === "string" && condition.params && typeof condition.params === "object" && !Array.isArray(condition.params)) {
+  if (
+    typeof condition.id === "string" &&
+    condition.params &&
+    typeof condition.params === "object" &&
+    !Array.isArray(condition.params)
+  ) {
     const rules = PARAM_TYPE_RULES[condition.id as string];
     if (rules) {
       const params = condition.params as Record<string, unknown>;
@@ -2462,7 +2515,10 @@ export function validateRecipe(recipe: Recipe): string[] {
   const errors: string[] = [];
 
   const hasSections =
-    recipe.objectTypes !== undefined || recipe.addInstVars !== undefined || recipe.files !== undefined || recipe.layouts !== undefined;
+    recipe.objectTypes !== undefined ||
+    recipe.addInstVars !== undefined ||
+    recipe.files !== undefined ||
+    recipe.layouts !== undefined;
   if (!hasSections) {
     errors.push('recipe must have at least one section: "objectTypes", "addInstVars", "files", or "layouts"');
     return errors;
@@ -2476,7 +2532,9 @@ export function validateRecipe(recipe: Recipe): string[] {
       for (let i = 0; i < recipe.objectTypes.length; i++) {
         const entry = recipe.objectTypes[i] as unknown as Record<string, unknown>;
         if (!entry.name || typeof entry.name !== "string") {
-          errors.push(`objectTypes[${i}]: missing or invalid "name" field. Expected: { "name": "FooJSON", "plugin": "Json" }`);
+          errors.push(
+            `objectTypes[${i}]: missing or invalid "name" field. Expected: { "name": "FooJSON", "plugin": "Json" }`,
+          );
         }
         const validPlugins = ["Json", "Dictionary", "Arr"];
         if (!entry.plugin || !validPlugins.includes(entry.plugin as string)) {
@@ -2489,13 +2547,17 @@ export function validateRecipe(recipe: Recipe): string[] {
   // Validate addInstVars section
   if (recipe.addInstVars !== undefined) {
     if (!Array.isArray(recipe.addInstVars)) {
-      errors.push('recipe.addInstVars must be an array. Expected: [{ "type": "MyObject", "instanceVariables": [...] }]');
+      errors.push(
+        'recipe.addInstVars must be an array. Expected: [{ "type": "MyObject", "instanceVariables": [...] }]',
+      );
     } else {
       const validTypes = ["string", "number", "boolean"];
       for (let i = 0; i < recipe.addInstVars.length; i++) {
         const entry = recipe.addInstVars[i] as unknown as Record<string, unknown>;
         if (!entry.type || typeof entry.type !== "string") {
-          errors.push(`addInstVars[${i}]: missing or invalid "type" field. Expected: { "type": "MyObject", "instanceVariables": [...] }`);
+          errors.push(
+            `addInstVars[${i}]: missing or invalid "type" field. Expected: { "type": "MyObject", "instanceVariables": [...] }`,
+          );
         }
         if (!Array.isArray(entry.instanceVariables) || (entry.instanceVariables as unknown[]).length === 0) {
           errors.push(`addInstVars[${i}]: "instanceVariables" must be a non-empty array`);
@@ -2525,7 +2587,9 @@ export function validateRecipe(recipe: Recipe): string[] {
           for (let i = 0; i < entry.length; i++) {
             const op = entry[i] as unknown as Record<string, unknown>;
             if (!op.op || typeof op.op !== "string") {
-              errors.push(`${filePath}[${i}]: missing or invalid 'op' field. Expected: { "op": "insert-event", "path": "...", ... }`);
+              errors.push(
+                `${filePath}[${i}]: missing or invalid 'op' field. Expected: { "op": "insert-event", "path": "...", ... }`,
+              );
               continue;
             }
             if (!VALID_OPS.has(op.op as string)) {
@@ -2559,14 +2623,18 @@ export function validateRecipe(recipe: Recipe): string[] {
 
             // Validate path/paths mutual exclusivity
             if (op.path !== undefined && op.paths !== undefined) {
-              errors.push(`${filePath}[${i}]: cannot specify both 'path' and 'paths'. Use "path" for single target, "paths" for multiple targets`);
+              errors.push(
+                `${filePath}[${i}]: cannot specify both 'path' and 'paths'. Use "path" for single target, "paths" for multiple targets`,
+              );
             }
 
             // Validate rename-symbol has replacements array
             if (op.op === "rename-symbol") {
               const replacements = op.replacements as unknown;
               if (!Array.isArray(replacements) || replacements.length === 0) {
-                errors.push(`${filePath}[${i}]: rename-symbol requires a non-empty "replacements" array of { from, to } objects`);
+                errors.push(
+                  `${filePath}[${i}]: rename-symbol requires a non-empty "replacements" array of { from, to } objects`,
+                );
               }
             }
 
@@ -2575,18 +2643,26 @@ export function validateRecipe(recipe: Recipe): string[] {
               const hasActionIndex = (op as unknown as Record<string, unknown>).actionIndex !== undefined;
               const hasMatchAction = (op as unknown as Record<string, unknown>).matchAction !== undefined;
               if (!hasActionIndex && !hasMatchAction) {
-                errors.push(`${filePath}[${i}]: patch-action-param requires either "actionIndex" or "matchAction". Use actionIndex for index-based targeting, matchAction for content-based targeting`);
+                errors.push(
+                  `${filePath}[${i}]: patch-action-param requires either "actionIndex" or "matchAction". Use actionIndex for index-based targeting, matchAction for content-based targeting`,
+                );
               }
               if (hasActionIndex && hasMatchAction) {
-                errors.push(`${filePath}[${i}]: patch-action-param cannot have both "actionIndex" and "matchAction". Use one or the other`);
+                errors.push(
+                  `${filePath}[${i}]: patch-action-param cannot have both "actionIndex" and "matchAction". Use one or the other`,
+                );
               }
               const hasParam = (op as unknown as Record<string, unknown>).param !== undefined;
               const hasParams = (op as unknown as Record<string, unknown>).params !== undefined;
               if (!hasParam && !hasParams) {
-                errors.push(`${filePath}[${i}]: patch-action-param requires either "param" + "value" or "params" object`);
+                errors.push(
+                  `${filePath}[${i}]: patch-action-param requires either "param" + "value" or "params" object`,
+                );
               }
               if (hasParam && hasParams) {
-                errors.push(`${filePath}[${i}]: patch-action-param cannot have both "param" and "params". Use "param" + "value" for a single change, or "params" for multiple`);
+                errors.push(
+                  `${filePath}[${i}]: patch-action-param cannot have both "param" and "params". Use "param" + "value" for a single change, or "params" for multiple`,
+                );
               }
             }
 
@@ -2595,10 +2671,14 @@ export function validateRecipe(recipe: Recipe): string[] {
               const hasActionIndex = (op as unknown as Record<string, unknown>).actionIndex !== undefined;
               const hasMatchScript = (op as unknown as Record<string, unknown>).matchScript !== undefined;
               if (!hasActionIndex && !hasMatchScript) {
-                errors.push(`${filePath}[${i}]: patch-script requires either "actionIndex" or "matchScript". Use actionIndex for index-based targeting, matchScript for content-based targeting`);
+                errors.push(
+                  `${filePath}[${i}]: patch-script requires either "actionIndex" or "matchScript". Use actionIndex for index-based targeting, matchScript for content-based targeting`,
+                );
               }
               if (hasActionIndex && hasMatchScript) {
-                errors.push(`${filePath}[${i}]: patch-script cannot have both "actionIndex" and "matchScript". Use one or the other`);
+                errors.push(
+                  `${filePath}[${i}]: patch-script cannot have both "actionIndex" and "matchScript". Use one or the other`,
+                );
               }
             }
 
@@ -2610,7 +2690,9 @@ export function validateRecipe(recipe: Recipe): string[] {
                 errors.push(`${filePath}[${i}]: patch-function-block requires either "addParam" or "removeParam"`);
               }
               if (hasAddParam && hasRemoveParam) {
-                errors.push(`${filePath}[${i}]: patch-function-block cannot have both "addParam" and "removeParam". Use separate ops`);
+                errors.push(
+                  `${filePath}[${i}]: patch-function-block cannot have both "addParam" and "removeParam". Use separate ops`,
+                );
               }
               if (hasAddParam) {
                 const addParam = (op as unknown as Record<string, unknown>).addParam as Record<string, unknown>;
@@ -2618,7 +2700,9 @@ export function validateRecipe(recipe: Recipe): string[] {
                   errors.push(`${filePath}[${i}]: patch-function-block addParam.name is required and must be a string`);
                 }
                 if (!addParam.type || !["string", "number", "boolean"].includes(addParam.type as string)) {
-                  errors.push(`${filePath}[${i}]: patch-function-block addParam.type must be "string", "number", or "boolean"`);
+                  errors.push(
+                    `${filePath}[${i}]: patch-function-block addParam.type must be "string", "number", or "boolean"`,
+                  );
                 }
               }
             }
@@ -2627,9 +2711,13 @@ export function validateRecipe(recipe: Recipe): string[] {
             if (op.op === "insert-event" || op.op === "replace-event") {
               const foundKeys = INLINE_EVENT_KEYS.filter((k) => op[k] !== undefined);
               if (foundKeys.length === 0) {
-                errors.push(`${filePath}[${i}]: ${op.op} requires exactly one inline event key (${INLINE_EVENT_KEYS.join(", ")})`);
+                errors.push(
+                  `${filePath}[${i}]: ${op.op} requires exactly one inline event key (${INLINE_EVENT_KEYS.join(", ")})`,
+                );
               } else if (foundKeys.length > 1) {
-                errors.push(`${filePath}[${i}]: ${op.op} has multiple inline event keys: ${foundKeys.join(", ")}. Use exactly one of: ${INLINE_EVENT_KEYS.join(", ")}`);
+                errors.push(
+                  `${filePath}[${i}]: ${op.op} has multiple inline event keys: ${foundKeys.join(", ")}. Use exactly one of: ${INLINE_EVENT_KEYS.join(", ")}`,
+                );
               }
 
               // Validate shorthand fields on the inline event
@@ -2670,13 +2758,20 @@ export function validateRecipe(recipe: Recipe): string[] {
 
             // Validate C3 parameter types on builder action/condition shorthands
             if (op.op === "insert-actions" || op.op === "insert-conditions") {
-              const items = (op as unknown as Record<string, unknown>).actions ?? (op as unknown as Record<string, unknown>).conditions;
+              const items =
+                (op as unknown as Record<string, unknown>).actions ??
+                (op as unknown as Record<string, unknown>).conditions;
               if (Array.isArray(items)) {
                 for (let j = 0; j < items.length; j++) {
                   const item = items[j] as Record<string, unknown>;
                   if (item && typeof item === "object") {
                     const validator = op.op === "insert-actions" ? validateActionParams : validateConditionParams;
-                    errors.push(...validator(item, `${filePath}[${i}].${op.op === "insert-actions" ? "actions" : "conditions"}[${j}]`));
+                    errors.push(
+                      ...validator(
+                        item,
+                        `${filePath}[${i}].${op.op === "insert-actions" ? "actions" : "conditions"}[${j}]`,
+                      ),
+                    );
                   }
                 }
               }
@@ -2688,7 +2783,9 @@ export function validateRecipe(recipe: Recipe): string[] {
               }
             }
             if (op.op === "replace-condition") {
-              const condition = (op as unknown as Record<string, unknown>).condition as Record<string, unknown> | undefined;
+              const condition = (op as unknown as Record<string, unknown>).condition as
+                | Record<string, unknown>
+                | undefined;
               if (condition && typeof condition === "object") {
                 errors.push(...validateConditionParams(condition, `${filePath}[${i}].condition`));
               }
@@ -2697,7 +2794,9 @@ export function validateRecipe(recipe: Recipe): string[] {
             // Validate params in inline event actions/conditions (insert-event, replace-event)
             if (op.op === "insert-event" || op.op === "replace-event") {
               for (const key of INLINE_EVENT_KEYS) {
-                const shorthand = (op as unknown as Record<string, unknown>)[key] as Record<string, unknown> | undefined;
+                const shorthand = (op as unknown as Record<string, unknown>)[key] as
+                  | Record<string, unknown>
+                  | undefined;
                 if (shorthand && typeof shorthand === "object") {
                   // Check actions on the inline event
                   const actions = shorthand.actions as unknown[] | undefined;
@@ -2735,13 +2834,17 @@ export function validateRecipe(recipe: Recipe): string[] {
               return pathVal || afterVal;
             });
             if (hasPathBasedRef) {
-              errors.push(`Warning: ${filePath}: add-include shifts root events[] indices — path-based references in the same file may target wrong nodes. Use SID-based "in"/"after" instead.`);
+              errors.push(
+                `Warning: ${filePath}: add-include shifts root events[] indices — path-based references in the same file may target wrong nodes. Use SID-based "in"/"after" instead.`,
+              );
             }
           }
         } else if (entry && typeof entry === "object" && (entry as FileCreate).create === true) {
           // FileCreate — valid
         } else {
-          errors.push(`${filePath}: entry must be a FileCreate object or an array of FileOp. Expected: { "create": true, "events": [...] } or [{ "op": "...", ... }]`);
+          errors.push(
+            `${filePath}: entry must be a FileCreate object or an array of FileOp. Expected: { "create": true, "events": [...] } or [{ "op": "...", ... }]`,
+          );
         }
       }
     }
@@ -2754,7 +2857,9 @@ export function validateRecipe(recipe: Recipe): string[] {
     } else {
       for (const [filePath, ops] of Object.entries(recipe.layouts)) {
         if (!Array.isArray(ops)) {
-          errors.push(`layouts["${filePath}"]: value must be an array of layout operations. Expected: [{ "op": "add-nonworld-instance", "type": "..." }]`);
+          errors.push(
+            `layouts["${filePath}"]: value must be an array of layout operations. Expected: [{ "op": "add-nonworld-instance", "type": "..." }]`,
+          );
           continue;
         }
         const VALID_LAYOUT_OPS = new Set([
@@ -2777,37 +2882,53 @@ export function validateRecipe(recipe: Recipe): string[] {
         for (let i = 0; i < ops.length; i++) {
           const op = ops[i] as unknown as Record<string, unknown>;
           if (!op.op || !VALID_LAYOUT_OPS.has(op.op as string)) {
-            errors.push(`layouts["${filePath}"][${i}]: unknown op "${op.op}". Valid ops: ${[...VALID_LAYOUT_OPS].join(", ")}`);
+            errors.push(
+              `layouts["${filePath}"][${i}]: unknown op "${op.op}". Valid ops: ${[...VALID_LAYOUT_OPS].join(", ")}`,
+            );
             continue;
           }
           switch (op.op) {
             case "add-nonworld-instance":
               if (!op.type || typeof op.type !== "string") {
-                errors.push(`layouts["${filePath}"][${i}]: "type" field is required for add-nonworld-instance. Expected: { "op": "add-nonworld-instance", "type": "FooJSON" }`);
+                errors.push(
+                  `layouts["${filePath}"][${i}]: "type" field is required for add-nonworld-instance. Expected: { "op": "add-nonworld-instance", "type": "FooJSON" }`,
+                );
               }
               break;
             case "add-sublayer":
               if (!op.parent || typeof op.parent !== "string") {
-                errors.push(`layouts["${filePath}"][${i}]: "parent" field is required for add-sublayer. Expected: { "op": "add-sublayer", "parent": "LayerName", "name": "SubName" }`);
+                errors.push(
+                  `layouts["${filePath}"][${i}]: "parent" field is required for add-sublayer. Expected: { "op": "add-sublayer", "parent": "LayerName", "name": "SubName" }`,
+                );
               }
               if (!op.name || typeof op.name !== "string") {
-                errors.push(`layouts["${filePath}"][${i}]: "name" field is required for add-sublayer. Expected: { "op": "add-sublayer", "parent": "LayerName", "name": "SubName" }`);
+                errors.push(
+                  `layouts["${filePath}"][${i}]: "name" field is required for add-sublayer. Expected: { "op": "add-sublayer", "parent": "LayerName", "name": "SubName" }`,
+                );
               }
               break;
             case "add-layer":
               if (!op.name || typeof op.name !== "string") {
-                errors.push(`layouts["${filePath}"][${i}]: "name" field is required for add-layer. Expected: { "op": "add-layer", "name": "LayerName" }`);
+                errors.push(
+                  `layouts["${filePath}"][${i}]: "name" field is required for add-layer. Expected: { "op": "add-layer", "name": "LayerName" }`,
+                );
               }
               break;
             case "copy-instance":
               if (!op.from || typeof op.from !== "string") {
-                errors.push(`layouts["${filePath}"][${i}]: "from" field is required for copy-instance. Expected: { "op": "copy-instance", "from": "layouts/Source.json", "type": "ObjName", "targetLayer": "Layer" }`);
+                errors.push(
+                  `layouts["${filePath}"][${i}]: "from" field is required for copy-instance. Expected: { "op": "copy-instance", "from": "layouts/Source.json", "type": "ObjName", "targetLayer": "Layer" }`,
+                );
               }
               if (!op.type || typeof op.type !== "string") {
-                errors.push(`layouts["${filePath}"][${i}]: "type" field is required for copy-instance. Expected: { "op": "copy-instance", "from": "layouts/Source.json", "type": "ObjName", "targetLayer": "Layer" }`);
+                errors.push(
+                  `layouts["${filePath}"][${i}]: "type" field is required for copy-instance. Expected: { "op": "copy-instance", "from": "layouts/Source.json", "type": "ObjName", "targetLayer": "Layer" }`,
+                );
               }
               if (!op.targetLayer || typeof op.targetLayer !== "string") {
-                errors.push(`layouts["${filePath}"][${i}]: "targetLayer" field is required for copy-instance. Expected: { "op": "copy-instance", "from": "layouts/Source.json", "type": "ObjName", "targetLayer": "Layer" }`);
+                errors.push(
+                  `layouts["${filePath}"][${i}]: "targetLayer" field is required for copy-instance. Expected: { "op": "copy-instance", "from": "layouts/Source.json", "type": "ObjName", "targetLayer": "Layer" }`,
+                );
               }
               break;
             case "templatize":
@@ -2898,13 +3019,19 @@ export function validateRecipe(recipe: Recipe): string[] {
               break;
             case "clone-replica-to-layouts": {
               if (!op.templateName || typeof op.templateName !== "string") {
-                errors.push(`layouts["${filePath}"][${i}]: "templateName" field is required for clone-replica-to-layouts`);
+                errors.push(
+                  `layouts["${filePath}"][${i}]: "templateName" field is required for clone-replica-to-layouts`,
+                );
               }
               if (!op.sourceType || typeof op.sourceType !== "string") {
-                errors.push(`layouts["${filePath}"][${i}]: "sourceType" field is required for clone-replica-to-layouts`);
+                errors.push(
+                  `layouts["${filePath}"][${i}]: "sourceType" field is required for clone-replica-to-layouts`,
+                );
               }
               if (!Array.isArray(op.targets) || op.targets.length === 0) {
-                errors.push(`layouts["${filePath}"][${i}]: "targets" must be a non-empty array for clone-replica-to-layouts`);
+                errors.push(
+                  `layouts["${filePath}"][${i}]: "targets" must be a non-empty array for clone-replica-to-layouts`,
+                );
               } else {
                 const seenLayouts = new Set<string>();
                 for (let t = 0; t < op.targets.length; t++) {
@@ -2936,10 +3063,14 @@ export function validateRecipe(recipe: Recipe): string[] {
                 errors.push(`layouts["${filePath}"][${i}]: "type" field is required for replace-instance-with-replica`);
               }
               if (!op.templatesLayout || typeof op.templatesLayout !== "string") {
-                errors.push(`layouts["${filePath}"][${i}]: "templatesLayout" field is required for replace-instance-with-replica`);
+                errors.push(
+                  `layouts["${filePath}"][${i}]: "templatesLayout" field is required for replace-instance-with-replica`,
+                );
               }
               if (!op.templateName || typeof op.templateName !== "string") {
-                errors.push(`layouts["${filePath}"][${i}]: "templateName" field is required for replace-instance-with-replica`);
+                errors.push(
+                  `layouts["${filePath}"][${i}]: "templateName" field is required for replace-instance-with-replica`,
+                );
               }
               if (op.layer !== undefined && typeof op.layer !== "string") {
                 errors.push(`layouts["${filePath}"][${i}]: "layer" must be a string for replace-instance-with-replica`);

@@ -85,7 +85,7 @@ describe("search", () => {
     expect(result.lines.some((l) => l.includes("SubDir"))).to.be.true;
     // Should not include TestSheet.dsl.txt (top-level file)
     const hasTopLevel = result.lines.some(
-      (l) => l.includes("eventSheets/TestSheet.dsl.txt") || l.match(/eventSheets\/TestSheet\.dsl\.txt/)
+      (l) => l.includes("eventSheets/TestSheet.dsl.txt") || l.match(/eventSheets\/TestSheet\.dsl\.txt/),
     );
     expect(hasTopLevel).to.be.false;
   });
@@ -141,9 +141,7 @@ describe("search", () => {
 
   it("json type without eventSheets/ or layouts/ prefix throws an error", () => {
     expect(() => search(config, { pattern: "name", type: "json" })).to.throw(/path.*required/i);
-    expect(() => search(config, { pattern: "name", type: "json", path: "TestSheet" })).to.throw(
-      /eventSheets|layouts/i
-    );
+    expect(() => search(config, { pattern: "name", type: "json", path: "TestSheet" })).to.throw(/eventSheets|layouts/i);
   });
 
   // ── 8. json type with valid prefix works ──────────────────────────────────
@@ -176,7 +174,7 @@ describe("search", () => {
 
   it("path with '..' in middle segment is rejected", () => {
     expect(() => search(config, { pattern: "test", path: "eventSheets/../../../etc" })).to.throw(
-      /traversal|invalid|path/i
+      /traversal|invalid|path/i,
     );
   });
 

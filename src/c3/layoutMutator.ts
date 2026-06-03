@@ -43,10 +43,7 @@ export interface InstanceOverrides {
  * Delegates to c3source's early-exit `findLayerByName` (stops at the first
  * match rather than walking the whole tree).
  */
-export function findLayer(
-  layout: LayoutJson,
-  layerName: string,
-): LayerJson | null {
+export function findLayer(layout: LayoutJson, layerName: string): LayerJson | null {
   const layers = layout.layers as Layer[] | undefined;
   if (!layers) return null;
   return findLayerByName(layers, layerName) ?? null;
@@ -67,15 +64,11 @@ export function removeLayer(layout: LayoutJson, layerName: string): void {
   }
   const instances = entry.layer.instances;
   if (instances && instances.length > 0) {
-    throw new Error(
-      `removeLayer: layer "${layerName}" has ${instances.length} instance(s) — remove them first`,
-    );
+    throw new Error(`removeLayer: layer "${layerName}" has ${instances.length} instance(s) — remove them first`);
   }
   const subLayers = entry.layer.subLayers;
   if (subLayers && subLayers.length > 0) {
-    throw new Error(
-      `removeLayer: layer "${layerName}" has ${subLayers.length} sublayer(s) — remove them first`,
-    );
+    throw new Error(`removeLayer: layer "${layerName}" has ${subLayers.length} sublayer(s) — remove them first`);
   }
   entry.parent.splice(entry.index, 1);
 }
@@ -97,20 +90,14 @@ export function buildLayer(name: string): LayerJson {
  * named sibling is not found. Otherwise append to the end.
  * Returns the new layer.
  */
-export function addSublayer(
-  parentLayer: LayerJson,
-  name: string,
-  opts?: { after?: string },
-): LayerJson {
+export function addSublayer(parentLayer: LayerJson, name: string, opts?: { after?: string }): LayerJson {
   const newLayer = buildLayer(name);
   const subLayers = parentLayer.subLayers as LayerJson[];
 
   if (opts?.after !== undefined) {
     const idx = subLayers.findIndex((l) => l.name === opts.after);
     if (idx === -1) {
-      throw new Error(
-        `addSublayer: sibling layer "${opts.after}" not found in subLayers`,
-      );
+      throw new Error(`addSublayer: sibling layer "${opts.after}" not found in subLayers`);
     }
     subLayers.splice(idx + 1, 0, newLayer);
   } else {
@@ -126,20 +113,14 @@ export function addSublayer(
  * named layer is not found. Otherwise append to the end.
  * Returns the new layer.
  */
-export function addLayer(
-  layout: LayoutJson,
-  name: string,
-  opts?: { after?: string },
-): LayerJson {
+export function addLayer(layout: LayoutJson, name: string, opts?: { after?: string }): LayerJson {
   const newLayer = buildLayer(name);
   const layers = layout.layers as LayerJson[];
 
   if (opts?.after !== undefined) {
     const idx = layers.findIndex((l) => l.name === opts.after);
     if (idx === -1) {
-      throw new Error(
-        `addLayer: sibling layer "${opts.after}" not found in layout.layers`,
-      );
+      throw new Error(`addLayer: sibling layer "${opts.after}" not found in layout.layers`);
     }
     layers.splice(idx + 1, 0, newLayer);
   } else {
@@ -194,10 +175,7 @@ function findInstanceInLayers(
  * Return instances where sceneGraphData["parent-uid"] matches parentUid.
  * Return empty array if none found.
  */
-export function findChildInstances(
-  layout: LayoutJson,
-  parentUid: number,
-): InstanceJson[] {
+export function findChildInstances(layout: LayoutJson, parentUid: number): InstanceJson[] {
   const results: InstanceJson[] = [];
   const layers = layout.layers as LayerJson[] | undefined;
   if (!layers) return results;
@@ -205,18 +183,12 @@ export function findChildInstances(
   return results;
 }
 
-function collectChildInstances(
-  layers: LayerJson[],
-  parentUid: number,
-  results: InstanceJson[],
-): void {
+function collectChildInstances(layers: LayerJson[], parentUid: number, results: InstanceJson[]): void {
   for (const layer of layers) {
     const instances = layer.instances as InstanceJson[] | undefined;
     if (instances) {
       for (const inst of instances) {
-        const sgd = inst.sceneGraphData as
-          | Record<string, unknown>
-          | undefined;
+        const sgd = inst.sceneGraphData as Record<string, unknown> | undefined;
         if (sgd && sgd["parent-uid"] === parentUid) {
           results.push(inst);
         }
@@ -321,10 +293,7 @@ export function readInstanceWorld(
  * Remap UIDs on a cloned instance using the provided uidMap.
  * Unmapped UIDs pass through unchanged.
  */
-function remapInstanceUids(
-  instance: InstanceJson,
-  uidMap: Map<number, number>,
-): void {
+function remapInstanceUids(instance: InstanceJson, uidMap: Map<number, number>): void {
   const oldUid = instance.uid as number;
   instance.uid = uidMap.get(oldUid) ?? oldUid;
 
@@ -351,10 +320,7 @@ function remapInstanceUids(
 /**
  * Apply property overrides to an instance.
  */
-function applyOverrides(
-  instance: InstanceJson,
-  overrides: InstanceOverrides,
-): void {
+function applyOverrides(instance: InstanceJson, overrides: InstanceOverrides): void {
   const world = instance.world as Record<string, unknown> | undefined;
   if (world) {
     if (overrides.x !== undefined) world.x = overrides.x;
@@ -372,10 +338,7 @@ function applyOverrides(
   if (overrides.tags !== undefined) instance.tags = overrides.tags;
 
   if (overrides.instanceVariables) {
-    const ivars = (instance.instanceVariables ?? {}) as Record<
-      string,
-      unknown
-    >;
+    const ivars = (instance.instanceVariables ?? {}) as Record<string, unknown>;
     Object.assign(ivars, overrides.instanceVariables);
     instance.instanceVariables = ivars;
   }
@@ -400,9 +363,7 @@ export function copyInstance(opts: {
   // 1. Find root instance in source layout
   const found = findInstanceByType(opts.sourceLayout, opts.instanceType);
   if (!found) {
-    throw new Error(
-      `copyInstance: instance of type "${opts.instanceType}" not found in source layout`,
-    );
+    throw new Error(`copyInstance: instance of type "${opts.instanceType}" not found in source layout`);
   }
 
   // 2. Deep-clone root
@@ -436,8 +397,7 @@ export function copyInstance(opts: {
   const assignSid = (instance: InstanceJson): void => {
     const newSid = opts.sidGenerator();
     instance.sid = newSid;
-    const folderItem = (instance as Record<string, unknown>)
-      .instanceFolderItem as Record<string, unknown> | undefined;
+    const folderItem = (instance as Record<string, unknown>).instanceFolderItem as Record<string, unknown> | undefined;
     if (folderItem) {
       folderItem.sid = newSid;
     }
@@ -466,9 +426,7 @@ export function copyInstance(opts: {
   // 9. Place root on targetLayer
   const rootLayer = findLayer(opts.targetLayout, opts.targetLayer);
   if (!rootLayer) {
-    throw new Error(
-      `copyInstance: target layer "${opts.targetLayer}" not found in target layout`,
-    );
+    throw new Error(`copyInstance: target layer "${opts.targetLayer}" not found in target layout`);
   }
   (rootLayer.instances as InstanceJson[]).push(rootClone);
 
@@ -476,9 +434,7 @@ export function copyInstance(opts: {
   const childLayerName = opts.childrenLayer ?? opts.targetLayer;
   const childLayer = findLayer(opts.targetLayout, childLayerName);
   if (!childLayer) {
-    throw new Error(
-      `copyInstance: children layer "${childLayerName}" not found in target layout`,
-    );
+    throw new Error(`copyInstance: children layer "${childLayerName}" not found in target layout`);
   }
   const childInstances = childLayer.instances as InstanceJson[];
   for (const child of childClones) {
@@ -543,25 +499,18 @@ export function buildTemplateBlock(
   const overrides = opts.inheritOverrides ?? {};
 
   // Helper: resolve inheritance for a key (override wins, then fallback).
-  const inherit = (key: string, fallback: boolean): boolean =>
-    key in overrides ? overrides[key] : fallback;
+  const inherit = (key: string, fallback: boolean): boolean => (key in overrides ? overrides[key] : fallback);
 
   // 1. Plugin component
   const properties = (instance.properties ?? {}) as Record<string, unknown>;
-  const pluginState = Object.keys(properties).map((k) => [
-    k,
-    inherit(k, true),
-  ]);
+  const pluginState = Object.keys(properties).map((k) => [k, inherit(k, true)]);
   const pluginComponent = {
     id: "plugin",
     component: [{ key: "plugin", state: pluginState }],
   };
 
   // 2. Instance-variable component
-  const instanceVariables = (instance.instanceVariables ?? {}) as Record<
-    string,
-    unknown
-  >;
+  const instanceVariables = (instance.instanceVariables ?? {}) as Record<string, unknown>;
   const ivState = Object.keys(instanceVariables).map((name) => ({
     iv: name,
     state: inherit(name, true),
@@ -572,54 +521,32 @@ export function buildTemplateBlock(
   };
 
   // 3. Behavior component
-  const behaviors = (instance.behaviors ?? {}) as Record<
-    string,
-    Record<string, unknown>
-  >;
-  const behaviorEntries = Object.entries(behaviors).map(
-    ([behaviorName, behaviorData]) => {
-      const behaviorProps = (behaviorData.properties ?? {}) as Record<
-        string,
-        unknown
-      >;
-      const state = Object.keys(behaviorProps).map((k) => [
-        k,
-        inherit(k, true),
-      ]);
-      return { key: behaviorName, state };
-    },
-  );
+  const behaviors = (instance.behaviors ?? {}) as Record<string, Record<string, unknown>>;
+  const behaviorEntries = Object.entries(behaviors).map(([behaviorName, behaviorData]) => {
+    const behaviorProps = (behaviorData.properties ?? {}) as Record<string, unknown>;
+    const state = Object.keys(behaviorProps).map((k) => [k, inherit(k, true)]);
+    return { key: behaviorName, state };
+  });
   const behaviorComponent = {
     id: "behavior",
     component: behaviorEntries,
   };
 
   // 4. Effect component
-  const effects = (instance.effects ?? {}) as Record<
-    string,
-    Record<string, unknown>
-  >;
-  const effectEntries = Object.entries(effects).map(
-    ([effectName, effectData]) => {
-      const params = (effectData.parameters ?? {}) as Record<string, unknown>;
-      const state: Array<[string, boolean]> = Object.keys(params).map((k) => [
-        k,
-        inherit(k, true),
-      ]);
-      state.push(["<<effect-template-enable>>", inherit("<<effect-template-enable>>", true)]);
-      return { key: effectName, state };
-    },
-  );
+  const effects = (instance.effects ?? {}) as Record<string, Record<string, unknown>>;
+  const effectEntries = Object.entries(effects).map(([effectName, effectData]) => {
+    const params = (effectData.parameters ?? {}) as Record<string, unknown>;
+    const state: Array<[string, boolean]> = Object.keys(params).map((k) => [k, inherit(k, true)]);
+    state.push(["<<effect-template-enable>>", inherit("<<effect-template-enable>>", true)]);
+    return { key: effectName, state };
+  });
   const effectComponent = {
     id: "effect",
     component: effectEntries,
   };
 
   // 5. World-instance component
-  const worldState = WORLD_INSTANCE_KEYS.map((k) => [
-    k,
-    inherit(k, WORLD_INSTANCE_DEFAULTS[k]),
-  ]);
+  const worldState = WORLD_INSTANCE_KEYS.map((k) => [k, inherit(k, WORLD_INSTANCE_DEFAULTS[k])]);
   const worldComponent = {
     id: "world-instance",
     component: [{ key: "world-instance", state: worldState }],
@@ -628,18 +555,11 @@ export function buildTemplateBlock(
   return {
     mode,
     templateName: mode === "template" ? (opts.templateName ?? "") : "",
-    sourceTemplateName:
-      mode === "replica" ? (opts.sourceTemplateName ?? "") : "",
+    sourceTemplateName: mode === "replica" ? (opts.sourceTemplateName ?? "") : "",
     replicaHierarchyInSyncWithTemplate: mode === "replica",
     templatePropagateHierarchyChanges: true,
     replicaIgnoreTemplateHierarchyChanges: false,
-    components: [
-      pluginComponent,
-      ivComponent,
-      behaviorComponent,
-      effectComponent,
-      worldComponent,
-    ],
+    components: [pluginComponent, ivComponent, behaviorComponent, effectComponent, worldComponent],
     replicasUIDs: null,
   };
 }
@@ -660,9 +580,7 @@ export function templatize(
 ): void {
   const found = findInstanceByType(layout, typeName);
   if (!found) {
-    throw new Error(
-      `templatize: instance of type "${typeName}" not found in layout`,
-    );
+    throw new Error(`templatize: instance of type "${typeName}" not found in layout`);
   }
   found.instance.template = buildTemplateBlock(found.instance, "template", {
     templateName,
@@ -687,9 +605,7 @@ export function replicify(
 ): void {
   const found = findInstanceByType(layout, typeName);
   if (!found) {
-    throw new Error(
-      `replicify: instance of type "${typeName}" not found in layout`,
-    );
+    throw new Error(`replicify: instance of type "${typeName}" not found in layout`);
   }
   found.instance.template = buildTemplateBlock(found.instance, "replica", {
     sourceTemplateName,
@@ -705,10 +621,7 @@ export function replicify(
  * Remove an instance from a layer's instances array. Searches recursively
  * through sublayers. Returns true if removed, false if not found.
  */
-function removeInstanceFromLayers(
-  layers: LayerJson[],
-  instance: InstanceJson,
-): boolean {
+function removeInstanceFromLayers(layers: LayerJson[], instance: InstanceJson): boolean {
   for (const layer of layers) {
     const instances = layer.instances as InstanceJson[] | undefined;
     if (instances) {
@@ -735,9 +648,7 @@ export function removeInstance(layout: LayoutJson, typeName: string, layer?: str
   // 1. Find root instance
   const found = findInstanceByType(layout, typeName);
   if (!found) {
-    throw new Error(
-      `removeInstance: instance of type "${typeName}" not found in layout`,
-    );
+    throw new Error(`removeInstance: instance of type "${typeName}" not found in layout`);
   }
 
   // 1b. If layer filter specified, verify the instance is on that layer
@@ -746,9 +657,7 @@ export function removeInstance(layout: LayoutJson, typeName: string, layer?: str
       throw new Error(`removeInstance: layer "${layer}" not found in layout`);
     }
     if (found.layerName !== layer) {
-      throw new Error(
-        `removeInstance: instance of type "${typeName}" is not on layer "${layer}"`,
-      );
+      throw new Error(`removeInstance: instance of type "${typeName}" is not on layer "${layer}"`);
     }
   }
 
@@ -795,9 +704,7 @@ export function moveInstance(opts: {
   // 1. Find and save references to the original instance + children
   const found = findInstanceByType(opts.layout, opts.typeName);
   if (!found) {
-    throw new Error(
-      `moveInstance: instance of type "${opts.typeName}" not found in layout`,
-    );
+    throw new Error(`moveInstance: instance of type "${opts.typeName}" not found in layout`);
   }
   const originalRoot = found.instance;
   const originalUid = originalRoot.uid as number;
@@ -835,19 +742,13 @@ export function moveInstance(opts: {
  * Find an instance that has a template block with the given templateName.
  * Searches all layers recursively.
  */
-function findTemplateInstance(
-  layout: LayoutJson,
-  templateName: string,
-): InstanceJson | null {
+function findTemplateInstance(layout: LayoutJson, templateName: string): InstanceJson | null {
   const layers = layout.layers as LayerJson[] | undefined;
   if (!layers) return null;
   return findTemplateInLayers(layers, templateName);
 }
 
-function findTemplateInLayers(
-  layers: LayerJson[],
-  templateName: string,
-): InstanceJson | null {
+function findTemplateInLayers(layers: LayerJson[], templateName: string): InstanceJson | null {
   for (const layer of layers) {
     const instances = layer.instances as InstanceJson[] | undefined;
     if (instances) {
@@ -888,9 +789,7 @@ export function addReplica(opts: {
   // that has a template block with the matching templateName
   const templateInstance = findTemplateInstance(opts.sourceLayout, opts.sourceTemplateName);
   if (!templateInstance) {
-    throw new Error(
-      `addReplica: template "${opts.sourceTemplateName}" not found in source layout`,
-    );
+    throw new Error(`addReplica: template "${opts.sourceTemplateName}" not found in source layout`);
   }
 
   const instanceType = templateInstance.type as string;
@@ -898,9 +797,7 @@ export function addReplica(opts: {
   // Record position before copy so we can find the root clone afterward
   const targetLayerObj = findLayer(opts.targetLayout, opts.targetLayer);
   if (!targetLayerObj) {
-    throw new Error(
-      `addReplica: target layer "${opts.targetLayer}" not found in target layout`,
-    );
+    throw new Error(`addReplica: target layer "${opts.targetLayer}" not found in target layout`);
   }
   const instances = targetLayerObj.instances as InstanceJson[];
   const rootIndex = instances.length;
@@ -936,16 +833,10 @@ export function addReplica(opts: {
 /**
  * Rename a layer in a layout. Searches recursively through layers and sublayers.
  */
-export function renameLayer(
-  layout: LayoutJson,
-  currentName: string,
-  newName: string,
-): void {
+export function renameLayer(layout: LayoutJson, currentName: string, newName: string): void {
   const layer = findLayer(layout, currentName);
   if (!layer) {
-    throw new Error(
-      `renameLayer: layer "${currentName}" not found in layout`,
-    );
+    throw new Error(`renameLayer: layer "${currentName}" not found in layout`);
   }
   layer.name = newName;
 }
