@@ -1,3 +1,7 @@
 # Event sheet 1
 # Source: eventSheets/Event sheet 1.json
 
+global var score: number = 0
+
+group "GameLoop" (active)
+  var temp: number = 0

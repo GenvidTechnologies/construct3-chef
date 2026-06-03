@@ -45,14 +45,22 @@ export interface DslResult {
   index: DslIndexEntry[];
 }
 
-export function formatVariableDescription(event: EventSheetEvent & { eventType: "variable" }): string {
+export function formatVariableDescription(
+  event: EventSheetEvent & { eventType: "variable" },
+  scope: "global" | "local" = "local",
+): string {
   const keyword = event.isConstant ? "const" : event.isStatic ? "static" : "var";
   const value = normalizeLineEndings(String(event.initialValue));
-  return `${keyword} ${event.name}: ${event.type} = ${value}`;
+  const prefix = scope === "global" ? "global " : "";
+  return `${prefix}${keyword} ${event.name}: ${event.type} = ${value}`;
 }
 
-function formatVariable(event: EventSheetEvent & { eventType: "variable" }, indent: string): string {
-  return `${indent}${formatVariableDescription(event)}`;
+function formatVariable(
+  event: EventSheetEvent & { eventType: "variable" },
+  indent: string,
+  scope: "global" | "local" = "local",
+): string {
+  return `${indent}${formatVariableDescription(event, scope)}`;
 }
 
 /**
@@ -74,6 +82,7 @@ export function renderNodeSelf(
   indent: string,
   sheetName: string,
   eventNumber: number,
+  scope: "global" | "local" = "local",
 ): string[] {
   switch (event.eventType) {
     case "include":
@@ -85,7 +94,7 @@ export function renderNodeSelf(
     }
 
     case "variable":
-      return [formatVariable(event, indent)];
+      return [formatVariable(event, indent, scope)];
 
     case "group": {
       const activeLabel = event.isActiveOnStart ? "active" : "inactive";
@@ -201,14 +210,18 @@ function buildIndexEntry(
       };
     }
 
-    case "variable":
+    case "variable": {
+      // visitEvents paths: root events have no ".children" segment (e.g. "events[0]"),
+      // nested events do (e.g. "events[0].children[1]").
+      const varScope = jsonPath.includes(".children") ? "local" : "global";
       return {
         eventNumber: null,
         jsonPath,
         dslLineNumber,
-        description: formatVariableDescription(event),
+        description: formatVariableDescription(event, varScope),
         sid: event.sid,
       };
+    }
 
     case "group":
       return {
@@ -291,8 +304,10 @@ function renderEventsInto(
     const dslLineNumber = baseLine + output.length;
     const eventNumber = ctx.eventNumber;
 
-    // Render this node's own lines (no children, no blanks)
-    output.push(...renderNodeSelf(event, "  ".repeat(ctx.depth), sheetName, eventNumber ?? 0));
+    // Render this node's own lines (no children, no blanks).
+    // Variables at depth 0 are event-sheet root (global scope); nested are local.
+    const varScope = ctx.depth === 0 ? "global" : "local";
+    output.push(...renderNodeSelf(event, "  ".repeat(ctx.depth), sheetName, eventNumber ?? 0, varScope));
 
     // Build index entry
     index.push(buildIndexEntry(event, ctx.jsonPath, dslLineNumber, eventNumber, sheetName));
@@ -501,14 +516,18 @@ export function buildShallowSidMap(sheet: EventSheet): SidMapEntry[] {
         break;
       }
 
-      case "variable":
+      case "variable": {
+        // visitEvents paths: root events have no ".children" segment (e.g. "events[0]"),
+        // nested events do (e.g. "events[0].children[1]").
+        const varScope = jsonPath.includes(".children") ? "local" : "global";
         entries.push({
           jsonPath,
           sid: event.sid,
-          description: formatVariableDescription(event),
+          description: formatVariableDescription(event, varScope),
           searchText: "",
         });
         break;
+      }
 
       case "group":
         entries.push({
