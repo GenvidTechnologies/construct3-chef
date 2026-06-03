@@ -1,7 +1,7 @@
 import { writeFileSync, readdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import type { Logger } from "@genvid/mcp-utils";
-import { isEditorLocalPath, readProjectManifest } from "@genvid/c3source";
+import { readProjectManifest, detectImageDrift, detectManifestDrift, type DriftEntry } from "@genvid/c3source";
 import { mintUniqueSid } from "./sidUtils.js";
 
 // ---------------------------------------------------------------------------
@@ -184,74 +184,6 @@ export function readDiskDir(
 	return { files, dirs };
 }
 
-export function readDiskDirNames(dirPath: string, ignoreUistate: boolean): DiskTree {
-	if (!existsSync(dirPath)) {
-		return { files: [], dirs: [] };
-	}
-
-	const entries = readdirSync(dirPath, { withFileTypes: true });
-	const files: string[] = [];
-	const dirs: string[] = [];
-
-	for (const entry of entries) {
-		if (entry.isDirectory()) {
-			// Editor-local membership (the `uistate/` subfolder, *.uistate.json files)
-			// is owned by c3source's isEditorLocalPath / EDITOR_LOCAL_EXCLUSIONS.
-			if (ignoreUistate && isEditorLocalPath(entry.name)) continue;
-			dirs.push(entry.name);
-		} else if (entry.isFile() && entry.name.endsWith(".json")) {
-			if (ignoreUistate && isEditorLocalPath(entry.name)) continue;
-			// Strip .json extension to get the name
-			files.push(entry.name.replace(/\.json$/, ""));
-		}
-	}
-
-	return { files, dirs };
-}
-
-// ---------------------------------------------------------------------------
-// Nameless subfolder handling
-//
-// Some sections (e.g., timelines) have subfolders without a `name` field in
-// project.c3proj.  We cannot sync these because there is no name to match
-// against a disk directory.  To avoid falsely detecting the corresponding
-// disk directory as "new", we collect the set of disk directory names that
-// are claimed by nameless subfolders.  We do this by matching: for each
-// nameless subfolder, find the disk directory whose item names match.
-// ---------------------------------------------------------------------------
-
-function findNamelessDiskDirs(
-	folder: NameFolder,
-	diskPath: string,
-	ignoreUistate: boolean,
-): Set<string> {
-	const claimed = new Set<string>();
-
-	const namelessSubs = folder.subfolders.filter((sub) => sub.name === undefined);
-	if (namelessSubs.length === 0) return claimed;
-
-	// Read disk directories
-	const disk = readDiskDirNames(diskPath, ignoreUistate);
-
-	// For each nameless subfolder, try to match a disk directory by comparing items
-	for (const nameless of namelessSubs) {
-		const namelessItems = new Set(nameless.items);
-		for (const dirName of disk.dirs) {
-			// Read disk dir contents
-			const subDisk = readDiskDirNames(path.join(diskPath, dirName), ignoreUistate);
-			const diskItems = new Set(subDisk.files);
-
-			// Check if all items in the nameless subfolder exist on disk
-			if (namelessItems.size > 0 && [...namelessItems].every((item) => diskItems.has(item))) {
-				claimed.add(dirName);
-				break; // Each nameless subfolder maps to at most one disk dir
-			}
-		}
-	}
-
-	return claimed;
-}
-
 // ---------------------------------------------------------------------------
 // File-based section sync
 // ---------------------------------------------------------------------------
@@ -393,137 +325,122 @@ export function syncFileFolder(
 }
 
 // ---------------------------------------------------------------------------
-// Name-based section sync
+// DriftEntry-driven name-section apply engine
 // ---------------------------------------------------------------------------
 
-export function syncNameFolder(
+/**
+ * Navigate from the section root to the subfolder described by `segments`.
+ * Returns the target NameFolder, or undefined if a segment is missing.
+ */
+function navigateFolder(folder: NameFolder, segments: string[]): NameFolder | undefined {
+	let cur: NameFolder = folder;
+	for (const seg of segments) {
+		const found = cur.subfolders.find((s) => s.name === seg);
+		if (!found) return undefined;
+		cur = found;
+	}
+	return cur;
+}
+
+/**
+ * Navigate from the section root to the subfolder described by `segments`,
+ * creating any missing segments along the way.
+ */
+function ensureFolder(folder: NameFolder, segments: string[]): NameFolder {
+	let cur: NameFolder = folder;
+	for (const seg of segments) {
+		let found = cur.subfolders.find((s) => s.name === seg);
+		if (!found) {
+			found = { items: [], subfolders: [], name: seg };
+			cur.subfolders.push(found);
+		}
+		cur = found;
+	}
+	return cur;
+}
+
+function itemDisplay(pathSegs: string[], name: string): string {
+	return pathSegs.length ? `${pathSegs.join("/")}/${name}` : name;
+}
+
+function folderDisplay(pathSegs: string[]): string {
+	return `${pathSegs.join("/")}/`;
+}
+
+/**
+ * Apply a list of DriftEntry records to a NameFolder section.
+ * Handles missing (remove item), untracked (add item), moved (remove+add),
+ * folder-missing (remove subfolder), folder-untracked (add subfolder).
+ * dangling-ref entries are silently ignored (name sections don't produce them).
+ */
+export function applyNameDrift(
 	folder: NameFolder,
-	diskPath: string,
-	relativePath: string,
-	config: NameSectionConfig,
+	entries: DriftEntry[],
+	sectionKey: string,
 	changes: Change[],
 	dryRun: boolean,
-	namelessDiskDirs?: Set<string>,
 ): void {
-	const disk = readDiskDirNames(diskPath, config.ignoreUistate);
-
-	// On the first call (root level), compute which disk dirs are claimed by nameless subfolders
-	if (namelessDiskDirs === undefined) {
-		namelessDiskDirs = findNamelessDiskDirs(folder, diskPath, config.ignoreUistate);
-	}
-
-	// Build lookup of existing items
-	const existingItemSet = new Set(folder.items);
-
-	// Build lookup of existing subfolders by name
-	const existingSubfolderMap = new Map<string, NameFolder>();
-	for (const sub of folder.subfolders) {
-		if (sub.name !== undefined) {
-			existingSubfolderMap.set(sub.name, sub);
-		}
-	}
-
-	// Items on disk but not in project -> ADD
-	const toAdd: string[] = [];
-	for (const name of disk.files) {
-		if (!existingItemSet.has(name)) {
-			toAdd.push(name);
-		}
-	}
-
-	// Items in project but not on disk -> REMOVE
-	const diskFileSet = new Set(disk.files);
-	const toRemove: string[] = [];
-	for (const name of folder.items) {
-		if (!diskFileSet.has(name)) {
-			toRemove.push(name);
-		}
-	}
-
-	// Apply item removals
-	if (toRemove.length > 0) {
-		for (const name of toRemove) {
-			const display = relativePath ? `${relativePath}/${name}` : name;
-			changes.push({ section: config.key, action: "-", detail: display });
-		}
-		if (!dryRun) {
-			const removeSet = new Set(toRemove);
-			folder.items = folder.items.filter((item) => !removeSet.has(item));
-		}
-	}
-
-	// Apply item additions
-	for (const name of toAdd) {
-		const display = relativePath ? `${relativePath}/${name}` : name;
-		changes.push({ section: config.key, action: "+", detail: display });
-		if (!dryRun) {
-			folder.items.push(name);
-		}
-	}
-
-	// Folders on disk but not in project -> ADD (skip nameless-claimed dirs)
-	const diskDirSet = new Set(disk.dirs);
-	const existingNamedSubfolderNames = new Set<string>();
-	for (const sub of folder.subfolders) {
-		if (sub.name !== undefined) {
-			existingNamedSubfolderNames.add(sub.name);
-		}
-	}
-
-	for (const dirName of disk.dirs) {
-		if (namelessDiskDirs.has(dirName)) continue; // Claimed by a nameless subfolder
-		if (!existingNamedSubfolderNames.has(dirName)) {
-			const display = relativePath ? `${relativePath}/${dirName}/` : `${dirName}/`;
-			changes.push({ section: config.key, action: "+", detail: `${display} (new folder)` });
-			if (!dryRun) {
-				const newSubfolder: NameFolder = { items: [], subfolders: [], name: dirName };
-				folder.subfolders.push(newSubfolder);
-				existingSubfolderMap.set(dirName, newSubfolder);
+	for (const entry of entries) {
+		switch (entry.kind) {
+			case "untracked": {
+				// On disk, not in manifest → ADD
+				const target = dryRun ? null : ensureFolder(folder, entry.diskPath ?? []);
+				if (!dryRun && target) {
+					target.items.push(entry.name);
+				}
+				changes.push({ section: sectionKey, action: "+", detail: itemDisplay(entry.diskPath ?? [], entry.name) });
+				break;
 			}
-		}
-	}
+			case "missing": {
+				// In manifest, not on disk → REMOVE
+				const target = navigateFolder(folder, entry.manifestPath ?? []);
+				if (!target) break; // shouldn't happen; skip gracefully
+				if (!dryRun) {
+					target.items = target.items.filter((n) => n !== entry.name);
+				}
+				changes.push({ section: sectionKey, action: "-", detail: itemDisplay(entry.manifestPath ?? [], entry.name) });
+				break;
+			}
+			case "moved": {
+				// Same name, different path → decompose as remove@manifestPath + add@diskPath
+				const removeTarget = navigateFolder(folder, entry.manifestPath ?? []);
+				if (!dryRun && removeTarget) {
+					removeTarget.items = removeTarget.items.filter((n) => n !== entry.name);
+				}
+				changes.push({ section: sectionKey, action: "-", detail: itemDisplay(entry.manifestPath ?? [], entry.name) });
 
-	// Folders in project (with name) but not on disk -> REMOVE
-	// Skip subfolders without a name field (timelines edge case)
-	const subfoldersToRemove: string[] = [];
-	for (const sub of folder.subfolders) {
-		if (sub.name !== undefined && !diskDirSet.has(sub.name)) {
-			subfoldersToRemove.push(sub.name);
-			const display = relativePath ? `${relativePath}/${sub.name}/` : `${sub.name}/`;
-			changes.push({ section: config.key, action: "-", detail: display });
-		}
-	}
-	if (subfoldersToRemove.length > 0 && !dryRun) {
-		const removeSet = new Set(subfoldersToRemove);
-		folder.subfolders = folder.subfolders.filter((sub) => sub.name === undefined || !removeSet.has(sub.name));
-	}
-
-	// Recurse into existing and newly added subfolders (only those with names, skip nameless-claimed)
-	for (const dirName of disk.dirs) {
-		if (namelessDiskDirs.has(dirName)) continue; // Skip nameless-claimed dirs
-		const sub = dryRun ? existingSubfolderMap.get(dirName) : folder.subfolders.find((s) => s.name === dirName);
-		if (!sub) {
-			// In dry-run mode for new folders
-			const tempSub: NameFolder = { items: [], subfolders: [], name: dirName };
-			syncNameFolder(
-				tempSub,
-				path.join(diskPath, dirName),
-				relativePath ? `${relativePath}/${dirName}` : dirName,
-				config,
-				changes,
-				dryRun,
-				new Set(), // No nameless dirs in sub-levels
-			);
-		} else {
-			syncNameFolder(
-				sub,
-				path.join(diskPath, dirName),
-				relativePath ? `${relativePath}/${dirName}` : dirName,
-				config,
-				changes,
-				dryRun,
-				new Set(), // No nameless dirs in sub-levels
-			);
+				const addTarget = dryRun ? null : ensureFolder(folder, entry.diskPath ?? []);
+				if (!dryRun && addTarget) {
+					addTarget.items.push(entry.name);
+				}
+				changes.push({ section: sectionKey, action: "+", detail: itemDisplay(entry.diskPath ?? [], entry.name) });
+				break;
+			}
+			case "folder-untracked": {
+				// Disk subdir with no manifest subfolder → ADD
+				// diskPath includes the new folder name as last segment; ensureFolder creates it
+				if (!dryRun) {
+					ensureFolder(folder, entry.diskPath ?? []);
+				}
+				changes.push({ section: sectionKey, action: "+", detail: `${folderDisplay(entry.diskPath ?? [])} (new folder)` });
+				break;
+			}
+			case "folder-missing": {
+				// Manifest subfolder with no disk dir → REMOVE
+				const pathSegs = entry.manifestPath ?? [];
+				const parentSegs = pathSegs.slice(0, -1);
+				const folderName = pathSegs.at(-1);
+				if (!folderName) break; // shouldn't happen
+				const parent = navigateFolder(folder, parentSegs);
+				if (!dryRun && parent) {
+					parent.subfolders = parent.subfolders.filter((s) => s.name !== folderName);
+				}
+				changes.push({ section: sectionKey, action: "-", detail: folderDisplay(pathSegs) });
+				break;
+			}
+			case "dangling-ref":
+				// Name sections don't produce this; ignore.
+				break;
 		}
 	}
 }
@@ -576,15 +493,17 @@ export function runSync(
 		syncFileFolder(folder, diskPath, "", config, existingSids, allChanges, dryRun);
 	}
 
-	// Sync name-based sections
-	for (const config of nameSections) {
-		const folder: NameFolder = project[config.key];
+	// Sync name-based sections via detectManifestDrift + applyNameDrift
+	const nameKeys = new Set(nameSections.map((c) => c.key));
+	const drift = detectManifestDrift(rootDir, project);
+	for (const s of drift.sections) {
+		if (!nameKeys.has(s.section)) continue; // exclude rootFileFolders.*, models3d, containers, images
+		const folder: NameFolder = project[s.section];
 		if (!folder) {
-			log(`Warning: ${config.key} not found in project.c3proj`);
+			log(`Warning: ${s.section} not found in project.c3proj`);
 			continue;
 		}
-		const diskPath = path.join(rootDir, config.diskDir);
-		syncNameFolder(folder, diskPath, "", config, allChanges, dryRun);
+		applyNameDrift(folder, s.entries, s.section, allChanges, dryRun);
 	}
 
 	// Print results
@@ -624,4 +543,32 @@ export function runSync(
 	}
 
 	return { changes: allChanges, clean: allChanges.length === 0, sections };
+}
+
+// ---------------------------------------------------------------------------
+// Image drift (detection-only report)
+// ---------------------------------------------------------------------------
+
+/**
+ * Report image drift (detection-only). Images are referenced inside objectType
+ * JSON, not declared as manifest file entries, so this NEVER mutates and is NOT
+ * a sync-project write-back target — it surfaces drift for visibility only.
+ * Emits `[images]` lines via `log`; a no-op when there's no images/ dir.
+ */
+export function reportImageDrift(rootDir: string, log: Logger = console.log): void {
+	const drift = detectImageDrift(rootDir);
+	if (!drift || drift.entries.length === 0) {
+		log(`[images]`.padEnd(16) + "(no drift)");
+		return;
+	}
+	for (const e of drift.entries) {
+		// missing = expected by an object type but absent on disk; untracked = on disk, unreferenced.
+		const label =
+			e.kind === "missing"
+				? "missing (expected, not on disk)"
+				: e.kind === "untracked"
+					? "untracked (on disk, unreferenced)"
+					: e.kind;
+		log(`[images]`.padEnd(16) + `! ${e.name} — ${label}`);
+	}
 }

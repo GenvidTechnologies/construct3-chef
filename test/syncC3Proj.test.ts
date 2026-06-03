@@ -1,24 +1,22 @@
 import { describe, it, beforeEach, afterEach } from "mocha";
 import { assert } from "chai";
 import tmp from "tmp";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, cpSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { detectManifestDrift } from "@genvid/c3source";
+import { detectManifestDrift, detectImageDrift, type DriftEntry } from "@genvid/c3source";
 import {
   inferMimeType,
   collectAllSids,
   generateSid,
   readDiskDir,
-  readDiskDirNames,
   syncFileFolder,
-  syncNameFolder,
+  applyNameDrift,
   runSync,
   type FileItem,
   type FileFolder,
   type NameFolder,
   type FileSectionConfig,
-  type NameSectionConfig,
   type Change,
 } from "../src/c3/projectSync.js";
 
@@ -178,68 +176,6 @@ describe("syncC3Proj", () => {
     });
   });
 
-  describe("readDiskDirNames", () => {
-    it("reads .json files as names without extension", () => {
-      const dir = createTmpDir();
-      touchFile(dir, "EventA.json");
-      touchFile(dir, "EventB.json");
-      const result = readDiskDirNames(dir, false);
-      assert.deepEqual(result.files.sort(), ["EventA", "EventB"]);
-    });
-
-    it("ignores .uistate.json when configured", () => {
-      const dir = createTmpDir();
-      touchFile(dir, "Layout1.json");
-      touchFile(dir, "Layout1.uistate.json");
-      const result = readDiskDirNames(dir, true);
-      assert.deepEqual(result.files, ["Layout1"]);
-    });
-
-    it("includes .uistate.json when not ignoring", () => {
-      const dir = createTmpDir();
-      touchFile(dir, "Layout1.json");
-      touchFile(dir, "Layout1.uistate.json");
-      const result = readDiskDirNames(dir, false);
-      assert.equal(result.files.length, 2);
-    });
-
-    it("reads subdirectories", () => {
-      const dir = createTmpDir();
-      mkdirSync(path.join(dir, "SubFolder"));
-      const result = readDiskDirNames(dir, false);
-      assert.deepEqual(result.dirs, ["SubFolder"]);
-    });
-
-    it("ignores the uistate directory when configured", () => {
-      const dir = createTmpDir();
-      mkdirSync(path.join(dir, "SubFolder"));
-      mkdirSync(path.join(dir, "uistate"));
-      const result = readDiskDirNames(dir, true);
-      assert.deepEqual(result.dirs, ["SubFolder"]);
-    });
-
-    it("includes the uistate directory when not ignoring", () => {
-      const dir = createTmpDir();
-      mkdirSync(path.join(dir, "uistate"));
-      const result = readDiskDirNames(dir, false);
-      assert.deepEqual(result.dirs, ["uistate"]);
-    });
-
-    it("excludes both editor-local forms (uistate dir + *.uistate.json) in one call", () => {
-      // Parity guard: the dir-form and the file-suffix form are both editor-local
-      // and must be excluded together when ignoreUistate is true. This pins the
-      // behavior across the swap to c3source's isEditorLocalPath.
-      const dir = createTmpDir();
-      touchFile(dir, "foo.json");
-      touchFile(dir, "foo.uistate.json");
-      mkdirSync(path.join(dir, "uistate"));
-      mkdirSync(path.join(dir, "bar"));
-      const result = readDiskDirNames(dir, true);
-      assert.deepEqual(result.files, ["foo"]);
-      assert.deepEqual(result.dirs, ["bar"]);
-    });
-  });
-
   describe("runSync error contract", () => {
     it("throws 'Could not read' when project.c3proj is missing", () => {
       const dir = createTmpDir();
@@ -266,15 +202,53 @@ describe("syncC3Proj", () => {
     // sections it models the same way we do (the name-folder sections). The file
     // sections (rootFileFolders.*) are deliberately excluded: c3source walks them
     // shallowly and unfiltered, so scripts/*.ts + tsconfig.json would read as drift.
-    const NAME_FOLDER_SECTIONS = new Set(["layouts", "eventSheets", "objectTypes", "timelines", "flowcharts"]);
+    const NAME_FOLDER_SECTIONS = new Set([
+      "layouts",
+      "eventSheets",
+      "objectTypes",
+      "timelines",
+      "flowcharts",
+      "families",
+    ]);
 
     it("reports no drift on the name-folder sections", () => {
       const drift = detectManifestDrift(sampleProjectDir);
       const nameSections = drift.sections.filter((s) => NAME_FOLDER_SECTIONS.has(s.section));
       for (const s of nameSections) {
-        assert.deepEqual(s.missingOnDisk, [], `${s.section}: unexpected missingOnDisk`);
-        assert.deepEqual(s.untracked, [], `${s.section}: unexpected untracked`);
+        assert.deepEqual(s.entries, [], `${s.section}: unexpected drift`);
       }
+    });
+
+    it("covers objectTypes-as-directories without drift", () => {
+      // The fixture stores objectTypes in named subfolders (global/images/tiles).
+      // Confirm detectManifestDrift resolves that layout without reporting drift.
+      const drift = detectManifestDrift(sampleProjectDir);
+      const ot = drift.sections.find((s) => s.section === "objectTypes");
+      // If the section is in-sync it may be omitted entirely, or present with no entries.
+      assert.deepEqual(ot?.entries ?? [], [], "objectTypes: unexpected drift");
+    });
+  });
+
+  describe("oracle — detectImageDrift on sample-project", () => {
+    it("returns the images section with no drift entries", () => {
+      const drift = detectImageDrift(sampleProjectDir);
+      assert.equal(drift?.section, "images");
+      assert.deepEqual(drift?.entries ?? [], [], "images: unexpected drift");
+    });
+  });
+
+  describe("timelines nameless subfolder", () => {
+    // The fixture's `timelines` manifest section has items ["Timeline 1"] plus one
+    // NAMELESS subfolder ({items:[], subfolders:[]}) with no disk counterpart, while
+    // disk has only `Timeline 1.json` (+ an editor-local `.uistate.json`). runSync must
+    // report ZERO changes: it must not try to remove the nameless subfolder (name ===
+    // undefined) nor mistake the editor-local file for drift. This pins the behavior
+    // the `findNamelessDiskDirs` heuristic provides today, so the upcoming swap to
+    // c3source `walkDiskNameTree` (and the later DriftEntry apply engine) must preserve it.
+    it("reports no changes syncing the fixture timelines section", () => {
+      const result = runSync(sampleProjectDir, true, () => {}, "timelines");
+      assert.deepEqual(result.changes, [], "timelines: unexpected changes");
+      assert.equal(result.clean, true);
     });
   });
 
@@ -454,114 +428,159 @@ describe("syncC3Proj", () => {
     });
   });
 
-  describe("syncNameFolder", () => {
-    it("detects new items on disk", () => {
-      const dir = createTmpDir();
-      touchFile(dir, "NewEvent.json");
-
+  describe("applyNameDrift", () => {
+    it("untracked item at root: adds it and records a '+' change", () => {
       const folder: NameFolder = { items: [], subfolders: [] };
+      const entries: DriftEntry[] = [{ kind: "untracked", name: "NewEvent", diskPath: [] }];
       const changes: Change[] = [];
-      const config: NameSectionConfig = { key: "eventSheets", diskDir: dir, ignoreUistate: true };
 
-      syncNameFolder(folder, dir, "", config, changes, false);
+      applyNameDrift(folder, entries, "eventSheets", changes, false);
 
+      assert.deepEqual(folder.items, ["NewEvent"]);
       assert.equal(changes.length, 1);
       assert.equal(changes[0].action, "+");
-      assert.include(changes[0].detail, "NewEvent");
-      assert.deepEqual(folder.items, ["NewEvent"]);
+      assert.equal(changes[0].detail, "NewEvent");
     });
 
-    it("detects removed items", () => {
-      const dir = createTmpDir();
-      // Empty dir
-
+    it("missing item at root: removes it and records a '-' change", () => {
       const folder: NameFolder = { items: ["OldEvent"], subfolders: [] };
+      const entries: DriftEntry[] = [{ kind: "missing", name: "OldEvent", manifestPath: [] }];
       const changes: Change[] = [];
-      const config: NameSectionConfig = { key: "eventSheets", diskDir: dir, ignoreUistate: true };
 
-      syncNameFolder(folder, dir, "", config, changes, false);
+      applyNameDrift(folder, entries, "eventSheets", changes, false);
 
+      assert.deepEqual(folder.items, []);
       assert.equal(changes.length, 1);
       assert.equal(changes[0].action, "-");
-      assert.include(changes[0].detail, "OldEvent");
-      assert.deepEqual(folder.items, []);
+      assert.equal(changes[0].detail, "OldEvent");
     });
 
-    it("preserves existing items that match disk", () => {
-      const dir = createTmpDir();
-      touchFile(dir, "Existing.json");
-
-      const folder: NameFolder = { items: ["Existing"], subfolders: [] };
-      const changes: Change[] = [];
-      const config: NameSectionConfig = { key: "eventSheets", diskDir: dir, ignoreUistate: true };
-
-      syncNameFolder(folder, dir, "", config, changes, false);
-
-      assert.equal(changes.length, 0);
-      assert.deepEqual(folder.items, ["Existing"]);
-    });
-
-    it("ignores .uistate.json files when configured", () => {
-      const dir = createTmpDir();
-      touchFile(dir, "Layout1.json");
-      touchFile(dir, "Layout1.uistate.json");
-
+    it("folder-untracked + untracked item inside: creates subfolder with item and two '+' changes", () => {
       const folder: NameFolder = { items: [], subfolders: [] };
+      const entries: DriftEntry[] = [
+        { kind: "folder-untracked", name: "Login", diskPath: ["Login"] },
+        { kind: "untracked", name: "LoginEvents", diskPath: ["Login"] },
+      ];
       const changes: Change[] = [];
-      const config: NameSectionConfig = { key: "layouts", diskDir: dir, ignoreUistate: true };
 
-      syncNameFolder(folder, dir, "", config, changes, false);
+      applyNameDrift(folder, entries, "eventSheets", changes, false);
 
-      assert.equal(changes.length, 1);
-      assert.deepEqual(folder.items, ["Layout1"]);
-    });
-
-    it("ignores the uistate subfolder (editor state) when configured", () => {
-      const dir = createTmpDir();
-      // Recent C3 editors persist instances-bar UI state under layouts/uistate/.
-      mkdirSync(path.join(dir, "uistate", "Level1"), { recursive: true });
-      writeFileSync(path.join(dir, "uistate", "Level1", "Bar.instancesBar.json"), "");
-
-      const folder: NameFolder = { items: [], subfolders: [] };
-      const changes: Change[] = [];
-      const config: NameSectionConfig = { key: "layouts", diskDir: dir, ignoreUistate: true };
-
-      syncNameFolder(folder, dir, "", config, changes, false);
-
-      assert.deepEqual(changes, []);
-      assert.deepEqual(folder.subfolders, []);
-    });
-
-    it("detects new subfolders on disk", () => {
-      const dir = createTmpDir();
-      mkdirSync(path.join(dir, "Login"));
-      touchFile(dir, "Login", "LoginEvents.json");
-
-      const folder: NameFolder = { items: [], subfolders: [] };
-      const changes: Change[] = [];
-      const config: NameSectionConfig = { key: "eventSheets", diskDir: dir, ignoreUistate: true };
-
-      syncNameFolder(folder, dir, "", config, changes, false);
-
-      assert.isTrue(changes.some((c) => c.action === "+" && c.detail.includes("Login/")));
-      assert.isTrue(changes.some((c) => c.action === "+" && c.detail.includes("LoginEvents")));
       assert.equal(folder.subfolders.length, 1);
       assert.equal(folder.subfolders[0].name, "Login");
+      assert.deepEqual(folder.subfolders[0].items, ["LoginEvents"]);
+      assert.equal(changes.length, 2);
+      assert.isTrue(changes.some((c) => c.action === "+" && c.detail === "Login/ (new folder)"));
+      assert.isTrue(changes.some((c) => c.action === "+" && c.detail === "Login/LoginEvents"));
     });
 
-    it("dry-run does not modify folder", () => {
-      const dir = createTmpDir();
-      touchFile(dir, "New.json");
-
-      const folder: NameFolder = { items: ["Old"], subfolders: [] };
+    it("moved: emits remove@manifestPath + add@diskPath (two changes)", () => {
+      const folder: NameFolder = { items: ["Sheet"], subfolders: [{ items: [], subfolders: [], name: "Sub" }] };
+      const entries: DriftEntry[] = [{ kind: "moved", name: "Sheet", manifestPath: [], diskPath: ["Sub"] }];
       const changes: Change[] = [];
-      const config: NameSectionConfig = { key: "eventSheets", diskDir: dir, ignoreUistate: true };
 
-      syncNameFolder(folder, dir, "", config, changes, true);
+      applyNameDrift(folder, entries, "eventSheets", changes, false);
 
+      // Sheet removed from root, added to Sub
+      assert.deepEqual(folder.items, []);
+      assert.equal(folder.subfolders[0].items[0], "Sheet");
       assert.equal(changes.length, 2);
-      // Folder should be unchanged
-      assert.deepEqual(folder.items, ["Old"]);
+      assert.isTrue(changes.some((c) => c.action === "-" && c.detail === "Sheet"));
+      assert.isTrue(changes.some((c) => c.action === "+" && c.detail === "Sub/Sheet"));
+    });
+
+    it("dry-run: changes recorded but folder object unmutated", () => {
+      const folder: NameFolder = { items: ["OldItem"], subfolders: [] };
+      const entries: DriftEntry[] = [
+        { kind: "missing", name: "OldItem", manifestPath: [] },
+        { kind: "untracked", name: "NewItem", diskPath: [] },
+      ];
+      const changes: Change[] = [];
+
+      applyNameDrift(folder, entries, "eventSheets", changes, true);
+
+      // Changes are recorded
+      assert.equal(changes.length, 2);
+      assert.isTrue(changes.some((c) => c.action === "-" && c.detail === "OldItem"));
+      assert.isTrue(changes.some((c) => c.action === "+" && c.detail === "NewItem"));
+      // But folder is unmutated
+      assert.deepEqual(folder.items, ["OldItem"]);
+      assert.equal(folder.subfolders.length, 0);
+    });
+
+    it("folder-missing with a multi-segment path: removes the nested subfolder", () => {
+      const folder: NameFolder = {
+        items: [],
+        subfolders: [
+          {
+            items: [],
+            subfolders: [{ items: [], subfolders: [], name: "Nested" }],
+            name: "Sub",
+          },
+        ],
+      };
+      const entries: DriftEntry[] = [{ kind: "folder-missing", name: "Nested", manifestPath: ["Sub", "Nested"] }];
+      const changes: Change[] = [];
+
+      applyNameDrift(folder, entries, "eventSheets", changes, false);
+
+      assert.deepEqual(folder.subfolders[0].subfolders, []);
+      assert.equal(changes.length, 1);
+      assert.isTrue(changes.some((c) => c.action === "-" && c.detail === "Sub/Nested/"));
+    });
+
+    it("folder-missing with a missing parent: records the change but skips gracefully", () => {
+      const folder: NameFolder = { items: [], subfolders: [] };
+      const entries: DriftEntry[] = [{ kind: "folder-missing", name: "Nested", manifestPath: ["NonExistent", "Nested"] }];
+      const changes: Change[] = [];
+
+      // navigateFolder returns undefined for the missing parent → no crash, no mutation.
+      applyNameDrift(folder, entries, "eventSheets", changes, false);
+
+      assert.deepEqual(folder.subfolders, []);
+      assert.equal(changes.length, 1);
+      assert.equal(changes[0].action, "-");
+    });
+  });
+
+  describe("runSync name-section integration", () => {
+    it("full-project dry-run on fixture: name sections report no changes (inSync)", () => {
+      const result = runSync(sampleProjectDir, true, () => {}, undefined);
+      const nameSectionKeys = ["layouts", "eventSheets", "families", "objectTypes", "timelines", "flowcharts"];
+      for (const key of nameSectionKeys) {
+        const sectionChanges = result.changes.filter((c) => c.section === key);
+        assert.deepEqual(sectionChanges, [], `${key}: unexpected changes`);
+      }
+      assert.equal(result.clean, true);
+    });
+
+    it("R6 section filter: eventSheets stray only surfaces when that section is requested", () => {
+      const tmpDir = createTmpDir();
+      cpSync(sampleProjectDir, tmpDir, { recursive: true });
+      // Add a stray eventSheet on disk
+      touchFile(tmpDir, "eventSheets", "Stray.json");
+
+      const layoutsResult = runSync(tmpDir, true, () => {}, "layouts");
+      const esInLayouts = layoutsResult.changes.filter((c) => c.section === "eventSheets");
+      assert.deepEqual(esInLayouts, [], "layouts-only run should not report eventSheets drift");
+
+      const esResult = runSync(tmpDir, true, () => {}, "eventSheets");
+      const esChanges = esResult.changes.filter((c) => c.section === "eventSheets");
+      assert.isTrue(
+        esChanges.some((c) => c.action === "+" && c.detail.includes("Stray")),
+        "eventSheets-only run should report Stray as untracked",
+      );
+    });
+
+    it("R8 non-name-section exclusion: images-only drift does not produce name-section changes", () => {
+      const tmpDir = createTmpDir();
+      cpSync(sampleProjectDir, tmpDir, { recursive: true });
+      // Add an unreferenced image on disk (images/ drift is detection-only, not a sync target)
+      touchFile(tmpDir, "images", "orphan.png");
+
+      const result = runSync(tmpDir, true, () => {}, undefined);
+      // No change should be emitted for the images section
+      const imageChanges = result.changes.filter((c) => c.section === "images");
+      assert.deepEqual(imageChanges, [], "images drift should not produce sync changes");
     });
   });
 });

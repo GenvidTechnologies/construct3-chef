@@ -110,6 +110,8 @@ Replacements are sorted longest-first to prevent substring corruption.
 
 Dry-run check that `project.c3proj` matches files on disk. Exits with code 1 if drift is detected.
 
+It additionally reports **image drift** as `[images]` lines: image files expected by an object type (derived from `objectTypes/` JSON — an `image` key, or `animations` frames) but missing from `images/` on disk, or files in `images/` no object type references. Image drift is **detection-only** — informational output that does **not** affect the exit code or `sync-project`'s write-back (images are referenced inside object-type JSON, not declared as `project.c3proj` entries).
+
 ```bash
 npx construct3-chef validate-project [--section <section>] [--project-dir <path>]
 ```
