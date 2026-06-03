@@ -52,21 +52,38 @@ describe("buildSheetNameMap", () => {
 // ─── extractFunctions ───
 
 describe("extractFunctions", () => {
-  it("extracts function-block names", () => {
+  it("extracts function-block names with signatures", () => {
     const events = [
       { eventType: "function-block", functionName: "doStuff", functionParameters: [], isAsync: false },
       { eventType: "function-block", functionName: "loadData", functionParameters: [], isAsync: true },
     ];
     const fns = extractFunctions(events as never);
-    assert.deepStrictEqual(fns, ["doStuff", "loadData"]);
+    assert.deepStrictEqual(fns, ["doStuff() -> none", "loadData() -> none"]);
   });
 
-  it("extracts custom-ace-block as Object.Name", () => {
+  it("renders params and return type", () => {
+    const events = [
+      {
+        eventType: "function-block",
+        functionName: "add",
+        functionReturnType: "number",
+        functionParameters: [
+          { name: "a", type: "number" },
+          { name: "b", type: "number" },
+        ],
+        isAsync: false,
+      },
+    ];
+    const fns = extractFunctions(events as never);
+    assert.deepStrictEqual(fns, ["add(a: number, b: number) -> number"]);
+  });
+
+  it("extracts custom-ace-block as Object.Name with signature", () => {
     const events = [
       { eventType: "custom-ace-block", objectClass: "CardScroller", aceName: "Initialize", functionParameters: [] },
     ];
     const fns = extractFunctions(events as never);
-    assert.deepStrictEqual(fns, ["CardScroller.Initialize"]);
+    assert.deepStrictEqual(fns, ["CardScroller.Initialize() -> none"]);
   });
 
   it("walks into groups", () => {
@@ -78,7 +95,7 @@ describe("extractFunctions", () => {
       },
     ];
     const fns = extractFunctions(events as never);
-    assert.deepStrictEqual(fns, ["nested"]);
+    assert.deepStrictEqual(fns, ["nested() -> none"]);
   });
 
   it("returns empty for sheets with no functions", () => {
@@ -107,6 +124,21 @@ describe("resolveIncludeTree", () => {
     assert.equal(tree.includes.length, 2);
     assert.equal(tree.includes[0].name, "ChildA");
     assert.equal(tree.includes[1].name, "ChildB");
+  });
+
+  it("resolves includes nested inside a group", () => {
+    writeSheet("eventSheets/Root.json", [
+      { eventType: "include", includeSheet: "TopLevel" },
+      { eventType: "group", children: [{ eventType: "include", includeSheet: "Nested" }] },
+    ]);
+    writeSheet("eventSheets/TopLevel.json", []);
+    writeSheet("eventSheets/Nested.json", []);
+
+    const tree = resolveIncludeTree("Root", tmpDir);
+    assert.deepEqual(
+      tree.includes.map((c) => c.name),
+      ["TopLevel", "Nested"],
+    );
   });
 
   it("resolves transitive includes", () => {
@@ -159,8 +191,8 @@ describe("resolveIncludeTree", () => {
     ]);
 
     const tree = resolveIncludeTree("Root", tmpDir, { includeFunctions: true });
-    assert.deepStrictEqual(tree.functions, ["myFunc"]);
-    assert.deepStrictEqual(tree.includes[0].functions, ["childFunc"]);
+    assert.deepStrictEqual(tree.functions, ["myFunc() -> none"]);
+    assert.deepStrictEqual(tree.includes[0].functions, ["childFunc() -> none"]);
   });
 
   it("omits functions when not requested", () => {

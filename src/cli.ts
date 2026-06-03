@@ -30,6 +30,13 @@ import { buildLayoutEventSheetMap, findGoToLayoutCalls, generatePlantUML } from 
 const GENERATOR_NAMES = ["scripts", "dsl", "layouts", "templates", "sid-registry", "global-layers"] as const;
 type GeneratorName = (typeof GENERATOR_NAMES)[number];
 
+// Resolve the package version for `--version`. The URL is relative to this
+// module file, so it resolves correctly from both dist/cli.js (→ dist/../package.json)
+// and src/cli.ts under tsx (→ src/../package.json).
+const pkgVersion = (
+  JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8")) as { version: string }
+).version;
+
 function resolveProjectDir(argv: { projectDir: string }): string {
   return path.resolve(argv.projectDir);
 }
@@ -370,5 +377,6 @@ yargs(hideBin(process.argv))
   )
   .demandCommand(1, "Please specify a subcommand. Use --help for available commands.")
   .strict()
+  .version(pkgVersion)
   .help()
   .parse();
