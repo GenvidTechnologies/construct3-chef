@@ -827,6 +827,47 @@ export function addReplica(opts: {
 }
 
 // ---------------------------------------------------------------------------
+// Remove Layer Cascade
+// ---------------------------------------------------------------------------
+
+/**
+ * Count all instances in a layer's subtree (the layer itself plus all
+ * descendant sublayers, recursively).
+ */
+function countInstancesInSubtree(layer: Layer): number {
+  const own = layer.instances?.length ?? 0;
+  const sub = layer.subLayers ?? [];
+  return own + sub.reduce((acc, s) => acc + countInstancesInSubtree(s), 0);
+}
+
+/**
+ * Remove a layer and its entire sublayer subtree from the layout in one
+ * splice. Unlike the strict `removeLayer` (which refuses any sublayers),
+ * this allows sublayers but refuses if any instance exists anywhere in the
+ * subtree — unless `removeInstances: true` is passed.
+ *
+ * Throws if the layer is not found.
+ */
+export function removeLayerCascade(
+  layout: LayoutJson,
+  layerName: string,
+  opts: { removeInstances?: boolean } = {},
+): void {
+  const layers = layout.layers as Layer[] | undefined;
+  const entry = layers ? findLayerEntry(layers, (e) => e.name === layerName) : undefined;
+  if (!entry) {
+    throw new Error(`removeLayerCascade: layer "${layerName}" not found in layout`);
+  }
+  const n = countInstancesInSubtree(entry.layer);
+  if (n > 0 && !opts.removeInstances) {
+    throw new Error(
+      `removeLayerCascade: layer "${layerName}" subtree contains ${n} instance(s) — pass removeInstances: true to force removal`,
+    );
+  }
+  entry.parent.splice(entry.index, 1);
+}
+
+// ---------------------------------------------------------------------------
 // Rename Layer
 // ---------------------------------------------------------------------------
 
