@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
-import type { EventSheet } from "@genvid/c3source";
-import { visitEvents, extractIncludes } from "@genvid/c3source";
+import type { EventSheet, FunctionParameter } from "@genvid/c3source";
+import { extractIncludes, extractFunctions as extractFunctionsUpstream } from "@genvid/c3source";
 
 export interface IncludeTreeNode {
   /** Sheet name (e.g., "CommonEvents") */
@@ -38,22 +38,24 @@ export function buildSheetNameMap(projectDir: string): Map<string, string> {
   return map;
 }
 
+/** Render a function's signature tail: "(a: number, b: string) -> returnType". */
+function formatSignature(params: FunctionParameter[], returnType: string): string {
+  const paramStr = (params ?? []).map((p) => `${p.name}: ${p.type}`).join(", ");
+  return `(${paramStr}) -> ${returnType || "none"}`;
+}
+
 /**
- * Extract function names from an eventSheet's events array, via c3source's
- * canonical event walk: function-block → its name; custom-ace-block →
- * "ObjectClass.AceName". visitEvents descends every child-bearing event (not
- * only groups), so this is a strict superset of the old groups-only walk.
+ * Extract function signatures from an eventSheet's events, via c3source's
+ * canonical event walk (extractFunctions descends every child-bearing event):
+ * function-block → "name(params) -> ret"; custom-ace-block →
+ * "ObjectClass.AceName(params) -> ret". c3source 1.1.0's enriched
+ * ExtractedFunction supplies params/returnType; rendering stays local.
  */
 export function extractFunctions(events: EventSheet["events"]): string[] {
-  const functions: string[] = [];
-  visitEvents(events, (event) => {
-    if (event.eventType === "function-block") {
-      functions.push(event.functionName);
-    } else if (event.eventType === "custom-ace-block") {
-      functions.push(`${event.objectClass}.${event.aceName}`);
-    }
+  return extractFunctionsUpstream({ events } as EventSheet).map((fn) => {
+    const name = fn.kind === "custom-ace" ? `${fn.objectClass}.${fn.name}` : fn.name;
+    return `${name}${formatSignature(fn.params, fn.returnType)}`;
   });
-  return functions;
 }
 
 /**
