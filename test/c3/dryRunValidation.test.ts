@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync, rmSync }
 import path from "node:path";
 import os from "node:os";
 import { applyRecipeInner, createObjectType } from "../../src/c3/recipeApplier.js";
+import { validateRecipe } from "../../src/c3/recipeInterpreter.js";
 import { freshSidGen, type SidGenerator } from "../../src/c3/sidUtils.js";
 
 // The dry-run branch of applyRecipeInner now runs each section against
@@ -511,6 +512,67 @@ describe("applyRecipeInner dry-run: surfaces apply-time errors", () => {
         },
       };
       assert.doesNotThrow(() => applyRecipeInner(sidGen, dir, recipe, { dryRun: true, regenerate: false, log: noop }));
+    });
+  });
+
+  // ─── remove-layer recipe pipeline ───
+
+  describe("remove-layer recipe pipeline", () => {
+    // makeMinimalLayout() produces a layout with a single empty "Layer 0"
+    // (no instances, no sublayers) — the exact precondition removeLayer requires.
+
+    it("validateRecipe accepts a well-formed remove-layer op", () => {
+      const recipe = {
+        layouts: { "layouts/Lay1.json": [{ op: "remove-layer", layer: "Layer 0" }] },
+      };
+      const errors = validateRecipe(recipe);
+      assert.deepEqual(errors, []);
+    });
+
+    it("validateRecipe rejects a remove-layer op with the layer field missing", () => {
+      const recipe = {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        layouts: { "layouts/Lay1.json": [{ op: "remove-layer" } as any] },
+      };
+      const errors = validateRecipe(recipe);
+      assert.ok(errors.length > 0, "expected at least one error");
+      assert.ok(
+        errors.some((e) => e.includes('"layer" field is required for remove-layer')),
+        `expected a '"layer" field is required for remove-layer' error, got: ${JSON.stringify(errors)}`,
+      );
+    });
+
+    it("apply path removes the target layer from the layout file", () => {
+      const dir = makeProject({ layouts: { Lay1: makeMinimalLayout() } });
+      const recipe = {
+        layouts: { "layouts/Lay1.json": [{ op: "remove-layer", layer: "Layer 0" }] },
+      };
+      applyRecipeInner(sidGen, dir, recipe, { dryRun: false, regenerate: false, log: noop });
+      const written = JSON.parse(readFileSync(path.join(dir, "layouts", "Lay1.json"), "utf-8")) as {
+        layers: Array<{ name: string }>;
+      };
+      assert.deepEqual(
+        written.layers.map((l) => l.name),
+        [],
+        "Layer 0 should have been removed",
+      );
+    });
+
+    it("dry-run path logs the remove-layer operation without writing to disk", () => {
+      const dir = makeProject({ layouts: { Lay1: makeMinimalLayout() } });
+      const layoutPath = path.join(dir, "layouts", "Lay1.json");
+      const layoutBefore = readFileSync(layoutPath, "utf-8");
+      const recipe = {
+        layouts: { "layouts/Lay1.json": [{ op: "remove-layer", layer: "Layer 0" }] },
+      };
+      const lines: string[] = [];
+      const log = (...args: unknown[]) => lines.push(args.map(String).join(" "));
+      applyRecipeInner(sidGen, dir, recipe, { dryRun: true, regenerate: false, log });
+      const output = lines.join("\n");
+      // The dry-run log line is: `    - remove-layer layer="${op.layer}"`
+      assert.match(output, /- remove-layer layer="Layer 0"/);
+      // Dry-run must not have altered the file
+      assert.strictEqual(readFileSync(layoutPath, "utf-8"), layoutBefore, "dry-run must not write to disk");
     });
   });
 });
