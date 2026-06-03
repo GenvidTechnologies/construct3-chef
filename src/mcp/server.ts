@@ -1599,6 +1599,58 @@ server.registerTool(
     }),
 );
 
+// ── Layer Mutation Tools ─────────────────────────────────────────────────────
+
+server.registerTool(
+  "remove-layer",
+  {
+    title: "Remove Layer",
+    description:
+      "Remove a layer from a layout. Strict by default (fails if the layer has instances or sublayers); cascade removes the whole sublayer subtree, removeInstances forces removal of instances.",
+    annotations: MUTATE,
+    inputSchema: {
+      layout: z.string().describe("Relative path to the layout JSON within layouts/ (e.g. 'Main Layout.json')"),
+      layer: z.string().describe("Name of the layer to remove"),
+      cascade: z.boolean().optional().describe("Remove the entire sublayer subtree recursively (default: false)"),
+      removeInstances: z
+        .boolean()
+        .optional()
+        .describe("Force removal even when the layer has instances (default: false)"),
+      txId: z.number().optional().describe("Expected txId — if stale, remove is rejected"),
+      regenerate: z.boolean().optional().describe("Regenerate extracted/ files after removing (default: true)"),
+    },
+  },
+  async ({ layout, layer, cascade, removeInstances, txId: expectedTxId, regenerate }, extra: Extra) =>
+    rwlock.write(async () => {
+      // Path traversal check — layout must stay within layouts/
+      const layoutsDir = path.join(PROJECT_ROOT, "layouts");
+      const layoutFullPath = resolveWithin(layoutsDir, layout);
+      if (layoutFullPath === null) {
+        return {
+          content: [
+            { type: "text", text: `Invalid layout path '${layout}' — must stay within layouts/` },
+            { type: "text", text: `txId: ${watcher.txId}` },
+          ],
+          isError: true,
+        };
+      }
+
+      const recipe: Recipe = {
+        layouts: {
+          [layout]: [
+            {
+              op: "remove-layer",
+              layer,
+              ...(cascade !== undefined ? { cascade } : {}),
+              ...(removeInstances !== undefined ? { removeInstances } : {}),
+            },
+          ],
+        },
+      };
+      return runWorkflowRecipe(recipe, expectedTxId, regenerate, extra);
+    }),
+);
+
 // ── State Tool ───────────────────────────────────────────────────────────────
 
 server.registerTool(
