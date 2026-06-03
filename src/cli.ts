@@ -49,7 +49,7 @@ function runGenerators(rootDir: string, only?: GeneratorName): void {
     { name: "dsl", run: () => generateDSL(rootDir, outDir, console.log) },
     { name: "layouts", run: () => generateLayoutSummaries(rootDir, outDir, console.log) },
     { name: "templates", run: () => generateTemplateScope(rootDir, outDir, console.log) },
-    { name: "sid-registry", run: () => generateSidRegistry(rootDir, console.log) },
+    { name: "sid-registry", run: () => generateSidRegistry(rootDir, "extracted", console.log) },
     { name: "global-layers", run: () => generateGlobalLayers(rootDir, outDir, console.log) },
   ];
 

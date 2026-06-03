@@ -118,7 +118,7 @@ const GENERATOR_STEPS = [
     fn: (log: Logger) => generateLayoutSummaries(PROJECT_ROOT, EXTRACTED_DIR, log),
   },
   { name: "Generating template scope", fn: (log: Logger) => generateTemplateScope(PROJECT_ROOT, EXTRACTED_DIR, log) },
-  { name: "Generating SID registry", fn: (log: Logger) => generateSidRegistry(PROJECT_ROOT, log) },
+  { name: "Generating SID registry", fn: (log: Logger) => generateSidRegistry(PROJECT_ROOT, EXTRACTED_DIR, log) },
   { name: "Generating global layers", fn: (log: Logger) => generateGlobalLayers(PROJECT_ROOT, EXTRACTED_DIR, log) },
 ] as const;
 

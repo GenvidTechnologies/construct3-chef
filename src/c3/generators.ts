@@ -503,8 +503,8 @@ export function findJsonFiles(dir: string): string[] {
   return walkFiles(dir, ".json");
 }
 
-export function generateSidRegistry(projectRoot: string, log: Logger = console.log): void {
-  const outDir = path.join(projectRoot, "extracted");
+export function generateSidRegistry(projectRoot: string, extractedDir = "extracted", log: Logger = console.log): void {
+  const outDir = path.join(projectRoot, extractedDir);
 
   // Walk all SID-bearing source dirs (single source of truth: SID_SOURCE_DIRS).
   // findJsonFiles returns [] for missing dirs so partial projects work.
