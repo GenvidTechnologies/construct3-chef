@@ -280,10 +280,14 @@ describe("syncC3Proj", () => {
   });
 
   describe("timelines transitions (nameless) subfolder", () => {
-    // #62: the fixture's `timelines` manifest section has items ["Timeline 1"] plus one
-    // NAMELESS subfolder — C3's serialization of the on-disk `timelines/transitions/`
-    // directory ("Eases" in the editor) — carrying items ["Matt's Ease"], matching the
-    // disk `transitions/Matt's Ease.json` (+ an editor-local `.uistate.json`). runSync must
+    // #62: the fixture's `timelines` tree mixes the awkward cases C3 produces —
+    //   items: ["Timeline 1"]
+    //   subfolders:
+    //     - NAMELESS subfolder (C3's serialization of the on-disk `timelines/transitions/`
+    //       dir, "Eases" in the editor): items ["Matt's Ease"], itself nesting a NAMED
+    //       subfolder "Others" (disk `transitions/Others/`) with ["Matt's Ease2"]
+    //     - NAMED subfolder "Mixing" (disk `timelines/Mixing/`) with ["Timeline 2"]
+    // so a named subfolder sits both inside the nameless one and beside it. runSync must
     // report ZERO changes. Before c3source 1.3.0 (#28) the manifest walk gave the nameless
     // subfolder no path segment while disk yielded `transitions`, so sync reported a false
     // `transitions/ (new folder)` add and "corrected" it by appending a NAMED `"transitions"`
