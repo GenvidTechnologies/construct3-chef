@@ -22,8 +22,11 @@ export async function loadChefConfig(projectRoot: string, overrides?: Partial<Ch
     { containedPaths: ["extractedDir"], optional: true },
   );
   if (isMcpError(result)) {
-    // malformed JSON / validation / containment escape -> safe default
-    return ChefConfigSchema.parse({ ...(overrides ?? {}) });
+    // File-driven error (malformed JSON / schema violation / containment
+    // escape) -> safe default. Honor a string override, else fall back to
+    // the schema default. Kept branch-local so this never throws.
+    const override = overrides?.extractedDir;
+    return { extractedDir: typeof override === "string" ? override : "extracted" };
   }
   return result;
 }
