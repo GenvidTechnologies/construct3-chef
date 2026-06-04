@@ -555,7 +555,17 @@ export function runSync(rootDir: string, dryRun: boolean, log: Logger = console.
  * Emits `[images]` lines via `log`; a no-op when there's no images/ dir.
  */
 export function reportImageDrift(rootDir: string, log: Logger = console.log): void {
-  const drift = detectImageDrift(rootDir);
+  let drift: ReturnType<typeof detectImageDrift>;
+  try {
+    drift = detectImageDrift(rootDir);
+  } catch (err) {
+    // c3source >=1.3.0 throws on a malformed/unknown image `fileType` (#63). Unlike
+    // `detectManifestDrift`, our direct `detectImageDrift` call has no upstream
+    // try/catch, so guard here: report the failure as a visibility line rather than
+    // crashing the whole `validate-project` run.
+    log(`[images]`.padEnd(16) + `error: ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
   if (!drift || drift.entries.length === 0) {
     log(`[images]`.padEnd(16) + "(no drift)");
     return;

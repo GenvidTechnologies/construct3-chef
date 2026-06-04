@@ -12,6 +12,7 @@ import {
   readDiskDir,
   syncFileFolder,
   applyNameDrift,
+  reportImageDrift,
   runSync,
   type FileItem,
   type FileFolder,
@@ -234,6 +235,28 @@ describe("syncC3Proj", () => {
       const drift = detectImageDrift(sampleProjectDir);
       assert.equal(drift?.section, "images");
       assert.deepEqual(drift?.entries ?? [], [], "images: unexpected drift");
+    });
+  });
+
+  describe("reportImageDrift error guard", () => {
+    // c3source >=1.3.0 makes detectImageDrift THROW on a malformed/unknown image
+    // `fileType` (#63). reportImageDrift calls it directly (no detectManifestDrift
+    // try/catch upstream), so it must catch and report rather than crash validate-project.
+    it("reports an error line instead of throwing on a malformed fileType", () => {
+      const dir = createTmpDir();
+      mkdirSync(path.join(dir, "images"), { recursive: true });
+      writeFileSync(path.join(dir, "images", "foo.png"), "");
+      mkdirSync(path.join(dir, "objectTypes"), { recursive: true });
+      // image member with NO fileType -> deriveExpectedImageNames throws "malformed object type".
+      writeFileSync(
+        path.join(dir, "objectTypes", "Foo.json"),
+        JSON.stringify({ name: "Foo", image: { width: 1, height: 1 } }),
+      );
+      const lines: string[] = [];
+      assert.doesNotThrow(() => reportImageDrift(dir, (m) => lines.push(m)));
+      assert.lengthOf(lines, 1);
+      assert.match(lines[0], /^\[images\]\s+error: /, "expected a single [images] error: line");
+      assert.include(lines[0], "Foo");
     });
   });
 
