@@ -1,0 +1,19 @@
+{
+	"name": "LevelMaps",
+	"plugin-id": "TiledBg",
+	"sid": 816357052868198,
+	"instanceVariables": [
+		{
+			"name": "BossArenaEdge",
+			"type": "string",
+			"desc": "",
+			"show": true,
+			"sid": 274269985570573
+		}
+	],
+	"behaviorTypes": [],
+	"effectTypes": [],
+	"members": [
+		"JPEGTileBackground"
+	]
+}

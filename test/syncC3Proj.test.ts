@@ -1,10 +1,10 @@
 import { describe, it, beforeEach, afterEach } from "mocha";
 import { assert } from "chai";
 import tmp from "tmp";
-import { mkdirSync, writeFileSync, cpSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, cpSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { detectManifestDrift, detectImageDrift, type DriftEntry } from "@genvid/c3source";
+import { detectManifestDrift, detectImageDrift, deriveExpectedImageNames, type DriftEntry } from "@genvid/c3source";
 import {
   inferMimeType,
   collectAllSids,
@@ -12,6 +12,7 @@ import {
   readDiskDir,
   syncFileFolder,
   applyNameDrift,
+  reportImageDrift,
   runSync,
   type FileItem,
   type FileFolder,
@@ -20,7 +21,7 @@ import {
   type Change,
 } from "../src/c3/projectSync.js";
 
-const sampleProjectDir = path.join(fileURLToPath(new URL(".", import.meta.url)), "fixtures", "sample-project");
+const sampleProjectDir = path.join(fileURLToPath(new URL(".", import.meta.url)), "fixtures", "construct3-chef-sample");
 
 // Helper to create a temp directory
 function createTmpDir(): string {
@@ -197,7 +198,7 @@ describe("syncC3Proj", () => {
     });
   });
 
-  describe("oracle — detectManifestDrift on sample-project", () => {
+  describe("oracle — detectManifestDrift on construct3-chef-sample", () => {
     // Cross-check our sync against c3source's upstream drift detector for the
     // sections it models the same way we do (the name-folder sections). The file
     // sections (rootFileFolders.*) are deliberately excluded: c3source walks them
@@ -229,26 +230,78 @@ describe("syncC3Proj", () => {
     });
   });
 
-  describe("oracle — detectImageDrift on sample-project", () => {
+  describe("oracle — detectImageDrift on construct3-chef-sample", () => {
     it("returns the images section with no drift entries", () => {
       const drift = detectImageDrift(sampleProjectDir);
       assert.equal(drift?.section, "images");
       assert.deepEqual(drift?.entries ?? [], [], "images: unexpected drift");
     });
+
+    // #63: a non-PNG image member must resolve its on-disk extension from `fileType`
+    // (MIME), not an assumed `.png`. The fixture's JPEGTileBackground is JPEG-backed
+    // (images/jpegtilebackground.jpg); pre-1.3.0 this produced a false `jpegtilebackground.png
+    // missing` + `jpegtilebackground.jpg untracked` pair. This pins the fix and keeps the
+    // fixture's non-PNG coverage from silently regressing to all-PNG.
+    it("resolves a JPEG member to its real .jpg extension, not assumed .png (#63)", () => {
+      const jtb = JSON.parse(
+        readFileSync(path.join(sampleProjectDir, "objectTypes", "tiles", "JPEGTileBackground.json"), "utf-8"),
+      );
+      assert.equal(jtb.image.fileType, "image/jpeg", "fixture must keep a non-PNG member for #63 coverage");
+      assert.deepEqual(
+        deriveExpectedImageNames(jtb),
+        ["jpegtilebackground.jpg"],
+        "expected name must derive from fileType, not assume .png",
+      );
+      const drift = detectImageDrift(sampleProjectDir);
+      assert.deepEqual(drift?.entries ?? [], [], "no false missing/untracked pair for the jpeg asset");
+    });
   });
 
-  describe("timelines nameless subfolder", () => {
-    // The fixture's `timelines` manifest section has items ["Timeline 1"] plus one
-    // NAMELESS subfolder ({items:[], subfolders:[]}) with no disk counterpart, while
-    // disk has only `Timeline 1.json` (+ an editor-local `.uistate.json`). runSync must
-    // report ZERO changes: it must not try to remove the nameless subfolder (name ===
-    // undefined) nor mistake the editor-local file for drift. This pins the behavior
-    // the `findNamelessDiskDirs` heuristic provides today, so the upcoming swap to
-    // c3source `walkDiskNameTree` (and the later DriftEntry apply engine) must preserve it.
-    it("reports no changes syncing the fixture timelines section", () => {
+  describe("reportImageDrift error guard", () => {
+    // c3source >=1.3.0 makes detectImageDrift THROW on a malformed/unknown image
+    // `fileType` (#63). reportImageDrift calls it directly (no detectManifestDrift
+    // try/catch upstream), so it must catch and report rather than crash validate-project.
+    it("reports an error line instead of throwing on a malformed fileType", () => {
+      const dir = createTmpDir();
+      mkdirSync(path.join(dir, "images"), { recursive: true });
+      writeFileSync(path.join(dir, "images", "foo.png"), "");
+      mkdirSync(path.join(dir, "objectTypes"), { recursive: true });
+      // image member with NO fileType -> deriveExpectedImageNames throws "malformed object type".
+      writeFileSync(
+        path.join(dir, "objectTypes", "Foo.json"),
+        JSON.stringify({ name: "Foo", image: { width: 1, height: 1 } }),
+      );
+      const lines: string[] = [];
+      assert.doesNotThrow(() => reportImageDrift(dir, (m) => lines.push(m)));
+      assert.lengthOf(lines, 1);
+      assert.match(lines[0], /^\[images\]\s+error: /, "expected a single [images] error: line");
+      assert.include(lines[0], "Foo");
+    });
+  });
+
+  describe("timelines transitions (nameless) subfolder", () => {
+    // #62: the fixture's `timelines` tree mixes the awkward cases C3 produces —
+    //   items: ["Timeline 1"]
+    //   subfolders:
+    //     - NAMELESS subfolder (C3's serialization of the on-disk `timelines/transitions/`
+    //       dir, "Eases" in the editor): items ["Matt's Ease"], itself nesting a NAMED
+    //       subfolder "Others" (disk `transitions/Others/`) with ["Matt's Ease2"]
+    //     - NAMED subfolder "Mixing" (disk `timelines/Mixing/`) with ["Timeline 2"]
+    // so a named subfolder sits both inside the nameless one and beside it. runSync must
+    // report ZERO changes. Before c3source 1.3.0 (#28) the manifest walk gave the nameless
+    // subfolder no path segment while disk yielded `transitions`, so sync reported a false
+    // `transitions/ (new folder)` add and "corrected" it by appending a NAMED `"transitions"`
+    // subfolder — duplicating the item. This pins the fixed round-trip: no spurious folder,
+    // no item duplication.
+    it("reports no changes syncing the populated transitions subfolder", () => {
       const result = runSync(sampleProjectDir, true, () => {}, "timelines");
       assert.deepEqual(result.changes, [], "timelines: unexpected changes");
       assert.equal(result.clean, true);
+      // Explicit anti-corruption guard: no change may re-introduce a named `transitions` folder.
+      assert.isUndefined(
+        result.changes.find((c) => /transitions/i.test(c.detail)),
+        "sync must not emit a transitions folder change",
+      );
     });
   });
 

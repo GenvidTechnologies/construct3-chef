@@ -5,6 +5,7 @@
 100000000000020	eventSheets/Event sheet 1.json	events[0]
 100000000000021	eventSheets/Event sheet 1.json	events[1].children[0]
 100000000000022	eventSheets/Event sheet 1.json	events[1]
+120263755296842	objectTypes/tiles/JPEGTileBackground.json	objectType
 123833139771255	layouts/Second Layout.json	layers[2]
 149337451827964	layouts/Main Layout.json	layers[0].instances[2]
 162830779118899	objectTypes/Text.json	objectType

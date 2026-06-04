@@ -1,7 +1,7 @@
 {
 	"projectFormatVersion": 1,
 	"savedWithRelease": 48702,
-	"name": "sample-project",
+	"name": "construct3-chef-sample",
 	"runtime": "c3",
 	"useWorker": "auto",
 	"bundleAddons": false,
@@ -84,7 +84,8 @@
 			{
 				"items": [
 					"TiledBackground",
-					"Tilemap"
+					"Tilemap",
+					"JPEGTileBackground"
 				],
 				"subfolders": [],
 				"name": "tiles"
@@ -103,7 +104,8 @@
 	],
 	"families": {
 		"items": [
-			"TextFamily"
+			"TextFamily",
+			"LevelMaps"
 		],
 		"subfolders": []
 	},
@@ -232,8 +234,25 @@
 		],
 		"subfolders": [
 			{
-				"items": [],
-				"subfolders": []
+				"items": [
+					"Matt's Ease"
+				],
+				"subfolders": [
+					{
+						"items": [
+							"Matt's Ease2"
+						],
+						"subfolders": [],
+						"name": "Others"
+					}
+				]
+			},
+			{
+				"items": [
+					"Timeline 2"
+				],
+				"subfolders": [],
+				"name": "Mixing"
 			}
 		]
 	},
