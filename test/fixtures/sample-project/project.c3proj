@@ -84,7 +84,8 @@
 			{
 				"items": [
 					"TiledBackground",
-					"Tilemap"
+					"Tilemap",
+					"JPEGTileBackground"
 				],
 				"subfolders": [],
 				"name": "tiles"
@@ -103,7 +104,8 @@
 	],
 	"families": {
 		"items": [
-			"TextFamily"
+			"TextFamily",
+			"LevelMaps"
 		],
 		"subfolders": []
 	},

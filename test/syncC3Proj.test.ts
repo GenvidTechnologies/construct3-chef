@@ -1,10 +1,10 @@
 import { describe, it, beforeEach, afterEach } from "mocha";
 import { assert } from "chai";
 import tmp from "tmp";
-import { mkdirSync, writeFileSync, cpSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, cpSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { detectManifestDrift, detectImageDrift, type DriftEntry } from "@genvid/c3source";
+import { detectManifestDrift, detectImageDrift, deriveExpectedImageNames, type DriftEntry } from "@genvid/c3source";
 import {
   inferMimeType,
   collectAllSids,
@@ -235,6 +235,25 @@ describe("syncC3Proj", () => {
       const drift = detectImageDrift(sampleProjectDir);
       assert.equal(drift?.section, "images");
       assert.deepEqual(drift?.entries ?? [], [], "images: unexpected drift");
+    });
+
+    // #63: a non-PNG image member must resolve its on-disk extension from `fileType`
+    // (MIME), not an assumed `.png`. The fixture's JPEGTileBackground is JPEG-backed
+    // (images/jpegtilebackground.jpg); pre-1.3.0 this produced a false `jpegtilebackground.png
+    // missing` + `jpegtilebackground.jpg untracked` pair. This pins the fix and keeps the
+    // fixture's non-PNG coverage from silently regressing to all-PNG.
+    it("resolves a JPEG member to its real .jpg extension, not assumed .png (#63)", () => {
+      const jtb = JSON.parse(
+        readFileSync(path.join(sampleProjectDir, "objectTypes", "tiles", "JPEGTileBackground.json"), "utf-8"),
+      );
+      assert.equal(jtb.image.fileType, "image/jpeg", "fixture must keep a non-PNG member for #63 coverage");
+      assert.deepEqual(
+        deriveExpectedImageNames(jtb),
+        ["jpegtilebackground.jpg"],
+        "expected name must derive from fileType, not assume .png",
+      );
+      const drift = detectImageDrift(sampleProjectDir);
+      assert.deepEqual(drift?.entries ?? [], [], "no false missing/untracked pair for the jpeg asset");
     });
   });
 
