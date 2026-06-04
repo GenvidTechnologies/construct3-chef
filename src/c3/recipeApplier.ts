@@ -1121,6 +1121,7 @@ export function renameSymbols(
   dryRun: boolean,
   preview: boolean,
   regenerate: boolean,
+  extractedDir = "extracted",
   log: Logger = console.log,
 ) {
   if (preview) dryRun = true;
@@ -1196,6 +1197,6 @@ export function renameSymbols(
   log(`\nDone. ${matched.length} file(s) modified, ${totalActions} script action(s) updated.`);
 
   if (regenerate) {
-    regenerateExtracted(rootDir);
+    regenerateExtracted(rootDir, false, extractedDir, log);
   }
 }

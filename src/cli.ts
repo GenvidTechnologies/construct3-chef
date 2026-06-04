@@ -5,6 +5,7 @@ import path from "node:path";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { walkFiles, toPosixPath } from "@genvid/mcp-utils";
+import { loadChefConfig } from "./c3/chefConfig.js";
 import {
   extractScripts,
   generateDSL,
@@ -41,15 +42,19 @@ function resolveProjectDir(argv: { projectDir: string }): string {
   return path.resolve(argv.projectDir);
 }
 
-function runGenerators(rootDir: string, only?: GeneratorName): void {
-  const outDir = path.join(rootDir, "extracted");
+async function resolveExtractedDir(rootDir: string): Promise<string> {
+  return (await loadChefConfig(rootDir)).extractedDir;
+}
+
+function runGenerators(rootDir: string, extractedDir: string, only?: GeneratorName): void {
+  const outDir = path.join(rootDir, extractedDir);
 
   const generators: Array<{ name: GeneratorName; run: () => void }> = [
     { name: "scripts", run: () => extractScripts(rootDir, outDir, console.log) },
     { name: "dsl", run: () => generateDSL(rootDir, outDir, console.log) },
     { name: "layouts", run: () => generateLayoutSummaries(rootDir, outDir, console.log) },
     { name: "templates", run: () => generateTemplateScope(rootDir, outDir, console.log) },
-    { name: "sid-registry", run: () => generateSidRegistry(rootDir, "extracted", console.log) },
+    { name: "sid-registry", run: () => generateSidRegistry(rootDir, extractedDir, console.log) },
     { name: "global-layers", run: () => generateGlobalLayers(rootDir, outDir, console.log) },
   ];
 
@@ -88,9 +93,10 @@ yargs(hideBin(process.argv))
         choices: GENERATOR_NAMES,
         describe: "Generate only a specific type",
       }),
-    (argv) => {
+    async (argv) => {
       const rootDir = resolveProjectDir(argv);
-      runGenerators(rootDir, argv.only as GeneratorName | undefined);
+      const extractedDir = await resolveExtractedDir(rootDir);
+      runGenerators(rootDir, extractedDir, argv.only as GeneratorName | undefined);
     },
   )
   .command(
@@ -110,12 +116,13 @@ yargs(hideBin(process.argv))
           default: true,
           describe: "Regenerate extracted files after applying",
         }),
-    (argv) => {
+    async (argv) => {
       const rootDir = resolveProjectDir(argv);
       const dryRun = argv.preview ? true : argv.dryRun;
       const recipeContent = readFileSync(argv.recipe, "utf-8");
       const recipe: Recipe = JSON.parse(recipeContent);
-      applyParsed(rootDir, recipe, { dryRun, preview: argv.preview, regenerate: argv.regenerate });
+      const extractedDir = await resolveExtractedDir(rootDir);
+      applyParsed(rootDir, recipe, { dryRun, preview: argv.preview, regenerate: argv.regenerate, extractedDir });
     },
   )
   .command(
@@ -144,12 +151,13 @@ yargs(hideBin(process.argv))
           if (hasInline && hasFile) throw new Error("Cannot use both inline arguments and --replacements file");
           return true;
         }),
-    (argv) => {
+    async (argv) => {
       const rootDir = resolveProjectDir(argv);
+      const extractedDir = await resolveExtractedDir(rootDir);
       const pairs = argv.replacements
         ? (JSON.parse(readFileSync(argv.replacements, "utf-8")) as Array<{ from: string; to: string }>)
         : [{ from: argv.from!, to: argv.to! }];
-      renameSymbols(rootDir, pairs, argv.dryRun, argv.preview, argv.regenerate);
+      renameSymbols(rootDir, pairs, argv.dryRun, argv.preview, argv.regenerate, extractedDir);
     },
   )
   .command(
@@ -192,22 +200,23 @@ yargs(hideBin(process.argv))
         .option("name", { type: "string", demandOption: true, describe: "Name for the new layout" })
         .option("event-sheet", { type: "string", demandOption: true, describe: "Event sheet name for the new layout" })
         .option("no-regenerate", { type: "boolean", default: false, describe: "Skip regenerating extracted/ files" }),
-    (argv) => {
+    async (argv) => {
       const rootDir = resolveProjectDir(argv);
+      const extractedDir = await resolveExtractedDir(rootDir);
       const sourcePath = path.resolve(argv.source);
       const outPath = path.resolve(argv.out);
       const source = JSON.parse(readFileSync(sourcePath, "utf-8")) as Record<string, unknown>;
       const existingUids = collectAllUids(path.join(rootDir, "layouts"));
       // Seed clone-SID minting against the project-wide registry so cloned SIDs can't
       // collide with anything in eventSheets/, layouts/, or objectTypes/.
-      const registryPath = path.join(rootDir, "extracted", "sid-registry.txt");
+      const registryPath = path.join(rootDir, extractedDir, "sid-registry.txt");
       const existingSids = existsSync(registryPath) ? readRegistryFile(registryPath) : new Set<number>();
       const cloned = cloneLayout(source, { name: argv.name, eventSheet: argv.eventSheet, existingUids, existingSids });
       writeFileSync(outPath, JSON.stringify(cloned, null, "\t") + "\n");
       console.log(`Scaffolded ${argv.name} → ${path.relative(rootDir, outPath)}`);
       runSync(rootDir, false, console.log);
       if (!argv.noRegenerate) {
-        runGenerators(rootDir);
+        runGenerators(rootDir, extractedDir);
       }
     },
   )
@@ -261,8 +270,9 @@ yargs(hideBin(process.argv))
           default: true,
           describe: "Regenerate extracted files after applying",
         }),
-    (argv) => {
+    async (argv) => {
       const rootDir = resolveProjectDir(argv);
+      const extractedDir = await resolveExtractedDir(rootDir);
       const recipe: Recipe = {
         layouts: {
           [argv.layout]: [
@@ -275,7 +285,12 @@ yargs(hideBin(process.argv))
           ],
         },
       };
-      applyParsed(rootDir, recipe, { dryRun: argv.dryRun, regenerate: argv.regenerate, log: console.log });
+      applyParsed(rootDir, recipe, {
+        dryRun: argv.dryRun,
+        regenerate: argv.regenerate,
+        log: console.log,
+        extractedDir,
+      });
     },
   )
   .command(
@@ -317,10 +332,10 @@ yargs(hideBin(process.argv))
         type: "string",
         describe: "Write a PlantUML component diagram to this file",
       }),
-    (argv) => {
+    async (argv) => {
       const rootDir = resolveProjectDir(argv);
       const layoutsDir = path.join(rootDir, "layouts");
-      const extractedDir = path.join(rootDir, "extracted");
+      const extractedDir = path.join(rootDir, await resolveExtractedDir(rootDir));
       const layoutEventSheetMap = buildLayoutEventSheetMap(layoutsDir);
       const sheetToLayout: Record<string, string> = {};
       for (const [layoutName, sheetName] of Object.entries(layoutEventSheetMap)) {
@@ -369,9 +384,9 @@ yargs(hideBin(process.argv))
       y
         .positional("pattern", { type: "string", demandOption: true, describe: "Regex pattern to search for" })
         .option("glob", { type: "string", describe: "Subdirectory within extracted/ to restrict search" }),
-    (argv) => {
+    async (argv) => {
       const rootDir = resolveProjectDir(argv);
-      const extractedDir = path.join(rootDir, "extracted");
+      const extractedDir = path.join(rootDir, await resolveExtractedDir(rootDir));
       const searchDir = argv.glob ? path.join(extractedDir, argv.glob) : extractedDir;
 
       let regex: RegExp;
