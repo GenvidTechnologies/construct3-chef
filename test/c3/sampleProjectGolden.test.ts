@@ -68,7 +68,7 @@ describe("sample-project golden extracted/ output", () => {
     generateDSL(tmpRoot, outDir, noop);
     generateLayoutSummaries(tmpRoot, outDir, noop);
     generateTemplateScope(tmpRoot, outDir, noop);
-    generateSidRegistry(tmpRoot, noop);
+    generateSidRegistry(tmpRoot, "extracted", noop);
     generateGlobalLayers(tmpRoot, outDir, noop);
   });
 

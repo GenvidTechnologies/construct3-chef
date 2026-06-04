@@ -49,6 +49,7 @@ import {
   discoverAndPlanImageCopies,
   cloneSprite,
 } from "../c3/spriteScaffold.js";
+import { loadChefConfig, type ChefConfig } from "../c3/chefConfig.js";
 
 let PROJECT_ROOT = process.cwd();
 let EXTRACTED_DIR = path.join(PROJECT_ROOT, "extracted");
@@ -118,7 +119,7 @@ const GENERATOR_STEPS = [
     fn: (log: Logger) => generateLayoutSummaries(PROJECT_ROOT, EXTRACTED_DIR, log),
   },
   { name: "Generating template scope", fn: (log: Logger) => generateTemplateScope(PROJECT_ROOT, EXTRACTED_DIR, log) },
-  { name: "Generating SID registry", fn: (log: Logger) => generateSidRegistry(PROJECT_ROOT, log) },
+  { name: "Generating SID registry", fn: (log: Logger) => generateSidRegistry(PROJECT_ROOT, EXTRACTED_DIR, log) },
   { name: "Generating global layers", fn: (log: Logger) => generateGlobalLayers(PROJECT_ROOT, EXTRACTED_DIR, log) },
 ] as const;
 
@@ -1672,11 +1673,12 @@ server.registerTool(
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-export async function startServer(projectDir?: string): Promise<void> {
+export async function startServer(projectDir?: string, overrides?: Partial<ChefConfig>): Promise<void> {
   if (projectDir) {
     PROJECT_ROOT = projectDir;
-    EXTRACTED_DIR = path.join(PROJECT_ROOT, "extracted");
   }
+  const config = await loadChefConfig(PROJECT_ROOT, overrides);
+  EXTRACTED_DIR = path.join(PROJECT_ROOT, config.extractedDir);
 
   // Startup validation — warn but don't hard-fail
   const c3projPath = path.join(PROJECT_ROOT, "project.c3proj");

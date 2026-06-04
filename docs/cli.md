@@ -14,6 +14,22 @@ npx construct3-chef <subcommand> [options]
 
 ---
 
+## Configuration file
+
+Drop an optional `construct3-chef.config.json` at the project root (`--project-dir`) to override defaults. It is read by both the CLI and the MCP server; there are no per-key CLI flags. A missing, malformed, or out-of-bounds config falls back to defaults rather than erroring.
+
+| Field | Default | Description |
+| ----- | ------- | ----------- |
+| `extractedDir` | `"extracted"` | Directory (relative to the project root) for the generated read-surface files. Must resolve **inside** the project root. |
+
+```json
+{ "extractedDir": "c3-extracted" }
+```
+
+With the above, every command that reads or writes the read surface — `generate`, `apply-recipe`, `scaffold-layout`, `remove-layer`, `rename-symbol`, `navigation-graph`, `search-dsl`, and the server's auto-generate/regenerate — targets `c3-extracted/` instead of `extracted/`. The C3-fixed source directories (`eventSheets/`, `layouts/`, `objectTypes/`, `families/`, `scripts/`) are not configurable.
+
+---
+
 ## server
 
 Start the MCP server over stdio. AI coding agents connect to this to read and mutate the project interactively.

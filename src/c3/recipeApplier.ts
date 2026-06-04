@@ -95,8 +95,13 @@ export function loadSheet(rootDir: string, filePath: string): EventSheet {
   return JSON.parse(content) as EventSheet;
 }
 
-export function regenerateExtracted(rootDir: string, withLayouts = false, log: Logger = console.log) {
-  const outDir = path.join(rootDir, "extracted");
+export function regenerateExtracted(
+  rootDir: string,
+  withLayouts = false,
+  extractedDir = "extracted",
+  log: Logger = console.log,
+) {
+  const outDir = path.join(rootDir, extractedDir);
 
   log("\n--- Regenerating extracted files ---\n");
 
@@ -702,7 +707,7 @@ function applyLayoutOp(
 }
 
 export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: Recipe, opts: ApplyOptions = {}) {
-  const { dryRun = false, preview = false, regenerate = true, log = console.log } = opts;
+  const { dryRun = false, preview = false, regenerate = true, log = console.log, extractedDir = "extracted" } = opts;
   // Validate recipe structure
   const errors = validateRecipe(recipe);
   if (errors.length > 0) {
@@ -1073,7 +1078,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   log("\nReminder: run 'npm run sync-c3proj' to register new files with Construct 3.");
 
   if (regenerate) {
-    regenerateExtracted(rootDir, layoutsForLoop.size > 0, log);
+    regenerateExtracted(rootDir, layoutsForLoop.size > 0, extractedDir, log);
   }
 }
 
@@ -1084,7 +1089,7 @@ export function applyParsed(rootDir: string, recipe: Recipe, opts: ApplyOptions 
   // Seed the SID generator from the full sid-registry.txt (eventSheets/ + layouts/ + objectTypes/).
   // The closure mutates `used` as SIDs are minted, so every builder call in this recipe shares
   // one cumulative used-SID Set — no init/reset lifecycle needed.
-  const registryPath = path.join(rootDir, "extracted", "sid-registry.txt");
+  const registryPath = path.join(rootDir, opts.extractedDir ?? "extracted", "sid-registry.txt");
   const used = readRegistryFile(registryPath);
 
   // Defence-in-depth against a stale registry: for every layout this recipe touches,
@@ -1116,6 +1121,7 @@ export function renameSymbols(
   dryRun: boolean,
   preview: boolean,
   regenerate: boolean,
+  extractedDir = "extracted",
   log: Logger = console.log,
 ) {
   if (preview) dryRun = true;
@@ -1191,6 +1197,6 @@ export function renameSymbols(
   log(`\nDone. ${matched.length} file(s) modified, ${totalActions} script action(s) updated.`);
 
   if (regenerate) {
-    regenerateExtracted(rootDir);
+    regenerateExtracted(rootDir, false, extractedDir, log);
   }
 }

@@ -5,4 +5,5 @@ export interface ApplyOptions {
   preview?: boolean;
   regenerate?: boolean;
   log?: Logger;
+  extractedDir?: string;
 }
