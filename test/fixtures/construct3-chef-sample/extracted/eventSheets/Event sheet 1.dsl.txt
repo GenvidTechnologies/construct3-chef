@@ -5,3 +5,7 @@ global var score: number = 0
 
 group "GameLoop" (active)
   var temp: number = 0
+
+  block
+    when: NavButton.on-clicked()
+    do: System.go-to-layout(layout=Second Layout)

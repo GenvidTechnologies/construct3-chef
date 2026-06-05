@@ -27,6 +27,27 @@
 					"isStatic": false,
 					"isConstant": false,
 					"sid": 100000000000021
+				},
+				{
+					"eventType": "block",
+					"conditions": [
+						{
+							"id": "on-clicked",
+							"objectClass": "NavButton",
+							"sid": 718113556931833
+						}
+					],
+					"actions": [
+						{
+							"id": "go-to-layout",
+							"objectClass": "System",
+							"sid": 669765892024684,
+							"parameters": {
+								"layout": "Second Layout"
+							}
+						}
+					],
+					"sid": 573288374737163
 				}
 			],
 			"sid": 100000000000022
