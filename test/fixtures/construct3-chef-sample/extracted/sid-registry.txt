@@ -14,11 +14,13 @@
 230472612059823	layouts/Second Layout.json	layers[2].subLayers[0].subLayers[0].instances[0]
 251254281374259	layouts/Templates Layout.json	layers[0]
 294797499707727	objectTypes/global/JSON.json	objectType
+295654966114362	eventSheets/Event sheet 2.json	events[0].children[0].conditions[0]
 315470183916103	objectTypes/tiles/TiledBackground.json	objectType
 320086281683079	layouts/Main Layout.json	layers[0]
 363185686252480	layouts/Second Layout.json	layers[0].instances[0]
 379769939866202	objectTypes/images/Sprite2.json	objectType
 384578958143912	objectTypes/images/Sprite.json	animations.subfolders[0].items[0]
+410046522280435	layouts/Second Layout.json	layers[0].instances[3]
 434309353023803	layouts/Second Layout.json	layers[2].subLayers[0].subLayers[0]
 448528259594971	objectTypes/images/Sprite.json	objectType
 470569810702409	objectTypes/images/Sprite.json	animations.items[0]
@@ -27,16 +29,22 @@
 516087577917987	layouts/Second Layout.json	layers[2].subLayers[0]
 531694882492218	layouts/Second Layout.json	layers[0]
 544037156847608	layouts/Second Layout.json	layers[1].subLayers[1]
+544395983790907	eventSheets/Event sheet 2.json	events[0]
 549434613100304	layouts/Second Layout.json	layers[1].subLayers[0]
+573288374737163	eventSheets/Event sheet 1.json	events[1].children[1]
 586528543240091	layouts/Second Layout.json	layers[1].subLayers[0].subLayers[0]
 595390336402293	layouts/Main Layout.json	layers[0].instances[1]
 603614350847496	layouts/Main Layout.json	layout
 604751578828694	objectTypes/images/9patch.json	objectType
 612798495723368	objectTypes/images/Sprite3.json	objectType
+635424354242082	eventSheets/Event sheet 2.json	events[0].children[0].actions[0]
 635959236260852	eventSheets/Event sheet 1.json	sheet
+659718123724261	objectTypes/NavButton.json	objectType
+669765892024684	eventSheets/Event sheet 1.json	events[1].children[1].actions[0]
 677078804804694	layouts/Second Layout.json	layers[1]
 694811528070136	eventSheets/Event sheet 2.json	sheet
 706185622576068	layouts/Templates Layout.json	layers[0].instances[0]
+718113556931833	eventSheets/Event sheet 1.json	events[1].children[1].conditions[0]
 726136816921756	objectTypes/images/Sprite3.json	animations.items[0]
 756193165191724	objectTypes/TextInput.json	objectType
 764611743373655	layouts/Second Layout.json	layers[1].subLayers[1].instances[0]
@@ -44,6 +52,8 @@
 801980899728233	objectTypes/tiles/Tilemap.json	objectType
 805026402058515	objectTypes/images/Sprite2.json	animations.items[0]
 813030058561989	layouts/Main Layout.json	nonworld-instances[0]
+872553620766416	layouts/Main Layout.json	layers[0].instances[3]
+873125372253996	eventSheets/Event sheet 2.json	events[0].children[0]
 901279105542585	layouts/Second Layout.json	layout
 909020715256069	layouts/Second Layout.json	layers[0].instances[1]
 924050401428943	objectTypes/Text2.json	objectType

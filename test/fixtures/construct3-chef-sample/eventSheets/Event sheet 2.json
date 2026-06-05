@@ -1,5 +1,37 @@
 {
 	"name": "Event sheet 2",
-	"events": [],
+	"events": [
+		{
+			"eventType": "group",
+			"disabled": false,
+			"title": "Second Layout Events",
+			"description": "",
+			"isActiveOnStart": true,
+			"children": [
+				{
+					"eventType": "block",
+					"conditions": [
+						{
+							"id": "on-clicked",
+							"objectClass": "NavButton",
+							"sid": 295654966114362
+						}
+					],
+					"actions": [
+						{
+							"id": "go-to-layout-by-name",
+							"objectClass": "System",
+							"sid": 635424354242082,
+							"parameters": {
+								"layout": "\"Main Layout\""
+							}
+						}
+					],
+					"sid": 873125372253996
+				}
+			],
+			"sid": 544395983790907
+		}
+	],
 	"sid": 694811528070136
 }

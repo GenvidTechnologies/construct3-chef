@@ -5,9 +5,10 @@
 
 ## Layers (2)
 
-layer 0 (3 instances)
+layer 0 (4 instances)
   9patch x1
   Sprite3 x1
+  NavButton x1
 
 global layer (overriden) [→ Second Layout]
 

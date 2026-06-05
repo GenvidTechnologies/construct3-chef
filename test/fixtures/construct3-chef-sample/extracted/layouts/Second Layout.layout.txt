@@ -5,10 +5,11 @@
 
 ## Layers (3)
 
-layer 0 (3 instances)
+layer 0 (4 instances)
   TextInput x1
   TiledBackground x1
   Tilemap x1
+  NavButton x1
 
 global layer (global)
   global layer > sublayer g.1

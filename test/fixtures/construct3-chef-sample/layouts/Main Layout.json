@@ -347,6 +347,41 @@
 						"z": 0,
 						"angle": 0
 					}
+				},
+				{
+					"type": "NavButton",
+					"properties": {
+						"type": "button",
+						"text": "GO",
+						"tooltip": "",
+						"initially-visible": true,
+						"enabled": true,
+						"auto-font-size": true,
+						"checked": false,
+						"id": "",
+						"class": ""
+					},
+					"uid": 14,
+					"sid": 872553620766416,
+					"tags": "",
+					"instanceVariables": {},
+					"behaviors": {},
+					"showing": true,
+					"locked": false,
+					"world": {
+						"x": 70,
+						"y": 55,
+						"width": 72,
+						"height": 24,
+						"originX": 0,
+						"originY": 0,
+						"color": [
+							1,
+							1,
+							1,
+							1
+						]
+					}
 				}
 			],
 			"sid": 320086281683079,
