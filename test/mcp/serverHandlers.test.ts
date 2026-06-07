@@ -170,13 +170,24 @@ describe("MCP server handler response shaping", () => {
   });
 
   // ── 6. apply-recipe success (regenerate:true) clears extractedDirty ───────
-  // Deferred: the MCP regenerate path has a real bug — GENERATOR_STEPS passes the
-  // *absolute* EXTRACTED_DIR to generateSidRegistry, which expects a *relative*
-  // dir and re-joins projectRoot (path.join(root, /root/extracted)). Result: a
-  // doubled path — silently written to a junk location on POSIX, ENOENT crash on
-  // Windows. The CLI (cli.ts) passes the relative dir correctly; the MCP path was
-  // never exercised, which is the gap this suite closes. Added as a regression
-  // test alongside the one-line fix in the following commit.
+  // Runs all 6 generators against the tmp fixture copy. Regression guard for the
+  // generateSidRegistry dir fix in this commit: before it, this crashed on
+  // Windows (ENOENT, doubled path) and silently mis-wrote the registry on POSIX.
+
+  it("apply-recipe success (regenerate:true): clears extractedDirty, txId bumped", async () => {
+    const handler = __getHandler("apply-recipe")!;
+    expect(handler).to.exist;
+
+    __setExtractedDirty(true); // skip registry freshness scan
+    const result = (await handler({ recipe: VALID_RECIPE, txId: 5 }, makeExtra())) as any;
+
+    expect(result.isError).to.be.undefined;
+    expect(result.content).to.have.length(2);
+    expect(result.content[1].text).to.equal("txId: 6");
+    expect(watcher.bumped).to.equal(1);
+    // a full regenerate clears the stale flag
+    expect(__getExtractedDirty()).to.be.false;
+  });
 
   // ── 7. apply-recipe CancelledError after source write ─────────────────────
   // Aborted signal causes checkCancelled() to throw inside runGenerators AFTER
