@@ -13,6 +13,7 @@ import {
   paginatedContent,
   mcpContent,
   mcpError,
+  withMcpErrors,
   exposeDocs,
   bufferingLogger,
   resolveWithin,
@@ -594,23 +595,24 @@ reg(
   // The NON_IDEMPOTENT_READ annotation describes the tool's effect on PROJECT state
   // (none — source files unchanged); the write lock is internal-state safety.
   async ({ count = 1, extraUsedSids }) =>
-    rwlock.write(async () => {
-      try {
-        const registryPath = path.join(EXTRACTED_DIR, "sid-registry.txt");
-        if (!fs.existsSync(registryPath)) {
-          return mcpError("sid-registry.txt not found. Run 'regenerate' first.", { prefix: "generate-sids:" });
-        }
-        checkRegistryFreshness(registryPath);
-        const used = readRegistryFile(registryPath);
-        if (extraUsedSids) for (const s of extraUsedSids) used.add(s);
-        const sids = Array.from({ length: count }, () => mintUniqueSid(used));
-        const header = `# Generated ${count} SID${count === 1 ? "" : "s"}:`;
-        const text = appendStaleWarning(`${header}\n${sids.join("\n")}`);
-        return { content: [{ type: "text", text }] };
-      } catch (e) {
-        return mcpError(e, { prefix: "generate-sids:" });
-      }
-    }),
+    rwlock.write(
+      withMcpErrors(
+        async () => {
+          const registryPath = path.join(EXTRACTED_DIR, "sid-registry.txt");
+          if (!fs.existsSync(registryPath)) {
+            return mcpError("sid-registry.txt not found. Run 'regenerate' first.", { prefix: "generate-sids:" });
+          }
+          checkRegistryFreshness(registryPath);
+          const used = readRegistryFile(registryPath);
+          if (extraUsedSids) for (const s of extraUsedSids) used.add(s);
+          const sids = Array.from({ length: count }, () => mintUniqueSid(used));
+          const header = `# Generated ${count} SID${count === 1 ? "" : "s"}:`;
+          const text = appendStaleWarning(`${header}\n${sids.join("\n")}`);
+          return { content: [{ type: "text", text }] };
+        },
+        { prefix: "generate-sids:" },
+      ),
+    ),
 );
 
 reg(
@@ -668,39 +670,40 @@ reg(
     },
   },
   async ({ pattern, type, path: searchPath, context }) =>
-    rwlock.read(async () => {
-      if (!pattern) {
-        return mcpError("Pattern cannot be empty. Provide a regex pattern to search for.", { prefix: "search:" });
-      }
+    rwlock.read(
+      withMcpErrors(
+        async () => {
+          if (!pattern) {
+            return mcpError("Pattern cannot be empty. Provide a regex pattern to search for.", { prefix: "search:" });
+          }
 
-      try {
-        const result = search(
-          { projectRoot: PROJECT_ROOT, extractedDir: EXTRACTED_DIR },
-          { pattern, type, path: searchPath, context },
-        );
+          const result = search(
+            { projectRoot: PROJECT_ROOT, extractedDir: EXTRACTED_DIR },
+            { pattern, type, path: searchPath, context },
+          );
 
-        if (result.lines.length === 0) {
-          return { content: [{ type: "text", text: `No matches found for pattern: ${pattern}` }] };
-        }
+          if (result.lines.length === 0) {
+            return { content: [{ type: "text", text: `No matches found for pattern: ${pattern}` }] };
+          }
 
-        let text = result.lines.join("\n");
-        if (result.truncated) {
-          text += `\n\n[Truncated: showing first 1000 matches. Narrow your pattern or path to see more.]`;
-        }
-        if (result.isExtracted) {
-          text = appendStaleWarning(text);
-        }
+          let text = result.lines.join("\n");
+          if (result.truncated) {
+            text += `\n\n[Truncated: showing first 1000 matches. Narrow your pattern or path to see more.]`;
+          }
+          if (result.isExtracted) {
+            text = appendStaleWarning(text);
+          }
 
-        emitLog(
-          "info",
-          `search: type=${type ?? "dsl"}, path=${searchPath ?? "(all)"}, matches=${result.lines.length}${result.truncated ? " (truncated)" : ""}`,
-        );
+          emitLog(
+            "info",
+            `search: type=${type ?? "dsl"}, path=${searchPath ?? "(all)"}, matches=${result.lines.length}${result.truncated ? " (truncated)" : ""}`,
+          );
 
-        return { content: [{ type: "text", text }] };
-      } catch (e) {
-        return mcpError(e instanceof Error ? e.message : String(e), { prefix: "search:" });
-      }
-    }),
+          return { content: [{ type: "text", text }] };
+        },
+        { prefix: "search:" },
+      ),
+    ),
 );
 
 // ── Anchor Resolution Tool ────────────────────────────────────────────────────
@@ -786,24 +789,25 @@ reg(
     },
   },
   async ({ recipe: recipeJson }) =>
-    rwlock.read(async () => {
-      // Refresh extractedDirty so the returned txId reflects any external edits
-      // the file watcher may have missed (atomic-rename, git checkout, network mounts).
-      // This matters: apply-recipe's optimistic-concurrency check uses our returned txId.
-      checkRegistryFreshness(path.join(EXTRACTED_DIR, "sid-registry.txt"));
-      const { log, text } = bufferingLogger();
-      try {
-        const recipe: Recipe = JSON.parse(recipeJson);
-        const errors = validateRecipe(recipe);
-        if (errors.length > 0) {
-          return mcpError(`Validation errors:\n${errors.join("\n")}`, { extraLines: [txIdLine()] });
-        }
-        applyParsed(PROJECT_ROOT, recipe, { dryRun: true, log });
-        return mcpContent(text(), txIdLine());
-      } catch (e) {
-        return mcpError(e, { prefix: "Error:", extraLines: [txIdLine()] });
-      }
-    }),
+    rwlock.read(
+      withMcpErrors(
+        async () => {
+          // Refresh extractedDirty so the returned txId reflects any external edits
+          // the file watcher may have missed (atomic-rename, git checkout, network mounts).
+          // This matters: apply-recipe's optimistic-concurrency check uses our returned txId.
+          checkRegistryFreshness(path.join(EXTRACTED_DIR, "sid-registry.txt"));
+          const { log, text } = bufferingLogger();
+          const recipe: Recipe = JSON.parse(recipeJson);
+          const errors = validateRecipe(recipe);
+          if (errors.length > 0) {
+            return mcpError(`Validation errors:\n${errors.join("\n")}`, { extraLines: [txIdLine()] });
+          }
+          applyParsed(PROJECT_ROOT, recipe, { dryRun: true, log });
+          return mcpContent(text(), txIdLine());
+        },
+        { prefix: "Error:", extraLines: () => [txIdLine()] },
+      ),
+    ),
 );
 
 reg(
@@ -820,44 +824,50 @@ reg(
     },
   },
   async ({ recipe: recipeJson, txId: expectedTxId, regenerate }, extra: Extra) =>
-    rwlock.write(async () => {
-      // Refresh extractedDirty before the txId check — catches external edits the
-      // file watcher may have missed, so a stale registry doesn't seed `mintUniqueSid`
-      // with SIDs that already exist on disk.
-      checkRegistryFreshness(path.join(EXTRACTED_DIR, "sid-registry.txt"));
-      const shouldRegenerate = regenerate !== false;
-      const totalSteps = shouldRegenerate ? 7 : 1; // apply + 6 generators
-      const { log, text } = bufferingLogger();
-      try {
-        if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
-          return mcpError(
-            `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before applying`,
-            { extraLines: [txIdLine()] },
-          );
-        }
-        const recipe: Recipe = JSON.parse(recipeJson);
-        // Suppress watcher during writes — we manage txId/extractedDirty ourselves
-        await watcher.suppress(async () => {
-          await sendProgress(extra, 0, totalSteps, "Applying recipe");
-          applyParsed(PROJECT_ROOT, recipe, { regenerate: false, log });
-          if (shouldRegenerate) {
-            await runGenerators(log, extra, 1, totalSteps);
+    rwlock.write(
+      withMcpErrors(
+        async () => {
+          // Refresh extractedDirty before the txId check — catches external edits the
+          // file watcher may have missed, so a stale registry doesn't seed `mintUniqueSid`
+          // with SIDs that already exist on disk.
+          checkRegistryFreshness(path.join(EXTRACTED_DIR, "sid-registry.txt"));
+          const shouldRegenerate = regenerate !== false;
+          const totalSteps = shouldRegenerate ? 7 : 1; // apply + 6 generators
+          const { log, text } = bufferingLogger();
+          if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
+            return mcpError(
+              `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before applying`,
+              { extraLines: [txIdLine()] },
+            );
           }
-        });
-        watcher.bump();
-        if (shouldRegenerate) {
-          extractedDirty = false;
-        }
-        return mcpContent(text(), txIdLine());
-      } catch (e) {
-        if (e instanceof CancelledError) {
-          // Recipe already applied (source files modified) but regeneration interrupted
+          const recipe: Recipe = JSON.parse(recipeJson);
+          // Suppress watcher during writes — we manage txId/extractedDirty ourselves
+          await watcher.suppress(async () => {
+            await sendProgress(extra, 0, totalSteps, "Applying recipe");
+            applyParsed(PROJECT_ROOT, recipe, { regenerate: false, log });
+            if (shouldRegenerate) {
+              await runGenerators(log, extra, 1, totalSteps);
+            }
+          });
           watcher.bump();
-          extractedDirty = true;
-        }
-        return mcpError(e, { prefix: "Error:", extraLines: [txIdLine()] });
-      }
-    }),
+          if (shouldRegenerate) {
+            extractedDirty = false;
+          }
+          return mcpContent(text(), txIdLine());
+        },
+        {
+          prefix: "Error:",
+          onError: (e) => {
+            if (e instanceof CancelledError) {
+              // Recipe already applied (source files modified) but regeneration interrupted
+              watcher.bump();
+              extractedDirty = true;
+            }
+          },
+          extraLines: () => [txIdLine()],
+        },
+      ),
+    ),
 );
 
 // ── Regenerate Tool ─────────────────────────────────────────────────────────
@@ -872,23 +882,28 @@ reg(
     inputSchema: {},
   },
   async (_args: Record<string, never>, extra: Extra) =>
-    rwlock.write(async () => {
-      const { log, text } = bufferingLogger();
-      try {
-        // Suppress watcher — regenerate writes only to extracted/ (derived output)
-        await watcher.suppress(async () => {
-          await runGenerators(log, extra);
-        });
-        extractedDirty = false;
-        return mcpContent(text());
-      } catch (e) {
-        if (e instanceof CancelledError) {
-          // Partially regenerated — stale. No watcher.bump() (regenerate doesn't modify source files)
-          extractedDirty = true;
-        }
-        return mcpError(e, { prefix: "Error:" });
-      }
-    }),
+    rwlock.write(
+      withMcpErrors(
+        async () => {
+          const { log, text } = bufferingLogger();
+          // Suppress watcher — regenerate writes only to extracted/ (derived output)
+          await watcher.suppress(async () => {
+            await runGenerators(log, extra);
+          });
+          extractedDirty = false;
+          return mcpContent(text());
+        },
+        {
+          prefix: "Error:",
+          onError: (e) => {
+            if (e instanceof CancelledError) {
+              // Partially regenerated — stale. No watcher.bump() (regenerate doesn't modify source files)
+              extractedDirty = true;
+            }
+          },
+        },
+      ),
+    ),
 );
 
 // ── Project Tools ────────────────────────────────────────────────────────────
@@ -903,16 +918,17 @@ reg(
     inputSchema: {},
   },
   async () =>
-    rwlock.read(async () => {
-      const { log, text } = bufferingLogger();
-      try {
-        runSync(PROJECT_ROOT, true, log);
-        reportImageDrift(PROJECT_ROOT, log);
-        return mcpContent(text(), txIdLine());
-      } catch (e) {
-        return mcpError(e, { prefix: "Error:", extraLines: [txIdLine()] });
-      }
-    }),
+    rwlock.read(
+      withMcpErrors(
+        async () => {
+          const { log, text } = bufferingLogger();
+          runSync(PROJECT_ROOT, true, log);
+          reportImageDrift(PROJECT_ROOT, log);
+          return mcpContent(text(), txIdLine());
+        },
+        { prefix: "Error:", extraLines: () => [txIdLine()] },
+      ),
+    ),
 );
 
 reg(
@@ -927,29 +943,30 @@ reg(
     },
   },
   async ({ txId: expectedTxId }) =>
-    rwlock.write(async () => {
-      const { log, text } = bufferingLogger();
-      try {
-        if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
-          return mcpError(
-            `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before syncing`,
-            { extraLines: [txIdLine()] },
-          );
-        }
-        // Suppress watcher — we manage txId ourselves
-        await watcher.suppress(async () => {
-          runSync(PROJECT_ROOT, false, log);
-        });
-        watcher.bump();
-        // Detection-only: images aren't a manifest section so sync can't act on
-        // image drift, but surface it (read-only) so a direct sync still shows it,
-        // mirroring validate-project (#52).
-        reportImageDrift(PROJECT_ROOT, log);
-        return mcpContent(text(), txIdLine());
-      } catch (e) {
-        return mcpError(e, { prefix: "Error:", extraLines: [txIdLine()] });
-      }
-    }),
+    rwlock.write(
+      withMcpErrors(
+        async () => {
+          const { log, text } = bufferingLogger();
+          if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
+            return mcpError(
+              `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before syncing`,
+              { extraLines: [txIdLine()] },
+            );
+          }
+          // Suppress watcher — we manage txId ourselves
+          await watcher.suppress(async () => {
+            runSync(PROJECT_ROOT, false, log);
+          });
+          watcher.bump();
+          // Detection-only: images aren't a manifest section so sync can't act on
+          // image drift, but surface it (read-only) so a direct sync still shows it,
+          // mirroring validate-project (#52).
+          reportImageDrift(PROJECT_ROOT, log);
+          return mcpContent(text(), txIdLine());
+        },
+        { prefix: "Error:", extraLines: () => [txIdLine()] },
+      ),
+    ),
 );
 
 // ── Addon Tool ──────────────────────────────────────────────────────────────
@@ -1051,82 +1068,90 @@ reg(
     },
   },
   async ({ source, name, path: outRelPath, eventSheet, txId: expectedTxId, regenerate }, extra: Extra) =>
-    rwlock.write(async () => {
-      const shouldRegenerate = regenerate !== false;
-      const totalSteps = shouldRegenerate ? 8 : 2; // clone + sync + 6 generators
-      const { log, text } = bufferingLogger();
-      try {
-        if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
-          return mcpError(
-            `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before scaffolding`,
-            { extraLines: [txIdLine()] },
-          );
-        }
-
-        const layoutsDir = path.join(PROJECT_ROOT, "layouts");
-
-        // Path traversal check — output must stay within layouts/
-        const outFullPath = resolveWithin(layoutsDir, outRelPath);
-        if (outFullPath === null) {
-          return mcpError(`Invalid output path '${outRelPath}' — must stay within layouts/`, {
-            extraLines: [txIdLine()],
-          });
-        }
-
-        // Path traversal check — source must stay within layouts/
-        const sourceFullPath = resolveWithin(layoutsDir, source);
-        if (sourceFullPath === null) {
-          return mcpError(`Invalid source path '${source}' — must stay within layouts/`, { extraLines: [txIdLine()] });
-        }
-        if (!fs.existsSync(sourceFullPath)) {
-          return mcpError(`Source layout not found: layouts/${source}`, { extraLines: [txIdLine()] });
-        }
-
-        const sourceContent = fs.readFileSync(sourceFullPath, "utf-8");
-        const sourceLayout = JSON.parse(sourceContent) as Record<string, unknown>;
-
-        // Collect all existing UIDs and SIDs, then clone. Seeding existingSids from the
-        // project registry prevents cloned SIDs from colliding with anything in eventSheets/,
-        // layouts/, or objectTypes/.
-        const existingUids = collectAllUids(layoutsDir);
-        const sidRegistryPath = path.join(EXTRACTED_DIR, "sid-registry.txt");
-        const existingSids = fs.existsSync(sidRegistryPath) ? readRegistryFile(sidRegistryPath) : new Set<number>();
-        const cloned = cloneLayout(sourceLayout, { name, eventSheet, existingUids, existingSids });
-
-        // Write output
-        await watcher.suppress(async () => {
-          // Ensure output directory exists
-          const outDir = path.dirname(outFullPath);
-          fs.mkdirSync(outDir, { recursive: true });
-          fs.writeFileSync(outFullPath, JSON.stringify(cloned, null, "\t") + "\n");
-          watcher.expect(outFullPath);
-          await sendProgress(extra, 0, totalSteps, "Cloning layout");
-          log(`Scaffolded ${name} → layouts/${outRelPath}`);
-
-          // Sync project.c3proj
-          await sendProgress(extra, 1, totalSteps, "Syncing project.c3proj");
-          runSync(PROJECT_ROOT, false, log);
-
-          // Regenerate extracted/ files
-          if (shouldRegenerate) {
-            await runGenerators(log, extra, 2, totalSteps);
+    rwlock.write(
+      withMcpErrors(
+        async () => {
+          const shouldRegenerate = regenerate !== false;
+          const totalSteps = shouldRegenerate ? 8 : 2; // clone + sync + 6 generators
+          const { log, text } = bufferingLogger();
+          if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
+            return mcpError(
+              `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before scaffolding`,
+              { extraLines: [txIdLine()] },
+            );
           }
-        });
 
-        watcher.bump();
-        if (shouldRegenerate) {
-          extractedDirty = false;
-        }
-        return mcpContent(text(), txIdLine());
-      } catch (e) {
-        if (e instanceof CancelledError) {
-          // Layout was already written — source files changed, extracted/ is stale
+          const layoutsDir = path.join(PROJECT_ROOT, "layouts");
+
+          // Path traversal check — output must stay within layouts/
+          const outFullPath = resolveWithin(layoutsDir, outRelPath);
+          if (outFullPath === null) {
+            return mcpError(`Invalid output path '${outRelPath}' — must stay within layouts/`, {
+              extraLines: [txIdLine()],
+            });
+          }
+
+          // Path traversal check — source must stay within layouts/
+          const sourceFullPath = resolveWithin(layoutsDir, source);
+          if (sourceFullPath === null) {
+            return mcpError(`Invalid source path '${source}' — must stay within layouts/`, {
+              extraLines: [txIdLine()],
+            });
+          }
+          if (!fs.existsSync(sourceFullPath)) {
+            return mcpError(`Source layout not found: layouts/${source}`, { extraLines: [txIdLine()] });
+          }
+
+          const sourceContent = fs.readFileSync(sourceFullPath, "utf-8");
+          const sourceLayout = JSON.parse(sourceContent) as Record<string, unknown>;
+
+          // Collect all existing UIDs and SIDs, then clone. Seeding existingSids from the
+          // project registry prevents cloned SIDs from colliding with anything in eventSheets/,
+          // layouts/, or objectTypes/.
+          const existingUids = collectAllUids(layoutsDir);
+          const sidRegistryPath = path.join(EXTRACTED_DIR, "sid-registry.txt");
+          const existingSids = fs.existsSync(sidRegistryPath) ? readRegistryFile(sidRegistryPath) : new Set<number>();
+          const cloned = cloneLayout(sourceLayout, { name, eventSheet, existingUids, existingSids });
+
+          // Write output
+          await watcher.suppress(async () => {
+            // Ensure output directory exists
+            const outDir = path.dirname(outFullPath);
+            fs.mkdirSync(outDir, { recursive: true });
+            fs.writeFileSync(outFullPath, JSON.stringify(cloned, null, "\t") + "\n");
+            watcher.expect(outFullPath);
+            await sendProgress(extra, 0, totalSteps, "Cloning layout");
+            log(`Scaffolded ${name} → layouts/${outRelPath}`);
+
+            // Sync project.c3proj
+            await sendProgress(extra, 1, totalSteps, "Syncing project.c3proj");
+            runSync(PROJECT_ROOT, false, log);
+
+            // Regenerate extracted/ files
+            if (shouldRegenerate) {
+              await runGenerators(log, extra, 2, totalSteps);
+            }
+          });
+
           watcher.bump();
-          extractedDirty = true;
-        }
-        return mcpError(e, { prefix: "Error:", extraLines: [txIdLine()] });
-      }
-    }),
+          if (shouldRegenerate) {
+            extractedDirty = false;
+          }
+          return mcpContent(text(), txIdLine());
+        },
+        {
+          prefix: "Error:",
+          onError: (e) => {
+            if (e instanceof CancelledError) {
+              // Layout was already written — source files changed, extracted/ is stale
+              watcher.bump();
+              extractedDirty = true;
+            }
+          },
+          extraLines: () => [txIdLine()],
+        },
+      ),
+    ),
 );
 
 reg(
@@ -1143,83 +1168,89 @@ reg(
     },
   },
   async ({ source, name: targetName, txId: expectedTxId }) =>
-    rwlock.write(async () => {
-      const { log, text } = bufferingLogger();
-      try {
-        if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
-          return mcpError(
-            `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before scaffolding`,
-            { extraLines: [txIdLine()] },
-          );
-        }
-
-        const objectTypesDir = path.join(PROJECT_ROOT, "objectTypes");
-        const imagesDir = path.join(PROJECT_ROOT, "images");
-
-        // Validate names don't contain path separators
-        for (const [label, val] of [
-          ["source", source],
-          ["name", targetName],
-        ] as const) {
-          if (val.includes("/") || val.includes("\\") || val.includes("..")) {
-            return mcpError(`Invalid ${label} '${val}' — must be a plain objectType name without path separators`, {
-              extraLines: [txIdLine()],
-            });
+    rwlock.write(
+      withMcpErrors(
+        async () => {
+          const { log, text } = bufferingLogger();
+          if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
+            return mcpError(
+              `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before scaffolding`,
+              { extraLines: [txIdLine()] },
+            );
           }
-        }
 
-        // Read source objectType
-        const sourceFile = path.join(objectTypesDir, `${source}.json`);
-        if (!fs.existsSync(sourceFile)) {
-          return mcpError(`Source objectType not found: objectTypes/${source}.json`, { extraLines: [txIdLine()] });
-        }
+          const objectTypesDir = path.join(PROJECT_ROOT, "objectTypes");
+          const imagesDir = path.join(PROJECT_ROOT, "images");
 
-        const sourceContent = fs.readFileSync(sourceFile, "utf-8");
-        const sourceObj = JSON.parse(sourceContent) as Record<string, unknown>;
-
-        // Collect all existing SIDs and max imageSpriteId
-        const existingSids = collectAllObjectTypeSids(objectTypesDir);
-        const maxImageSpriteId = collectMaxImageSpriteId(objectTypesDir);
-
-        // Clone the sprite
-        const cloned = cloneSprite(sourceObj, {
-          name: targetName,
-          existingSids,
-          nextImageSpriteId: maxImageSpriteId + 1,
-        });
-
-        // Write output and copy images
-        await watcher.suppress(async () => {
-          // Write objectType JSON
-          const outFile = path.join(objectTypesDir, `${targetName}.json`);
-          fs.writeFileSync(outFile, JSON.stringify(cloned, null, "\t") + "\n");
-          watcher.expect(outFile);
-          log(`Scaffolded ${targetName} → objectTypes/${targetName}.json`);
-
-          // Discover and copy images (images/ is NOT watched — no expectedChanges needed)
-          if (fs.existsSync(imagesDir)) {
-            const imageCopies = discoverAndPlanImageCopies(imagesDir, source, targetName);
-            for (const { sourcePath, targetPath, sourceBasename, targetBasename } of imageCopies) {
-              fs.copyFileSync(sourcePath, targetPath);
-              log(`Copied images/${sourceBasename} → images/${targetBasename}`);
+          // Validate names don't contain path separators
+          for (const [label, val] of [
+            ["source", source],
+            ["name", targetName],
+          ] as const) {
+            if (val.includes("/") || val.includes("\\") || val.includes("..")) {
+              return mcpError(`Invalid ${label} '${val}' — must be a plain objectType name without path separators`, {
+                extraLines: [txIdLine()],
+              });
             }
           }
 
-          // Sync project.c3proj
-          runSync(PROJECT_ROOT, false, log);
-        });
+          // Read source objectType
+          const sourceFile = path.join(objectTypesDir, `${source}.json`);
+          if (!fs.existsSync(sourceFile)) {
+            return mcpError(`Source objectType not found: objectTypes/${source}.json`, { extraLines: [txIdLine()] });
+          }
 
-        watcher.bump();
-        return mcpContent(text(), txIdLine());
-      } catch (e) {
-        if (e instanceof CancelledError) {
-          // Sprite was already written — source files changed, extracted/ may be stale
+          const sourceContent = fs.readFileSync(sourceFile, "utf-8");
+          const sourceObj = JSON.parse(sourceContent) as Record<string, unknown>;
+
+          // Collect all existing SIDs and max imageSpriteId
+          const existingSids = collectAllObjectTypeSids(objectTypesDir);
+          const maxImageSpriteId = collectMaxImageSpriteId(objectTypesDir);
+
+          // Clone the sprite
+          const cloned = cloneSprite(sourceObj, {
+            name: targetName,
+            existingSids,
+            nextImageSpriteId: maxImageSpriteId + 1,
+          });
+
+          // Write output and copy images
+          await watcher.suppress(async () => {
+            // Write objectType JSON
+            const outFile = path.join(objectTypesDir, `${targetName}.json`);
+            fs.writeFileSync(outFile, JSON.stringify(cloned, null, "\t") + "\n");
+            watcher.expect(outFile);
+            log(`Scaffolded ${targetName} → objectTypes/${targetName}.json`);
+
+            // Discover and copy images (images/ is NOT watched — no expectedChanges needed)
+            if (fs.existsSync(imagesDir)) {
+              const imageCopies = discoverAndPlanImageCopies(imagesDir, source, targetName);
+              for (const { sourcePath, targetPath, sourceBasename, targetBasename } of imageCopies) {
+                fs.copyFileSync(sourcePath, targetPath);
+                log(`Copied images/${sourceBasename} → images/${targetBasename}`);
+              }
+            }
+
+            // Sync project.c3proj
+            runSync(PROJECT_ROOT, false, log);
+          });
+
           watcher.bump();
-          extractedDirty = true;
-        }
-        return mcpError(e, { prefix: "Error:", extraLines: [txIdLine()] });
-      }
-    }),
+          return mcpContent(text(), txIdLine());
+        },
+        {
+          prefix: "Error:",
+          onError: (e) => {
+            if (e instanceof CancelledError) {
+              // Sprite was already written — source files changed, extracted/ may be stale
+              watcher.bump();
+              extractedDirty = true;
+            }
+          },
+          extraLines: () => [txIdLine()],
+        },
+      ),
+    ),
 );
 
 // ── Template Workflow Tools ─────────────────────────────────────────────────
@@ -1240,35 +1271,41 @@ async function runWorkflowRecipe(
   regenerate: boolean | undefined,
   extra: Extra,
 ): Promise<CallToolResult> {
-  checkRegistryFreshness(path.join(EXTRACTED_DIR, "sid-registry.txt"));
-  const shouldRegenerate = regenerate !== false;
-  const totalSteps = shouldRegenerate ? 7 : 1; // apply + 6 generators
-  const { log, text } = bufferingLogger();
-  try {
-    if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
-      return mcpError(`State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before applying`, {
-        extraLines: [txIdLine()],
-      });
-    }
-    await watcher.suppress(async () => {
-      await sendProgress(extra, 0, totalSteps, "Applying workflow");
-      applyParsed(PROJECT_ROOT, recipe, { regenerate: false, log });
-      if (shouldRegenerate) {
-        await runGenerators(log, extra, 1, totalSteps);
+  return withMcpErrors(
+    async () => {
+      checkRegistryFreshness(path.join(EXTRACTED_DIR, "sid-registry.txt"));
+      const shouldRegenerate = regenerate !== false;
+      const totalSteps = shouldRegenerate ? 7 : 1; // apply + 6 generators
+      const { log, text } = bufferingLogger();
+      if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
+        return mcpError(`State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before applying`, {
+          extraLines: [txIdLine()],
+        });
       }
-    });
-    watcher.bump();
-    if (shouldRegenerate) {
-      extractedDirty = false;
-    }
-    return mcpContent(text(), txIdLine());
-  } catch (e) {
-    if (e instanceof CancelledError) {
+      await watcher.suppress(async () => {
+        await sendProgress(extra, 0, totalSteps, "Applying workflow");
+        applyParsed(PROJECT_ROOT, recipe, { regenerate: false, log });
+        if (shouldRegenerate) {
+          await runGenerators(log, extra, 1, totalSteps);
+        }
+      });
       watcher.bump();
-      extractedDirty = true;
-    }
-    return mcpError(e, { prefix: "Error:", extraLines: [txIdLine()] });
-  }
+      if (shouldRegenerate) {
+        extractedDirty = false;
+      }
+      return mcpContent(text(), txIdLine());
+    },
+    {
+      prefix: "Error:",
+      onError: (e) => {
+        if (e instanceof CancelledError) {
+          watcher.bump();
+          extractedDirty = true;
+        }
+      },
+      extraLines: () => [txIdLine()],
+    },
+  )();
 }
 
 reg(
