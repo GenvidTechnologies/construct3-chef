@@ -239,9 +239,9 @@ describe("MCP server handler response shaping", () => {
   });
 
   // ── 8. list-event-sheets pagination ──────────────────────────────────────
-  // Fixture has 4 .json entries under eventSheets/ (sorted):
-  //   Event sheet 1.json, Event sheet 1.uistate.json,
-  //   Event sheet 2.json, Event sheet 2.uistate.json
+  // Fixture has 2 real event sheet entries under eventSheets/ (sorted):
+  //   Event sheet 1.json, Event sheet 2.json
+  // The *.uistate.json editor-local files are excluded by the c3source finder.
   // These are live filesystem reads — no stale warning even when dirty.
 
   describe("list-event-sheets", () => {
@@ -277,16 +277,27 @@ describe("MCP server handler response shaping", () => {
 
       expect(result.content[0].text).to.not.include(STALE_WARNING);
     });
+
+    it("excludes editor-local uistate files and includes all real sheets", async () => {
+      const handler = __getHandler("list-event-sheets")!;
+      expect(handler).to.exist;
+
+      const result = (await handler({}, makeExtra())) as any;
+      const text: string = result.content[0].text;
+
+      // Editor-local files must be absent
+      expect(text).to.not.include(".uistate.json");
+      // Both real event sheets must be present
+      expect(text).to.include("Event sheet 1.json");
+      expect(text).to.include("Event sheet 2.json");
+    });
   });
 
   // ── 9. list-layouts pagination ────────────────────────────────────────────
-  // Fixture has 9 .json entries under layouts/ (sorted):
-  //   Main Layout.json, Main Layout.uistate.json,
-  //   Second Layout.json, Second Layout.uistate.json,
-  //   Templates Layout.json, Templates Layout.uistate.json,
-  //   uistate/Main Layout.instancesBar.json,
-  //   uistate/Second Layout.instancesBar.json,
-  //   uistate/Templates Layout.instancesBar.json
+  // Fixture has 3 real layout entries under layouts/ (sorted):
+  //   Main Layout.json, Second Layout.json, Templates Layout.json
+  // The *.uistate.json siblings and uistate/*.json files are excluded by the
+  // c3source finder.
   // These are live filesystem reads — no stale warning even when dirty.
 
   describe("list-layouts", () => {
@@ -321,6 +332,22 @@ describe("MCP server handler response shaping", () => {
       const result = (await handler({}, makeExtra())) as any;
 
       expect(result.content[0].text).to.not.include(STALE_WARNING);
+    });
+
+    it("excludes editor-local uistate files and includes all real layouts", async () => {
+      const handler = __getHandler("list-layouts")!;
+      expect(handler).to.exist;
+
+      const result = (await handler({}, makeExtra())) as any;
+      const text: string = result.content[0].text;
+
+      // Editor-local files must be absent (*.uistate.json siblings and uistate/ subdir)
+      expect(text).to.not.include(".uistate.json");
+      expect(text).to.not.include("uistate/");
+      // All three real layouts must be present
+      expect(text).to.include("Main Layout.json");
+      expect(text).to.include("Second Layout.json");
+      expect(text).to.include("Templates Layout.json");
     });
   });
 

@@ -17,7 +17,6 @@ import {
   exposeDocs,
   bufferingLogger,
   resolveWithin,
-  walkFiles,
   toPosixPath,
   READ_ONLY,
   REGENERATE,
@@ -40,6 +39,7 @@ import {
 import { runSync, reportImageDrift } from "../c3/projectSync.js";
 import { readRegistryFile, mintUniqueSid } from "../c3/sidUtils.js";
 import { filterIndex, buildShallowSidMap, type SidMapEntry } from "../c3/dslFormatter.js";
+import { find_all_eventsheets_path, find_all_layouts_path } from "@genvid/c3source";
 import type { EventSheet } from "@genvid/c3source";
 import { resolveIncludeTree, formatIncludeTree, flattenIncludeTree } from "../c3/includeTree.js";
 import { collectAllUids, cloneLayout } from "../c3/layoutScaffold.js";
@@ -250,11 +250,8 @@ function paginatedResponse(
   return { content: [{ type: "text" as const, text: finalText }] };
 }
 
-function globRelative(dir: string, ext: string): string[] {
-  return walkFiles(dir, ext)
-    .map((full) => toPosixPath(path.relative(dir, full)))
-    .sort();
-}
+const toSortedRelative = (absPaths: string[], dir: string) =>
+  absPaths.map((p) => toPosixPath(path.relative(dir, p))).sort();
 
 /**
  * Render the rows portion of a read-event-sids response (excluding the header).
@@ -317,7 +314,8 @@ reg(
   },
   async ({ offset, limit }) =>
     rwlock.read(async () => {
-      const sheets = globRelative(path.join(PROJECT_ROOT, "eventSheets"), ".json");
+      const dir = path.join(PROJECT_ROOT, "eventSheets");
+      const sheets = toSortedRelative(find_all_eventsheets_path(dir), dir);
       return paginatedResponse(sheets.join("\n"), offset, limit, { stale: false });
     }),
 );
@@ -333,7 +331,8 @@ reg(
   },
   async ({ offset, limit }) =>
     rwlock.read(async () => {
-      const layouts = globRelative(path.join(PROJECT_ROOT, "layouts"), ".json");
+      const dir = path.join(PROJECT_ROOT, "layouts");
+      const layouts = toSortedRelative(find_all_layouts_path(dir), dir);
       return paginatedResponse(layouts.join("\n"), offset, limit, { stale: false });
     }),
 );
