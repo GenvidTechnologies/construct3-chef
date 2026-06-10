@@ -26,7 +26,12 @@ import {
   cloneSprite,
 } from "./c3/spriteScaffold.js";
 import { findTemplates } from "./c3/templateLister.js";
-import { buildLayoutEventSheetMap, findGoToLayoutCalls, generatePlantUML } from "./c3/navigationGraph.js";
+import {
+  buildLayoutEventSheetMap,
+  findGoToLayoutCalls,
+  formatNavTable,
+  generatePlantUML,
+} from "./c3/navigationGraph.js";
 import { resolveNavConvention } from "./c3/navConvention.js";
 
 const GENERATOR_NAMES = ["scripts", "dsl", "layouts", "templates", "sid-registry", "global-layers"] as const;
@@ -355,32 +360,7 @@ yargs(hideBin(process.argv))
         console.log(`Written to ${outFile}`);
         return;
       }
-      navEntries.sort((a, b) => {
-        const sheetCmp = a.fromSheet.localeCompare(b.fromSheet);
-        if (sheetCmp !== 0) return sheetCmp;
-        return a.lineNumber - b.lineNumber;
-      });
-      if (navEntries.length === 0) {
-        console.log("(no navigation calls found)");
-        return;
-      }
-      const COL_FROM = 25;
-      const COL_TO = 30;
-      const COL_LINE = 6;
-      const header = `${"From EventSheet".padEnd(COL_FROM)} → ${"Target Layout".padEnd(COL_TO)} ${"Line".padStart(COL_LINE)}`;
-      console.log(header);
-      console.log("─".repeat(header.length + 2));
-      for (const entry of navEntries) {
-        const fromPadded = entry.fromSheet.padEnd(COL_FROM);
-        const toPadded = entry.targetLayout.padEnd(COL_TO);
-        const linePadded = String(entry.lineNumber).padStart(COL_LINE);
-        let annotation = "";
-        const primaryLayout = sheetToLayout[entry.fromSheet];
-        if (primaryLayout && primaryLayout !== entry.targetLayout) {
-          annotation = `  ← primary sheet of ${primaryLayout}`;
-        }
-        console.log(`${fromPadded} → ${toPadded} ${linePadded}${annotation}`);
-      }
+      console.log(formatNavTable(navEntries, sheetToLayout));
     },
   )
   .command(
