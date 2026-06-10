@@ -53,6 +53,13 @@ import {
   cloneSprite,
 } from "../c3/spriteScaffold.js";
 import { loadChefConfig, type ChefConfig } from "../c3/chefConfig.js";
+import {
+  buildLayoutEventSheetMap,
+  findGoToLayoutCalls,
+  formatNavTable,
+  generatePlantUML,
+} from "../c3/navigationGraph.js";
+import { resolveNavConvention } from "../c3/navConvention.js";
 
 let PROJECT_ROOT = process.cwd();
 let EXTRACTED_DIR = path.join(PROJECT_ROOT, "extracted");
@@ -354,6 +361,36 @@ reg(
           prefix: "list-global-layers:",
         });
       }
+      return paginatedResponse(text, offset, limit);
+    }),
+);
+
+reg(
+  "navigation-graph",
+  {
+    title: "Navigation Graph",
+    description:
+      "Show the layout navigation graph: every System.go-to-layout / configured nav call found in the extracted DSL, as a 'from event sheet → target layout → line' table. Pass format:\"plantuml\" to get a PlantUML component diagram (layout → layout) as text instead. Reads the extracted/ surface; supports offset/limit pagination.",
+    annotations: READ_ONLY,
+    inputSchema: {
+      format: z
+        .enum(["table", "plantuml"])
+        .optional()
+        .describe("Output format: 'table' (default) for the from→to→line table, or 'plantuml' for diagram source"),
+      ...PAGINATION_PARAMS,
+    },
+  },
+  async ({ format, offset, limit }) =>
+    rwlock.read(async () => {
+      const config = await loadChefConfig(PROJECT_ROOT);
+      const layoutEventSheetMap = buildLayoutEventSheetMap(path.join(PROJECT_ROOT, "layouts"));
+      const sheetToLayout: Record<string, string> = {};
+      for (const [layoutName, sheetName] of Object.entries(layoutEventSheetMap)) {
+        sheetToLayout[sheetName] = layoutName;
+      }
+      const navEntries = findGoToLayoutCalls(EXTRACTED_DIR, resolveNavConvention(config));
+      const text =
+        format === "plantuml" ? generatePlantUML(navEntries, sheetToLayout) : formatNavTable(navEntries, sheetToLayout);
       return paginatedResponse(text, offset, limit);
     }),
 );
