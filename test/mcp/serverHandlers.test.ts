@@ -355,6 +355,66 @@ describe("MCP server handler response shaping", () => {
   // Aborted signal causes checkCancelled() to throw inside runGenerators AFTER
   // applyParsed has already written source files.
 
+  // ── 11. navigation-graph ──────────────────────────────────────────────────
+  // Fixture has two nav entries:
+  //   Event sheet 1 → Second Layout  (line 11 in Event sheet 1.dsl.txt)
+  //   Event sheet 2 → Main Layout    (line 7  in Event sheet 2.dsl.txt)
+
+  describe("navigation-graph", () => {
+    it("default (table): one block, contains header and fixture nav entries", async () => {
+      const handler = __getHandler("navigation-graph")!;
+      expect(handler).to.exist;
+
+      const result = (await handler({}, makeExtra())) as any;
+
+      expect(result.isError).to.be.undefined;
+      expect(result.content).to.have.length(1);
+      expect(result.content[0].type).to.equal("text");
+      const text: string = result.content[0].text;
+      expect(text).to.include("From EventSheet");
+      expect(text).to.include("Event sheet 1");
+      expect(text).to.include("Second Layout");
+    });
+
+    it("format 'plantuml': one block, contains @startuml/@enduml/-->", async () => {
+      const handler = __getHandler("navigation-graph")!;
+      expect(handler).to.exist;
+
+      const result = (await handler({ format: "plantuml" }, makeExtra())) as any;
+
+      expect(result.isError).to.be.undefined;
+      expect(result.content).to.have.length(1);
+      const text: string = result.content[0].text;
+      expect(text).to.include("@startuml");
+      expect(text).to.include("@enduml");
+      expect(text).to.include("-->");
+    });
+
+    it("stale warning: appended when extractedDirty=true, absent when false", async () => {
+      const handler = __getHandler("navigation-graph")!;
+      expect(handler).to.exist;
+
+      __setExtractedDirty(true);
+      const dirtyResult = (await handler({}, makeExtra())) as any;
+      expect(dirtyResult.content[0].text).to.include(STALE_WARNING);
+
+      __setExtractedDirty(false);
+      const cleanResult = (await handler({}, makeExtra())) as any;
+      expect(cleanResult.content[0].text).to.not.include(STALE_WARNING);
+    });
+
+    it("pagination footer: offset/limit yields single block with in-block range footer", async () => {
+      const handler = __getHandler("navigation-graph")!;
+      expect(handler).to.exist;
+
+      const result = (await handler({ offset: 0, limit: 1 }, makeExtra())) as any;
+
+      expect(result.content).to.have.length(1);
+      expect(result.content[0].type).to.equal("text");
+      expect(result.content[0].text).to.include("lines: ");
+    });
+  });
+
   it("apply-recipe with aborted signal: isError, Cancelled text, txId bumped, dirty=true", async () => {
     const handler = __getHandler("apply-recipe")!;
     expect(handler).to.exist;
