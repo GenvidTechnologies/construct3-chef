@@ -84,6 +84,46 @@ export function findGoToLayoutCalls(
 }
 
 /**
+ * Render navigation entries as a plain-text table and return the result as a string.
+ *
+ * Entries are sorted by sheet name then line number (a copy is sorted; the caller's
+ * array is not mutated). Returns the single-line string `"(no navigation calls found)"`
+ * when the input is empty. Otherwise returns the header line, a separator line, and
+ * one row per entry, joined with `"\n"` (no trailing newline).
+ */
+export function formatNavTable(navEntries: NavEntry[], sheetToLayout: Record<string, string>): string {
+  const sorted = [...navEntries].sort((a, b) => {
+    const sheetCmp = a.fromSheet.localeCompare(b.fromSheet);
+    if (sheetCmp !== 0) return sheetCmp;
+    return a.lineNumber - b.lineNumber;
+  });
+
+  if (sorted.length === 0) {
+    return "(no navigation calls found)";
+  }
+
+  const COL_FROM = 25;
+  const COL_TO = 30;
+  const COL_LINE = 6;
+  const header = `${"From EventSheet".padEnd(COL_FROM)} → ${"Target Layout".padEnd(COL_TO)} ${"Line".padStart(COL_LINE)}`;
+  const lines: string[] = [header, "─".repeat(header.length + 2)];
+
+  for (const entry of sorted) {
+    const fromPadded = entry.fromSheet.padEnd(COL_FROM);
+    const toPadded = entry.targetLayout.padEnd(COL_TO);
+    const linePadded = String(entry.lineNumber).padStart(COL_LINE);
+    let annotation = "";
+    const primaryLayout = sheetToLayout[entry.fromSheet];
+    if (primaryLayout && primaryLayout !== entry.targetLayout) {
+      annotation = `  ← primary sheet of ${primaryLayout}`;
+    }
+    lines.push(`${fromPadded} → ${toPadded} ${linePadded}${annotation}`);
+  }
+
+  return lines.join("\n");
+}
+
+/**
  * Build a PlantUML component diagram from navigation entries.
  *
  * Each source event sheet is resolved to its owning layout via `sheetToLayout`.
