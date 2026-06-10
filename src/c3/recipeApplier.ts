@@ -95,6 +95,10 @@ export function loadSheet(rootDir: string, filePath: string): EventSheet {
   return JSON.parse(content) as EventSheet;
 }
 
+function writeEventSheet(fullPath: string, sheet: EventSheet): void {
+  writeFileSync(fullPath, JSON.stringify(sheet, null, "\t") + "\n");
+}
+
 export function regenerateExtracted(
   rootDir: string,
   withLayouts = false,
@@ -1059,7 +1063,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
       if (isFileCreate(entry)) {
         const sheet = createSheet(sidGen, extractSheetName(filePath), entry.events);
         mkdirSync(path.dirname(fullPath), { recursive: true });
-        writeFileSync(fullPath, JSON.stringify(sheet, null, "\t") + "\n");
+        writeEventSheet(fullPath, sheet);
         log(`  CREATED ${filePath}`);
       } else {
         const original = loadSheet(rootDir, filePath);
@@ -1068,7 +1072,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
         executeFileOpsWithHints(sidGen, filePath, original, clone, opsClone, {
           autoAdjust: recipe.autoAdjust,
         });
-        writeFileSync(fullPath, JSON.stringify(clone, null, "\t") + "\n");
+        writeEventSheet(fullPath, clone);
         log(`  MODIFIED ${filePath}`);
       }
     }
@@ -1190,7 +1194,7 @@ export function renameSymbols(
   // Write modified files
   for (const m of matched) {
     const fullPath = path.join(rootDir, m.filePath);
-    writeFileSync(fullPath, JSON.stringify(m.modified, null, "\t") + "\n");
+    writeEventSheet(fullPath, m.modified);
     log(`  MODIFIED ${m.filePath}`);
   }
 
