@@ -794,6 +794,7 @@ npx construct3-chef apply-recipe <recipe.json> --no-regenerate  # Skip generate 
 | 34 | **`insert-event` with SID-based `after` resolves the live position** | The `after: "sid:X"` insert looks up the target's *current* index, so it stays correct even when earlier ops in the same recipe batch shift siblings. (Previously used a stale `buildSidIndex` snapshot and could misplace/append; fixed.) |
 | 35 | **`matchAction` only matches actions, not conditions** | `patch-action-param`'s `matchAction` searches `actions` array only. To modify condition parameters, use `replace-condition`. |
 | 36 | **`removeInstances` on `remove-layer` is permanent** | `cascade: true, removeInstances: true` deletes every instance in the entire sublayer subtree with no undo. Verify the subtree is instance-free (or intentionally discarded) before applying. `removeInstances` without `cascade` is rejected by `validateRecipe`. |
+| 37 | **`apply-recipe` and `validate-recipe` hard-fail on editor-invalid event sheets** | Both tools run `validateForEditor` (c3source's `EDITOR_FIELD_RULES`) on every event sheet before write-out. If a node would make the C3 editor reject the project on import — e.g. a `variable` missing `comment` or a `group` missing `description` — the tool throws with the offending jsonPath and rule id, and the sheet is **never written**. Fix the recipe's builder shorthand (ensure `comment: ""` on variables, `description: ""` on groups) and retry. The same check runs on `files-create`, `files-modify`, and `rename-symbol` preview paths. |
 
 ---
 
@@ -802,7 +803,7 @@ npx construct3-chef apply-recipe <recipe.json> --no-regenerate  # Skip generate 
 1. Use `read-dsl` (or read `.dsl.txt`) to understand the event sheet structure
 2. Use `read-dsl-index` (or read `.dsl.idx.txt`) to get SIDs and JSON paths for target events
 3. Write ops using `in: "sid:X"` for existing events (preferred), or `path` for position-based (legacy)
-4. Validate with `--dry-run` or `validate-recipe`
+4. Validate with `--dry-run` or `validate-recipe` (both also run editor-validity checks — see gotcha #37)
 5. Preview script changes with `--preview`
 6. Apply (runs `generate` automatically unless `--no-regenerate`)
 7. Run typecheck to catch type-position renames missed by `rename-symbol`
