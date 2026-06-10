@@ -304,6 +304,8 @@ When printing to stdout, each row shows the source event sheet, the target layou
 
 Requires `extracted/` to be up to date (run `generate` first if needed).
 
+The same capability is also exposed by the MCP server as a read-only `navigation-graph` tool: it returns the table by default, or pass `format: "plantuml"` to get the PlantUML diagram source as text (rather than writing a file). The tool reads the `extracted/` surface and appends the standard stale-warning when source has changed since the last regenerate.
+
 ---
 
 ## search-dsl
