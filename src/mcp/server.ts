@@ -60,6 +60,7 @@ import {
   generatePlantUML,
 } from "../c3/navigationGraph.js";
 import { resolveNavConvention } from "../c3/navConvention.js";
+import { discoverAddons, findAddonExtractedDir } from "../c3/addonDiscovery.js";
 
 let PROJECT_ROOT = process.cwd();
 let EXTRACTED_DIR = path.join(PROJECT_ROOT, "extracted");
@@ -1014,8 +1015,6 @@ reg(
 
 // ── Addon Tool ──────────────────────────────────────────────────────────────
 
-const ADDON_DIRS = ["addons/plugin", "addons/effect"] as const;
-
 reg(
   "read-addon",
   {
@@ -1032,20 +1031,9 @@ reg(
     rwlock.read(async () => {
       if (!name) {
         // List all addons
-        const entries: string[] = [];
-        for (const addonDir of ADDON_DIRS) {
-          const dirType = addonDir === "addons/plugin" ? "plugin" : "effect";
-          const fullDir = path.join(PROJECT_ROOT, addonDir);
-          if (!fs.existsSync(fullDir)) continue;
-          for (const entry of fs.readdirSync(fullDir, { withFileTypes: true })) {
-            if (entry.name.endsWith(".c3addon") && entry.isFile()) {
-              const addonName = entry.name.replace(/\.c3addon$/, "");
-              const extractedDir = path.join(fullDir, addonName);
-              const extracted = fs.existsSync(extractedDir) && fs.statSync(extractedDir).isDirectory();
-              entries.push(`${addonName}  (${dirType})  ${extracted ? "extracted" : "archive only"}`);
-            }
-          }
-        }
+        const entries = discoverAddons(PROJECT_ROOT).map(
+          (a) => `${a.name}  (${a.kind})  ${a.extractedDir ? "extracted" : "archive only"}`,
+        );
         if (entries.length === 0) {
           return { content: [{ type: "text", text: "No addons found." }] };
         }
@@ -1053,14 +1041,7 @@ reg(
       }
 
       // Find extracted addon folder
-      let addonPath: string | null = null;
-      for (const addonDir of ADDON_DIRS) {
-        const candidate = path.join(PROJECT_ROOT, addonDir, name);
-        if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
-          addonPath = candidate;
-          break;
-        }
-      }
+      const addonPath = findAddonExtractedDir(PROJECT_ROOT, name);
 
       if (!addonPath) {
         return mcpError(
