@@ -1,0 +1,34 @@
+{
+	"$schema": "../aces.schema.json",
+	"timing": {
+		"conditions": [
+			{
+				"id": "is-elapsed",
+				"scriptName": "IsElapsed",
+				"params": [
+					{ "id": "duration", "type": "number" }
+				]
+			}
+		],
+		"actions": [
+			{
+				"id": "set-rate",
+				"scriptName": "SetRate",
+				"params": [
+					{ "id": "rate", "type": "number" },
+					{ "id": "unit", "type": "string" }
+				]
+			}
+		],
+		"expressions": [
+			{
+				"id": "elapsed",
+				"expressionName": "Elapsed",
+				"returnType": "number",
+				"params": [
+					{ "id": "unit", "type": "string" }
+				]
+			}
+		]
+	}
+}
