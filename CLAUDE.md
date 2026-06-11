@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-construct3-chef mutates Construct 3 projects, which store their data as JSON files on disk (`eventSheets/`, `layouts/`, `objectTypes/`, `scripts/`). It exposes the same library two ways: a yargs **CLI** (`src/cli.ts`) and an **MCP server** (`src/mcp/server.ts`). Both are thin wrappers over the pure library in `src/c3/`. When adding a capability, implement it in `src/c3/`, then surface it in both `cli.ts` and `server.ts`.
+construct3-chef mutates Construct 3 projects, which store their data as JSON files on disk (`eventSheets/`, `layouts/`, `objectTypes/`, `scripts/`). It exposes the same library two ways: a yargs **CLI** (`src/cli.ts`) and an **MCP server** (`src/mcp/server.ts`). Both are thin wrappers over the pure library in `src/c3/`. When adding a capability, implement it in `src/c3/`, then surface it in both `cli.ts` and `server.ts`. Keep the **result rendering** in the `src/c3/` library too (a shared formatter both surfaces call), so the CLI and MCP outputs stay byte-identical instead of drifting — e.g. `aceLookup.ts`'s `formatLookupResult` is rendered once and consumed by the `search-docs` CLI subcommand and MCP tool alike.
 
 ## Where to read more
 
