@@ -1,0 +1,56 @@
+{
+	"schemaVersion": 1,
+	"manualVersion": "r418",
+	"generatedAt": "2026-06-11T00:00:00.000Z",
+	"aces": [
+		{
+			"source": "builtin",
+			"objectClass": "Sprite",
+			"kind": "action",
+			"id": "set-position",
+			"scriptName": "SetPosition",
+			"params": [
+				{ "name": "x", "type": "number" },
+				{ "name": "y", "type": "number" }
+			],
+			"description": "Set the X and Y position of the object.",
+			"canonicalUrl": "https://www.construct.net/en/make-games/manuals/construct-3/plugin-reference/sprite"
+		},
+		{
+			"source": "builtin",
+			"objectClass": "System",
+			"kind": "condition",
+			"id": "every-tick",
+			"scriptName": "EveryTick",
+			"params": [],
+			"description": "Triggers every tick.",
+			"canonicalUrl": "https://www.construct.net/en/make-games/manuals/construct-3/system-reference/system-conditions"
+		},
+		{
+			"source": "builtin",
+			"objectClass": "JSON",
+			"kind": "expression",
+			"id": "get",
+			"scriptName": "Get",
+			"params": [
+				{ "name": "path", "type": "string" }
+			],
+			"description": "Get a value from the JSON object at the given path.",
+			"canonicalUrl": "https://www.construct.net/en/make-games/manuals/construct-3/plugin-reference/json"
+		}
+	],
+	"chunks": [
+		{
+			"title": "Expressions overview",
+			"text": "Expressions are used in Construct 3 to calculate values dynamically. They can reference object properties, call functions, and perform arithmetic.",
+			"canonicalUrl": "https://www.construct.net/en/make-games/manuals/construct-3/scripting/scripting-reference/addon-sdk-reference/addon-expressions",
+			"category": "expression"
+		},
+		{
+			"title": "Layouts and layers",
+			"text": "A layout in Construct 3 represents a game scene. Each layout contains layers which hold object instances.",
+			"canonicalUrl": "https://www.construct.net/en/make-games/manuals/construct-3/project-primitives/layouts",
+			"category": "layout"
+		}
+	]
+}
