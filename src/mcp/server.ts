@@ -62,13 +62,14 @@ import {
 import { resolveNavConvention } from "../c3/navConvention.js";
 import { discoverAddons, findAddonExtractedDir } from "../c3/addonDiscovery.js";
 import { lookup, formatLookupResult } from "../c3/aceLookup.js";
+import { OpsRegistry } from "./opsRegistry.js";
 
 let PROJECT_ROOT = process.cwd();
 let EXTRACTED_DIR = path.join(PROJECT_ROOT, "extracted");
 
 const server = new McpServer(
   { name: "construct3-chef", version: "1.0.0" },
-  { capabilities: { logging: {}, resources: {} } },
+  { capabilities: { logging: {}, resources: {}, tools: { listChanged: true } } },
 );
 const __pkgDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 exposeDocs(server, __pkgDir);
@@ -1725,16 +1726,32 @@ export async function startServer(projectDir?: string, overrides?: Partial<ChefC
   }
   console.error(`[construct3-chef] Starting server in ${PROJECT_ROOT}`);
 
+  // Resolve ops dir from already-loaded config (avoids a double loadChefConfig call).
+  const opsDir = resolveWithin(PROJECT_ROOT, config.ops.dir) ?? path.join(PROJECT_ROOT, "ops");
+
+  setupWatchers();
+
+  // Start the OpsRegistry BEFORE server.connect() so initial op-* tools are
+  // present from the first tools/list response (no spurious list_changed before connect).
+  const opsRegistry = new OpsRegistry({
+    server,
+    opsDir,
+    watch: config.ops.watch,
+    applyRecipe: (recipe, opts, extra) => applyRecipeWithConcurrency(recipe, opts, extra),
+    log: emitLog,
+  });
+  opsRegistry.start();
+
   // Graceful shutdown
   function shutdown() {
     console.error("[construct3-chef] Shutting down...");
+    opsRegistry.stop();
     server.close().catch(() => {});
     process.exit(0);
   }
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  setupWatchers();
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
