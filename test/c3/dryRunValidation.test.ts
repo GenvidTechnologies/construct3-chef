@@ -698,4 +698,157 @@ describe("applyRecipeInner dry-run: surfaces apply-time errors", () => {
       assert.match(output, /- remove-layer layer="Parent" \(cascade \+ removeInstances\)/);
     });
   });
+
+  // ─── editor-strictness validation (#84) ───
+
+  describe("editor-strictness validation (#84)", () => {
+    // SIDs for shared fixtures
+    const ES_BLOCK_SID = 200000000000100;
+    const ES_VAR_SID = 200000000000101;
+    const ES_GROUP_SID = 200000000000200;
+
+    /** Sheet with a block (targetable) + a variable event that OMITS `comment`. */
+    function sheetWithBadVariable() {
+      return {
+        name: "Sheet1",
+        sid: 900000000000010,
+        events: [
+          {
+            eventType: "block",
+            sid: ES_BLOCK_SID,
+            conditions: [],
+            actions: [],
+            children: [],
+          },
+          {
+            eventType: "variable",
+            sid: ES_VAR_SID,
+            name: "myVar",
+            type: "number",
+            initialValue: "0",
+            isStatic: false,
+            isConstant: false,
+            // `comment` intentionally omitted — violates eventvar-comment-required
+          },
+        ],
+      };
+    }
+
+    /** Same sheet but the variable HAS `comment: ""` — editor-valid. */
+    function sheetWithGoodVariable() {
+      return {
+        name: "Sheet1",
+        sid: 900000000000010,
+        events: [
+          {
+            eventType: "block",
+            sid: ES_BLOCK_SID,
+            conditions: [],
+            actions: [],
+            children: [],
+          },
+          {
+            eventType: "variable",
+            sid: ES_VAR_SID,
+            name: "myVar",
+            type: "number",
+            initialValue: "0",
+            isStatic: false,
+            isConstant: false,
+            comment: "",
+          },
+        ],
+      };
+    }
+
+    /** Sheet with a block (targetable) + a group event that OMITS `description`. */
+    function sheetWithBadGroup() {
+      return {
+        name: "Sheet1",
+        sid: 900000000000010,
+        events: [
+          {
+            eventType: "block",
+            sid: ES_BLOCK_SID,
+            conditions: [],
+            actions: [],
+            children: [],
+          },
+          {
+            eventType: "group",
+            sid: ES_GROUP_SID,
+            title: "MyGroup",
+            // `description` intentionally omitted — violates group-description-required
+            disabled: false,
+            isActiveOnStart: true,
+            children: [],
+          },
+        ],
+      };
+    }
+
+    /** A recipe that triggers a write on Sheet1 (insert-actions on the block). */
+    const triggerWriteRecipe = {
+      files: {
+        Sheet1: [
+          {
+            op: "insert-actions",
+            in: `sid:${ES_BLOCK_SID}`,
+            after: -1,
+            actions: [{ script: ["// trigger write"] }],
+          },
+        ],
+      },
+    };
+
+    it("(a) apply hard-fails when a sheet contains a variable missing comment", () => {
+      const dir = makeProject({ sheets: { Sheet1: sheetWithBadVariable() } });
+      assert.throws(
+        () => applyRecipeInner(sidGen, dir, triggerWriteRecipe, { dryRun: false, regenerate: false, log: noop }),
+        /eventvar-comment-required/,
+      );
+    });
+
+    it("(b) validate-recipe (dry-run) hard-fails identically for variable missing comment", () => {
+      const dir = makeProject({ sheets: { Sheet1: sheetWithBadVariable() } });
+      assert.throws(
+        () => applyRecipeInner(sidGen, dir, triggerWriteRecipe, { dryRun: true, regenerate: false, log: noop }),
+        /eventvar-comment-required/,
+      );
+    });
+
+    it("(c) valid sheet (comment: '') passes apply and dry-run without throwing", () => {
+      const dir = makeProject({ sheets: { Sheet1: sheetWithGoodVariable() } });
+      assert.doesNotThrow(() =>
+        applyRecipeInner(sidGen, dir, triggerWriteRecipe, { dryRun: false, regenerate: false, log: noop }),
+      );
+      // fresh sidGen for the second call
+      const dir2 = makeProject({ sheets: { Sheet1: sheetWithGoodVariable() } });
+      const sidGen2 = freshSidGen();
+      assert.doesNotThrow(() =>
+        applyRecipeInner(sidGen2, dir2, triggerWriteRecipe, { dryRun: true, regenerate: false, log: noop }),
+      );
+    });
+
+    it("(d) hard-fails when a sheet contains a group missing description", () => {
+      const dir = makeProject({ sheets: { Sheet1: sheetWithBadGroup() } });
+      assert.throws(
+        () => applyRecipeInner(sidGen, dir, triggerWriteRecipe, { dryRun: false, regenerate: false, log: noop }),
+        /group-description-required/,
+      );
+    });
+
+    it("(e) no partial write — on-disk Sheet1.json is unchanged after apply throws", () => {
+      const dir = makeProject({ sheets: { Sheet1: sheetWithBadVariable() } });
+      const sheetPath = path.join(dir, "eventSheets", "Sheet1.json");
+      const contentBefore = readFileSync(sheetPath, "utf-8");
+
+      assert.throws(() =>
+        applyRecipeInner(sidGen, dir, triggerWriteRecipe, { dryRun: false, regenerate: false, log: noop }),
+      );
+
+      const contentAfter = readFileSync(sheetPath, "utf-8");
+      assert.strictEqual(contentAfter, contentBefore, "Sheet1.json must not be rewritten when validation fails");
+    });
+  });
 });

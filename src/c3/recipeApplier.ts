@@ -5,7 +5,13 @@ import type { Logger } from "@genvid/mcp-utils";
 import { escapeRegExp } from "@genvid/mcp-utils";
 import type { ApplyOptions } from "./types.js";
 import type { EventSheet, EventSheetEvent, SidSlot } from "@genvid/c3source";
-import { find_all_eventsheets_path, find_all_objectTypes_path, find_all_layouts_path, findSid } from "@genvid/c3source";
+import {
+  find_all_eventsheets_path,
+  find_all_objectTypes_path,
+  find_all_layouts_path,
+  findSid,
+  validateForEditor,
+} from "@genvid/c3source";
 import {
   type Recipe,
   type ObjectTypeCreate,
@@ -93,6 +99,19 @@ export function loadSheet(rootDir: string, filePath: string): EventSheet {
   const fullPath = path.join(rootDir, filePath);
   const content = readFileSync(fullPath, "utf-8");
   return JSON.parse(content) as EventSheet;
+}
+
+function assertEditorValid(label: string, sheet: EventSheet): void {
+  const issues = validateForEditor(sheet);
+  if (issues.length > 0) {
+    const lines = issues.map((i) => `  - ${i.path} [${i.rule}]: ${i.message}`).join("\n");
+    throw new Error(`Editor-validation failed for ${label}:\n${lines}`);
+  }
+}
+
+function writeEventSheet(fullPath: string, sheet: EventSheet): void {
+  assertEditorValid(fullPath, sheet);
+  writeFileSync(fullPath, JSON.stringify(sheet, null, "\t") + "\n");
 }
 
 export function regenerateExtracted(
@@ -910,7 +929,8 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
           // Validate the create by building the sheet directly — createSheet
           // is the only thing executeRecipe would have called for a FileCreate
           // entry, so calling it here avoids the throwing-loader contract trap.
-          createSheet(sidGen, extractSheetName(filePath), entry.events);
+          const created = createSheet(sidGen, extractSheetName(filePath), entry.events);
+          assertEditorValid(filePath, created);
           if (preview) previewEntries.push({ filePath, kind: "create", eventCount: entry.events.length });
         } else {
           log(`  MODIFY ${filePath} (${entry.length} ops)`);
@@ -954,6 +974,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
           executeFileOpsWithHints(sidGen, filePath, original, clone, opsClone, {
             autoAdjust: recipe.autoAdjust,
           });
+          assertEditorValid(filePath, clone);
           if (preview) {
             previewEntries.push({ filePath, kind: "diff", diffs: diffScripts(filePath, original, clone) });
           }
@@ -1059,7 +1080,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
       if (isFileCreate(entry)) {
         const sheet = createSheet(sidGen, extractSheetName(filePath), entry.events);
         mkdirSync(path.dirname(fullPath), { recursive: true });
-        writeFileSync(fullPath, JSON.stringify(sheet, null, "\t") + "\n");
+        writeEventSheet(fullPath, sheet);
         log(`  CREATED ${filePath}`);
       } else {
         const original = loadSheet(rootDir, filePath);
@@ -1068,7 +1089,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
         executeFileOpsWithHints(sidGen, filePath, original, clone, opsClone, {
           autoAdjust: recipe.autoAdjust,
         });
-        writeFileSync(fullPath, JSON.stringify(clone, null, "\t") + "\n");
+        writeEventSheet(fullPath, clone);
         log(`  MODIFIED ${filePath}`);
       }
     }
@@ -1170,6 +1191,7 @@ export function renameSymbols(
   if (preview) {
     log("\n--- Preview (script diffs) ---\n");
     for (const m of matched) {
+      assertEditorValid(m.filePath, m.modified);
       const diffs = diffScripts(m.filePath, m.original, m.modified);
       if (diffs.length === 0) {
         log(`  ${m.filePath} — no script changes`);
@@ -1190,7 +1212,7 @@ export function renameSymbols(
   // Write modified files
   for (const m of matched) {
     const fullPath = path.join(rootDir, m.filePath);
-    writeFileSync(fullPath, JSON.stringify(m.modified, null, "\t") + "\n");
+    writeEventSheet(fullPath, m.modified);
     log(`  MODIFIED ${m.filePath}`);
   }
 
