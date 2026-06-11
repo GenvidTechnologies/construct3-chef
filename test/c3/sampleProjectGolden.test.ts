@@ -40,8 +40,12 @@ function listFilesRel(dir: string): string[] {
   const walk = (d: string) => {
     for (const entry of readdirSync(d)) {
       const full = path.join(d, entry);
-      if (statSync(full).isDirectory()) walk(full);
-      else out.push(path.relative(dir, full).replace(/\\/g, "/"));
+      if (statSync(full).isDirectory()) {
+        // Skip the gitignored search-docs reference cache — a developer who
+        // populated it locally must not break the golden file-set assertion.
+        if (entry === "c3-reference") continue;
+        walk(full);
+      } else out.push(path.relative(dir, full).replace(/\\/g, "/"));
     }
   };
   if (existsSync(dir)) walk(dir);
