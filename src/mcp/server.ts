@@ -60,6 +60,8 @@ import {
   generatePlantUML,
 } from "../c3/navigationGraph.js";
 import { resolveNavConvention } from "../c3/navConvention.js";
+import { discoverAddons, findAddonExtractedDir } from "../c3/addonDiscovery.js";
+import { lookup, formatLookupResult } from "../c3/aceLookup.js";
 
 let PROJECT_ROOT = process.cwd();
 let EXTRACTED_DIR = path.join(PROJECT_ROOT, "extracted");
@@ -1014,8 +1016,6 @@ reg(
 
 // ── Addon Tool ──────────────────────────────────────────────────────────────
 
-const ADDON_DIRS = ["addons/plugin", "addons/effect"] as const;
-
 reg(
   "read-addon",
   {
@@ -1032,20 +1032,9 @@ reg(
     rwlock.read(async () => {
       if (!name) {
         // List all addons
-        const entries: string[] = [];
-        for (const addonDir of ADDON_DIRS) {
-          const dirType = addonDir === "addons/plugin" ? "plugin" : "effect";
-          const fullDir = path.join(PROJECT_ROOT, addonDir);
-          if (!fs.existsSync(fullDir)) continue;
-          for (const entry of fs.readdirSync(fullDir, { withFileTypes: true })) {
-            if (entry.name.endsWith(".c3addon") && entry.isFile()) {
-              const addonName = entry.name.replace(/\.c3addon$/, "");
-              const extractedDir = path.join(fullDir, addonName);
-              const extracted = fs.existsSync(extractedDir) && fs.statSync(extractedDir).isDirectory();
-              entries.push(`${addonName}  (${dirType})  ${extracted ? "extracted" : "archive only"}`);
-            }
-          }
-        }
+        const entries = discoverAddons(PROJECT_ROOT).map(
+          (a) => `${a.name}  (${a.kind})  ${a.extractedDir ? "extracted" : "archive only"}`,
+        );
         if (entries.length === 0) {
           return { content: [{ type: "text", text: "No addons found." }] };
         }
@@ -1053,14 +1042,7 @@ reg(
       }
 
       // Find extracted addon folder
-      let addonPath: string | null = null;
-      for (const addonDir of ADDON_DIRS) {
-        const candidate = path.join(PROJECT_ROOT, addonDir, name);
-        if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
-          addonPath = candidate;
-          break;
-        }
-      }
+      const addonPath = findAddonExtractedDir(PROJECT_ROOT, name);
 
       if (!addonPath) {
         return mcpError(
@@ -1086,6 +1068,65 @@ reg(
       const content = fs.readFileSync(filePath, "utf-8");
       return { content: [{ type: "text", text: content }] };
     }),
+);
+
+// ── Search Docs Tool ─────────────────────────────────────────────────────────
+
+reg(
+  "search-docs",
+  {
+    title: "Search C3 Docs",
+    description:
+      "Look up C3 ACE (action/condition/expression) reference — parameter names/types, expression syntax, and condition/action ids — for the project's custom addons and (when a c3-reference cache is present) built-in plugins, layouts, scripting, and the Expression language. Filter by object/plugin name, ace id, param name, or free-text query. Custom-addon coverage is always available; built-in/manual coverage requires the genvid-c3 build-reference skill to populate <extractedDir>/c3-reference/.",
+    annotations: READ_ONLY,
+    inputSchema: {
+      query: z.string().optional().describe("Free-text search query"),
+      object: z.string().optional().describe("Filter by object/plugin name (case-insensitive exact match for ACEs)"),
+      id: z.string().optional().describe("Filter by ACE id (exact, case-insensitive)"),
+      param: z.string().optional().describe("Filter by ACE param name (substring, case-insensitive)"),
+      offset: z.number().int().min(0).optional().describe("Start line (1-based). Omit to start from beginning."),
+      limit: z.number().int().min(1).optional().describe("Max lines to return. Omit to return all."),
+    },
+  },
+  async ({ query, object, id, param, offset, limit }) =>
+    rwlock.read(
+      withMcpErrors(
+        async () => {
+          // No-filter guard
+          const hasQuery = query !== undefined && query !== "";
+          const hasObject = object !== undefined && object !== "";
+          const hasId = id !== undefined && id !== "";
+          const hasParam = param !== undefined && param !== "";
+          if (!hasQuery && !hasObject && !hasId && !hasParam) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: "Provide at least one filter: query, object, id, or param.",
+                },
+              ],
+            };
+          }
+
+          const { aces, chunks, cachePresent } = lookup(PROJECT_ROOT, EXTRACTED_DIR, {
+            query: hasQuery ? query : undefined,
+            object: hasObject ? object : undefined,
+            id: hasId ? id : undefined,
+            param: hasParam ? param : undefined,
+          });
+
+          emitLog(
+            "info",
+            `search-docs: object=${object ?? "-"}, id=${id ?? "-"}, param=${param ?? "-"}, query=${query ?? "-"}, aces=${aces.length}, chunks=${chunks.length}, cache=${cachePresent}`,
+          );
+
+          const text = formatLookupResult({ aces, chunks, cachePresent });
+
+          return paginatedResponse(text, offset, limit, { stale: false });
+        },
+        { prefix: "search-docs:" },
+      ),
+    ),
 );
 
 // ── Scaffold Tools ──────────────────────────────────────────────────────
@@ -1621,6 +1662,9 @@ export function __getExtractedDirty(): boolean {
 export function __setProjectRoot(dir: string): void {
   PROJECT_ROOT = dir;
   EXTRACTED_DIR = path.join(dir, "extracted");
+}
+export function __setExtractedDir(dir: string): void {
+  EXTRACTED_DIR = dir;
 }
 export function __resetTestState(): void {
   extractedDirty = false;
