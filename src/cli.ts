@@ -5,7 +5,7 @@ import path from "node:path";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { walkFiles, toPosixPath } from "@genvid/mcp-utils";
-import { loadChefConfig } from "./c3/chefConfig.js";
+import { loadChefConfig, resolveOpsDir } from "./c3/chefConfig.js";
 import {
   extractScripts,
   generateDSL,
