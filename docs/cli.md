@@ -23,6 +23,8 @@ Drop an optional `construct3-chef.config.json` at the project root (`--project-d
 | `extractedDir` | `"extracted"` | Directory (relative to the project root) for the generated read-surface files. Must resolve **inside** the project root. |
 | `navigation.targetPatterns` | the two `System.go-to-layout…` patterns | Regexes (each with **one capture group** = the target layout name) that [`navigation-graph`](#navigation-graph) scans the DSL for. Override when your project navigates through a wrapper function instead of the built-in System action. |
 | `navigation.definitionMarkers` | `[]` | Substrings that mark a line as a function *definition* (not a call) so it is skipped — e.g. `"function GoToLayout"` to keep a wrapper's own definition out of the graph. |
+| `ops.dir` | `"ops"` | Directory scanned for user-defined op files (`.json`). Path-contained to the project root. See [ops.md](ops.md). |
+| `ops.watch` | `true` | MCP hot-reload: when `true`, the server watches the ops directory with `fs.watch` and updates registered `op-*` tools live. Set `false` to scan only at startup. CLI always re-reads on each invocation. |
 
 ```json
 { "extractedDir": "c3-extracted" }
@@ -334,6 +336,59 @@ npx construct3-chef search-dsl "loadHero\(" --glob Goals
 ```
 
 Requires `extracted/` to be up to date.
+
+---
+
+## list-ops
+
+List available user-defined ops (parameterized recipe templates) with their parameters.
+
+```bash
+npx construct3-chef list-ops [--project-dir <path>]
+```
+
+Reads the ops directory (default `ops/`, configurable via `ops.dir` in the [Configuration file](#configuration-file)) and prints each op name, description, and param list. Load errors (malformed op files, invalid op names) are printed below the list. No options beyond `--project-dir`.
+
+Output uses the same `formatOpsList` formatter as the MCP `list-ops` tool, so results are byte-identical between surfaces.
+
+See [ops.md](ops.md) for the op file format and substitution rules.
+
+---
+
+## apply-op
+
+Apply a user-defined op by name. Substitutes supplied param values into the op's recipe template, validates the result, and applies it — identical to `apply-recipe` from that point on.
+
+```bash
+npx construct3-chef apply-op <name> [options] [--project-dir <path>]
+```
+
+| Argument/Option | Description |
+| --------------- | ----------- |
+| `name` | Op name to apply (positional, required). E.g. `add-screen`. |
+| `--param KEY=VALUE` | Supply a param value as a `KEY=VALUE` string (repeatable). Overrides values from `--params-file`. |
+| `--params-file <path>` | Path to a JSON file containing `{ "PARAM": value }` pairs (base values; `--param` entries override). |
+| `--dry-run` | Validate and preview without writing any files. |
+| `--preview` | Show diff of script changes (implies `--dry-run`). |
+| `--regenerate` / `--no-regenerate` | Regenerate `extracted/` after applying (default: `true`). |
+
+`--param` values are strings from the shell and are coerced to each param's declared type (`number` / `boolean` / `string`) before substitution. Values from `--params-file` are parsed JSON and passed through without coercion.
+
+```bash
+# Apply the add-screen op with a required string param
+npx construct3-chef apply-op add-screen --param SCREEN_NAME=Heroes
+
+# Supply multiple params
+npx construct3-chef apply-op add-screen --param SCREEN_NAME=Heroes --param DEPTH=2
+
+# Preview without writing
+npx construct3-chef apply-op add-screen --param SCREEN_NAME=Heroes --dry-run
+
+# Base params from file, override one on the command line
+npx construct3-chef apply-op add-screen --params-file params.json --param SCREEN_NAME=Override
+```
+
+See [ops.md](ops.md) for the op file format, param types, substitution rules, and the four substitution guards.
 
 ---
 
