@@ -69,6 +69,7 @@ export interface FunctionCallAction {
 export interface CustomAction {
   customAction: string;
   objectClass: string;
+  customActionObjectClass?: string;
   sid: number;
   parameters?: unknown[];
 }
@@ -663,6 +664,7 @@ export function buildCustomAction(
   opts: {
     name: string;
     objectClass: string;
+    customActionObjectClass?: string;
     parameters?: unknown[];
   },
 ): CustomAction {
@@ -671,6 +673,9 @@ export function buildCustomAction(
     objectClass: opts.objectClass,
     sid: sidGen(),
   };
+  if (opts.customActionObjectClass) {
+    action.customActionObjectClass = opts.customActionObjectClass;
+  }
   if (opts.parameters) {
     action.parameters = opts.parameters;
   }

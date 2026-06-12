@@ -485,7 +485,14 @@ export interface ReplaceInstanceWithReplicaOp {
 export type BuilderAction =
   | { script: string[] }
   | { call: string; params?: (string | number | boolean)[] }
-  | { "custom-action": string; object?: string; objectClass?: string; params?: unknown[] }
+  | {
+      "custom-action": string;
+      object?: string;
+      objectClass?: string;
+      family?: string;
+      customActionObjectClass?: string;
+      params?: unknown[];
+    }
   | { comment: string }
   | {
       id: string;
@@ -599,9 +606,11 @@ export function expandAction(sidGen: SidGenerator, shorthand: BuilderAction): C3
         `custom-action "${shorthand["custom-action"]}" requires an "object" (or "objectClass") naming the target object class`,
       );
     }
+    const familyClass = shorthand.family ?? shorthand.customActionObjectClass;
     return buildCustomAction(sidGen, {
       name: shorthand["custom-action"],
       objectClass,
+      customActionObjectClass: familyClass,
       parameters: shorthand.params,
     });
   }
@@ -2198,7 +2207,7 @@ export const ACTION_SHORTHAND_SCHEMAS: Record<string, OpFieldSchema> = {
   call: { required: ["call"], optional: ["params"], misspellings: { callFunction: "call", function: "call" } },
   "custom-action": {
     required: ["custom-action"],
-    optional: ["object", "objectClass", "params"],
+    optional: ["object", "objectClass", "family", "customActionObjectClass", "params"],
     misspellings: { customAction: "custom-action", name: "custom-action" },
   },
   comment: { required: ["comment"], optional: [], misspellings: {} },
