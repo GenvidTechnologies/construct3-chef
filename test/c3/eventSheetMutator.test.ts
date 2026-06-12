@@ -687,6 +687,25 @@ describe("eventSheetMutator", () => {
       const a = buildCustomAction(sidGen, { name: "Reset", objectClass: "Timer" });
       assert.notProperty(a, "parameters");
     });
+
+    it("emits customActionObjectClass when provided", () => {
+      const a = buildCustomAction(sidGen, {
+        name: "Initialize",
+        objectClass: "Sprite",
+        customActionObjectClass: "FamilyA",
+      });
+      assert.equal(a.customActionObjectClass, "FamilyA");
+    });
+
+    it("omits customActionObjectClass when not provided", () => {
+      const a = buildCustomAction(sidGen, { name: "Initialize", objectClass: "Sprite" });
+      assert.notProperty(a, "customActionObjectClass");
+    });
+
+    it("omits customActionObjectClass when passed as empty string", () => {
+      const a = buildCustomAction(sidGen, { name: "Initialize", objectClass: "Sprite", customActionObjectClass: "" });
+      assert.notProperty(a, "customActionObjectClass");
+    });
   });
 
   describe("buildFunctionBlock (extended)", () => {

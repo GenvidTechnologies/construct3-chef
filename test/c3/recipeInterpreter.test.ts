@@ -178,6 +178,44 @@ describe("recipeInterpreter", () => {
       assert.equal(custom.objectClass, "CardScroller");
     });
 
+    it("custom-action with family sets customActionObjectClass", () => {
+      const custom = expandAction(sidGen, {
+        "custom-action": "Initialize",
+        object: "Sprite",
+        family: "FamilyA",
+      }) as CustomAction;
+      assert.equal(custom.customAction, "Initialize");
+      assert.equal(custom.objectClass, "Sprite");
+      assert.equal(custom.customActionObjectClass, "FamilyA");
+    });
+
+    it("custom-action with customActionObjectClass alias sets the field", () => {
+      const custom = expandAction(sidGen, {
+        "custom-action": "Initialize",
+        object: "Sprite",
+        customActionObjectClass: "FamilyB",
+      }) as CustomAction;
+      assert.equal(custom.customActionObjectClass, "FamilyB");
+    });
+
+    it("family takes precedence over customActionObjectClass when both are present", () => {
+      const custom = expandAction(sidGen, {
+        "custom-action": "Initialize",
+        object: "Sprite",
+        family: "FamilyA",
+        customActionObjectClass: "FamilyB",
+      }) as CustomAction;
+      assert.equal(custom.customActionObjectClass, "FamilyA");
+    });
+
+    it("custom-action without family or customActionObjectClass emits no customActionObjectClass", () => {
+      const custom = expandAction(sidGen, {
+        "custom-action": "Initialize",
+        object: "Sprite",
+      }) as CustomAction;
+      assert.notProperty(custom, "customActionObjectClass");
+    });
+
     it("throws for unrecognized shorthand", () => {
       assert.throws(
         () => expandAction(sidGen, { foo: "bar" } as unknown as BuilderAction),
@@ -3534,6 +3572,19 @@ describe("recipeInterpreter", () => {
 
     it("accepts a custom-action with objectClass alias", () => {
       const warnings = validateActionParams({ "custom-action": "Foo", objectClass: "Bar" }, "test");
+      assert.deepStrictEqual(warnings, []);
+    });
+
+    it("accepts a custom-action with family key", () => {
+      const warnings = validateActionParams({ "custom-action": "Foo", object: "Sprite", family: "FamilyA" }, "test");
+      assert.deepStrictEqual(warnings, []);
+    });
+
+    it("accepts a custom-action with customActionObjectClass key", () => {
+      const warnings = validateActionParams(
+        { "custom-action": "Foo", object: "Sprite", customActionObjectClass: "FamilyA" },
+        "test",
+      );
       assert.deepStrictEqual(warnings, []);
     });
 

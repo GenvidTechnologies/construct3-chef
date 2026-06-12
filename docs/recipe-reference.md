@@ -679,6 +679,7 @@ Each workflow is also exposed as a standalone MCP tool with matching parameters,
 { "call": "FunctionName", "params": ["arg1", "arg2"] }
 { "id": "action-id", "object": "ObjectClass", "params": { "key": "value" }, "behavior": "BehaviorType" }
 { "custom-action": "ace-name", "object": "ObjectClass", "params": ["value1", "value2"] }
+{ "custom-action": "ace-name", "object": "InstanceType", "family": "ProvidingFamily", "params": ["value"] }
 { "comment": "Comment text" }
 ```
 
@@ -687,6 +688,8 @@ Each workflow is also exposed as a standalone MCP tool with matching parameters,
 > **Looking up ACE ids and param names:** use `search-docs` — e.g. `npx construct3-chef search-docs --object Sprite --query position` or `npx construct3-chef search-docs --id set-position`. Custom-addon ACEs are always covered; built-in ACEs require the genvid-c3 `build-reference` cache. See [CLI Reference — search-docs](cli.md#search-docs).
 
 **`object` / `objectClass`**: `object` names the target object class. `objectClass` (the field name used in the on-disk eventSheet JSON) is accepted as an alias. A genuinely-unknown key (e.g. a typo like `objclass`) is rejected at validate time.
+
+**`family` (family-provided custom ACEs)**: when the custom action being called is **defined on a family** but invoked on one of its member instances — i.e. `InstanceType.FamilyAction()` — C3 needs the on-disk `customActionObjectClass` field set to the providing family to resolve the ACE at runtime. Set `"family": "ProvidingFamily"` (alias: `"customActionObjectClass"`) and the builder emits it. **Omitting it for a family-provided ACE is the #88 trap**: the action imports cleanly and the extracted DSL renders identically to a correct one (the DSL never shows `customActionObjectClass`), so the defect is invisible until it silently fails at runtime. `apply-recipe`/`validate-recipe` now guard this (see gotcha 38): a `custom-action` whose ACE is provided by a family the target belongs to — but with no `family` set — is **rejected** with an error naming the family to add. A `family` that doesn't define the ACE, or whose member set doesn't include the target object, is likewise rejected. (Known limitation: the existence check reads custom-ACE *definitions* from the on-disk project, so a recipe that both **defines** a new `custom-ace-block` and **calls** it in the same run won't see its own new definition.)
 
 **System actions**: well-known object-less System actions — `wait`, `wait-for-previous-actions`, `wait-for-signal`, `signal` — auto-default `objectClass: "System"`, so `{ "id": "wait-for-previous-actions" }` works with no `object`. Any other `id` action with no `object`/`objectClass` is **rejected at validate time** (previously it silently rendered `[unknown action]`).
 
@@ -797,6 +800,7 @@ npx construct3-chef apply-recipe <recipe.json> --no-regenerate  # Skip generate 
 | 35 | **`matchAction` only matches actions, not conditions** | `patch-action-param`'s `matchAction` searches `actions` array only. To modify condition parameters, use `replace-condition`. |
 | 36 | **`removeInstances` on `remove-layer` is permanent** | `cascade: true, removeInstances: true` deletes every instance in the entire sublayer subtree with no undo. Verify the subtree is instance-free (or intentionally discarded) before applying. `removeInstances` without `cascade` is rejected by `validateRecipe`. |
 | 37 | **`apply-recipe` and `validate-recipe` hard-fail on editor-invalid event sheets** | Both tools run `validateForEditor` (c3source's `EDITOR_FIELD_RULES`) on every event sheet before write-out. If a node would make the C3 editor reject the project on import — e.g. a `variable` missing `comment` or a `group` missing `description` — the tool throws with the offending jsonPath and rule id, and the sheet is **never written**. Fix the recipe's builder shorthand (ensure `comment: ""` on variables, `description: ""` on groups) and retry. The same check runs on `files-create`, `files-modify`, and `rename-symbol` preview paths. |
+| 38 | **Family-provided `custom-action` needs `family`** | A custom ACE *defined on a family* but called on a member instance (`InstanceType.FamilyAction()`) must carry `customActionObjectClass` so C3 resolves it at runtime — set `"family": "ProvidingFamily"` on the shorthand (alias `"customActionObjectClass"`). This is a *runtime-resolution* rule, distinct from the gotcha-37 editor-validity check: C3 imports the project fine and the DSL renders identically with or without the field, so a missing `family` fails **silently at runtime** (issue #88). `apply-recipe`/`validate-recipe` reject an inserted `custom-action` whose ACE is family-provided but has no `family` (the error names the family to add), or whose named `family` doesn't define the ACE / doesn't list the target as a member. The check covers the custom-actions a recipe *inserts*, comparing against custom-ACE definitions already on disk. |
 
 ---
 

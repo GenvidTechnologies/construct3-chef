@@ -47,6 +47,7 @@ import { collectAllUids, collectLayoutSids } from "./layoutScaffold.js";
 import { readRegistryFile, makeSidGen, freshSidGen, type SidGenerator } from "./sidUtils.js";
 import { diffScripts } from "./previewDiff.js";
 import { expandWorkflows, type LoadLayout } from "./workflowExpansion.js";
+import { buildCustomAceIndex, validateInsertedCustomActions, type CustomAceIndex } from "./customAceIndex.js";
 import {
   addInstVarsToObjectType,
   addInstVarsToLayout,
@@ -106,6 +107,24 @@ function assertEditorValid(label: string, sheet: EventSheet): void {
   if (issues.length > 0) {
     const lines = issues.map((i) => `  - ${i.path} [${i.rule}]: ${i.message}`).join("\n");
     throw new Error(`Editor-validation failed for ${label}:\n${lines}`);
+  }
+}
+
+/**
+ * Validate custom-actions inserted by the recipe against the project's
+ * custom-ACE index. Mirrors `assertEditorValid`'s throw-on-error shape.
+ * `index` is null when no file ops are present (index was not built).
+ */
+function assertCustomActionsValid(
+  index: CustomAceIndex | null,
+  label: string,
+  original: EventSheet,
+  modified: EventSheet,
+): void {
+  if (!index) return;
+  const errors = validateInsertedCustomActions(index, original, modified);
+  if (errors.length > 0) {
+    throw new Error(`Custom-action validation failed for ${label}:\n${errors.map((e) => `  - ${e}`).join("\n")}`);
   }
 }
 
@@ -784,6 +803,14 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
     checkMoveVariableDemotions(rootDir, recipe.files, log);
   }
 
+  // Build the custom-ACE index once, shared by both the dry-run and apply
+  // branches below. Custom-ACE definitions come from the existing on-disk
+  // project (not from the recipe's own inserts), so building it here — after
+  // structural validation but before any write — is correct for both paths.
+  // Skipped entirely when the recipe has no file ops (no custom-actions to
+  // validate, and no eventSheets dir is required to exist).
+  const customAceIndex = recipe.files && Object.keys(recipe.files).length > 0 ? buildCustomAceIndex(rootDir) : null;
+
   if (dryRun) {
     log("\n--- Dry run (no files written) ---\n");
 
@@ -931,6 +958,8 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
           // entry, so calling it here avoids the throwing-loader contract trap.
           const created = createSheet(sidGen, extractSheetName(filePath), entry.events);
           assertEditorValid(filePath, created);
+          // Brand-new sheet: original is empty (no pre-existing events).
+          assertCustomActionsValid(customAceIndex, filePath, { ...created, events: [] }, created);
           if (preview) previewEntries.push({ filePath, kind: "create", eventCount: entry.events.length });
         } else {
           log(`  MODIFY ${filePath} (${entry.length} ops)`);
@@ -975,6 +1004,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
             autoAdjust: recipe.autoAdjust,
           });
           assertEditorValid(filePath, clone);
+          assertCustomActionsValid(customAceIndex, filePath, original, clone);
           if (preview) {
             previewEntries.push({ filePath, kind: "diff", diffs: diffScripts(filePath, original, clone) });
           }
@@ -1079,6 +1109,8 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
       const fullPath = path.join(rootDir, filePath);
       if (isFileCreate(entry)) {
         const sheet = createSheet(sidGen, extractSheetName(filePath), entry.events);
+        // Brand-new sheet: original is empty (no pre-existing events).
+        assertCustomActionsValid(customAceIndex, filePath, { ...sheet, events: [] }, sheet);
         mkdirSync(path.dirname(fullPath), { recursive: true });
         writeEventSheet(fullPath, sheet);
         log(`  CREATED ${filePath}`);
@@ -1089,6 +1121,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
         executeFileOpsWithHints(sidGen, filePath, original, clone, opsClone, {
           autoAdjust: recipe.autoAdjust,
         });
+        assertCustomActionsValid(customAceIndex, filePath, original, clone);
         writeEventSheet(fullPath, clone);
         log(`  MODIFIED ${filePath}`);
       }
