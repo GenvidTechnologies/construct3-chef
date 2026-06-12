@@ -186,7 +186,10 @@ export function validateInsertedCustomActions(
         if (index.hasAce(objectClass, aceName)) {
           // Direct definition exists — OK
         } else {
-          // Check whether a family that objectClass belongs to defines this ace
+          // Check whether a family that objectClass belongs to defines this ace.
+          // First match is sufficient for the hint — in the rare case the object
+          // belongs to several families that all define the ace, any of them is a
+          // valid remedy and the author can adjust if they meant a different one.
           let hintFamily: string | undefined;
           for (const family of index.familiesOf(objectClass)) {
             if (index.hasAce(family, aceName)) {
