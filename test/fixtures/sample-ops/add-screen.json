@@ -1,0 +1,28 @@
+{
+	"description": "Add a new screen event sheet",
+	"params": [
+		{
+			"name": "SCREEN_NAME",
+			"type": "string",
+			"required": true,
+			"description": "PascalCase screen name"
+		},
+		{
+			"name": "DEPTH",
+			"type": "number",
+			"required": false,
+			"default": 0,
+			"description": "Nesting depth"
+		}
+	],
+	"recipe": {
+		"files": {
+			"eventSheets/{{SCREEN_NAME}}.json": {
+				"create": true,
+				"events": [
+					{ "comment": "{{SCREEN_NAME}} screen — depth {{DEPTH}}" }
+				]
+			}
+		}
+	}
+}
