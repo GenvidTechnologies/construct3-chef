@@ -412,6 +412,8 @@ At least one filter must be provided.
 
 **Coverage:** Custom-addon ACEs are always available (read from the project's `addons/` directory). Built-in plugin ACEs, layout/scripting docs, and Expression-language chunks require the `<extractedDir>/c3-reference/` cache, which is populated by the genvid-c3 `build-reference` plugin skill — never by `generate`. The same `search-docs` capability is also exposed as an MCP tool.
 
+> **Cache contract:** the `c3-reference` cache must **not** contain `source:"addon"` entries. Addon ACEs are always sourced live from `addons/`, so any cached addon entry is ignored (filtered out when the cache is loaded) to prevent it double-counting against the live one. Cache producers should emit only `builtin`/`manual` entries.
+
 ```bash
 # Find the id and param names for Sprite position actions
 npx construct3-chef search-docs --object Sprite --query position
