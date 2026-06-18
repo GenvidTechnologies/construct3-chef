@@ -15,6 +15,7 @@ import {
   walkSids,
   formatSidPath,
   isEditorLocalPath,
+  openProject,
 } from "@genvid/c3source";
 import { formatEventSheet, formatIndex } from "./dslFormatter.js";
 import {
@@ -61,7 +62,8 @@ function parseImportStatements(content: string): string[] {
  * Generate the file header with imports from importsForEvents.ts and globalVars declaration.
  */
 function generateFileHeader(rootDir: string, outPath: string, importStatements: string[]): string {
-  const scriptsRelative = path.relative(path.dirname(outPath), path.join(rootDir, "scripts")).replace(/\\/g, "/");
+  const project = openProject(rootDir);
+  const scriptsRelative = path.relative(path.dirname(outPath), project.scriptsDir).replace(/\\/g, "/");
 
   const lines: string[] = [];
 
@@ -242,7 +244,8 @@ function formatExtractedFile(
 }
 
 export function extractScripts(rootDir: string, outDir: string, log: Logger = console.log) {
-  const eventSheetsDir = path.join(rootDir, "eventSheets");
+  const project = openProject(rootDir);
+  const eventSheetsDir = project.eventSheetsDir;
   const sheetPaths = find_all_eventsheets_path(eventSheetsDir);
   log(`Found ${sheetPaths.length} eventSheet files.`);
 
@@ -251,7 +254,7 @@ export function extractScripts(rootDir: string, outDir: string, log: Logger = co
   rmSync(path.join(outDir, "tsconfig.json"), { force: true });
 
   const importStatements = parseImportStatements(
-    readFileSync(path.join(rootDir, "scripts", "importsForEvents.ts"), "utf-8"),
+    readFileSync(path.join(project.scriptsDir, "importsForEvents.ts"), "utf-8"),
   );
   let totalScripts = 0;
   let filesWritten = 0;
@@ -299,7 +302,8 @@ export function extractScripts(rootDir: string, outDir: string, log: Logger = co
 // ─── DSL generation ───
 
 export function generateDSL(rootDir: string, outDir: string, log: Logger = console.log) {
-  const eventSheetsDir = path.join(rootDir, "eventSheets");
+  const project = openProject(rootDir);
+  const eventSheetsDir = project.eventSheetsDir;
   const sheetPaths = find_all_eventsheets_path(eventSheetsDir);
   log(`Found ${sheetPaths.length} eventSheet files.`);
 
@@ -335,7 +339,8 @@ export function generateDSL(rootDir: string, outDir: string, log: Logger = conso
 // ─── Layout summary generation ───
 
 export function generateLayoutSummaries(rootDir: string, outDir: string, log: Logger = console.log) {
-  const layoutsDir = path.join(rootDir, "layouts");
+  const c3project = openProject(rootDir);
+  const layoutsDir = c3project.layoutsDir;
   const projectFilePath = path.join(rootDir, "project.c3proj");
   const layoutPaths = find_all_layouts_path(layoutsDir);
   log(`Found ${layoutPaths.length} layout files.`);
@@ -412,7 +417,8 @@ function collectTemplateTypesFromLayers(
 }
 
 export function generateTemplateScope(rootDir: string, outDir: string, log: Logger = console.log) {
-  const layoutPaths = find_all_layouts_path(path.join(rootDir, "layouts"));
+  const project = openProject(rootDir);
+  const layoutPaths = find_all_layouts_path(project.layoutsDir);
   const results: Array<{ layout: string; type: string }> = [];
 
   for (const layoutPath of layoutPaths) {
@@ -457,7 +463,8 @@ export function generateTemplateScope(rootDir: string, outDir: string, log: Logg
 // ─── Global layers generation ───
 
 export function generateGlobalLayers(rootDir: string, outDir: string, log: Logger = console.log): void {
-  const layoutPaths = find_all_layouts_path(path.join(rootDir, "layouts"));
+  const project = openProject(rootDir);
+  const layoutPaths = find_all_layouts_path(project.layoutsDir);
 
   const parsedLayouts: Array<{ layout: Layout; filePath: string }> = [];
   for (const layoutPath of layoutPaths) {

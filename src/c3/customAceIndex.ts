@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import * as path from "node:path";
 import type { EventSheet } from "@genvid/c3source";
-import { extractFunctions, find_all_eventsheets_path, visitEvents } from "@genvid/c3source";
+import { extractFunctions, find_all_eventsheets_path, visitEvents, openProject } from "@genvid/c3source";
 import type { C3Action } from "./eventSheetMutator.js";
 import { isCustomAction } from "./eventSheetMutator.js";
 
@@ -43,12 +43,13 @@ export interface CustomAceIndex {
  * If `<rootDir>/families/` does not exist, the membership maps are left empty.
  */
 export function buildCustomAceIndex(rootDir: string): CustomAceIndex {
+  const project = openProject(rootDir);
+
   // ── 1. Collect custom-ace definitions from every event sheet ──
   // Map: objectClass → Set<aceName>
   const aceMap = new Map<string, Set<string>>();
 
-  const eventSheetsDir = path.join(rootDir, "eventSheets");
-  const sheetPaths = find_all_eventsheets_path(eventSheetsDir);
+  const sheetPaths = find_all_eventsheets_path(project.eventSheetsDir);
 
   for (const absPath of sheetPaths) {
     let sheet: EventSheet;
@@ -76,7 +77,7 @@ export function buildCustomAceIndex(rootDir: string): CustomAceIndex {
   // Reverse map:  memberName → Set<familyName>
   const memberToFamilies = new Map<string, Set<string>>();
 
-  const familiesDir = path.join(rootDir, "families");
+  const familiesDir = project.familiesDir;
   if (existsSync(familiesDir)) {
     let entries: string[];
     try {

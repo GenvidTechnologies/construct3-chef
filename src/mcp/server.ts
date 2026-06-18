@@ -22,6 +22,8 @@ import {
   REGENERATE,
   MUTATE,
   NON_IDEMPOTENT_READ,
+  resolveRootFolder,
+  isMcpError,
 } from "@genvid/mcp-utils";
 import type { Logger } from "@genvid/mcp-utils";
 import { applyParsed } from "../c3/recipeApplier.js";
@@ -39,8 +41,8 @@ import {
 import { runSync, reportImageDrift } from "../c3/projectSync.js";
 import { readRegistryFile, mintUniqueSid } from "../c3/sidUtils.js";
 import { filterIndex, buildShallowSidMap, type SidMapEntry } from "../c3/dslFormatter.js";
-import { find_all_eventsheets_path, find_all_layouts_path } from "@genvid/c3source";
-import type { EventSheet } from "@genvid/c3source";
+import { find_all_eventsheets_path, find_all_layouts_path, openProject } from "@genvid/c3source";
+import type { EventSheet, C3Project } from "@genvid/c3source";
 import { resolveIncludeTree, formatIncludeTree, flattenIncludeTree } from "../c3/includeTree.js";
 import { collectAllUids, cloneLayout } from "../c3/layoutScaffold.js";
 import { search } from "../c3/search.js";
@@ -66,6 +68,7 @@ import { OpsRegistry } from "./opsRegistry.js";
 
 let PROJECT_ROOT = process.cwd();
 let EXTRACTED_DIR = path.join(PROJECT_ROOT, "extracted");
+let PROJECT: C3Project = openProject(PROJECT_ROOT);
 
 const server = new McpServer(
   { name: "construct3-chef", version: "1.0.0" },
@@ -91,6 +94,12 @@ const expectedChanges = new ExpectedChanges();
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
+
+/** Extract the error message text from a CallToolResult returned by resolveRootFolder. */
+function mcpErrorText(r: CallToolResult): string {
+  const block = r.content[0];
+  return block && block.type === "text" ? (block as { type: "text"; text: string }).text : String(r);
+}
 
 // ── Handler registry (also enables direct handler invocation in tests) ─────────
 const handlers = new Map<string, (args: any, extra: Extra) => Promise<unknown>>();
@@ -324,8 +333,7 @@ reg(
   },
   async ({ offset, limit }) =>
     rwlock.read(async () => {
-      const dir = path.join(PROJECT_ROOT, "eventSheets");
-      const sheets = toSortedRelative(find_all_eventsheets_path(dir), dir);
+      const sheets = toSortedRelative(PROJECT.findAllEventSheets(), PROJECT.eventSheetsDir);
       return paginatedResponse(sheets.join("\n"), offset, limit, { stale: false });
     }),
 );
@@ -341,8 +349,7 @@ reg(
   },
   async ({ offset, limit }) =>
     rwlock.read(async () => {
-      const dir = path.join(PROJECT_ROOT, "layouts");
-      const layouts = toSortedRelative(find_all_layouts_path(dir), dir);
+      const layouts = toSortedRelative(PROJECT.findAllLayouts(), PROJECT.layoutsDir);
       return paginatedResponse(layouts.join("\n"), offset, limit, { stale: false });
     }),
 );
@@ -386,7 +393,7 @@ reg(
   async ({ format, offset, limit }) =>
     rwlock.read(async () => {
       const config = await loadChefConfig(PROJECT_ROOT);
-      const layoutEventSheetMap = buildLayoutEventSheetMap(path.join(PROJECT_ROOT, "layouts"));
+      const layoutEventSheetMap = buildLayoutEventSheetMap(PROJECT.layoutsDir);
       const sheetToLayout: Record<string, string> = {};
       for (const [layoutName, sheetName] of Object.entries(layoutEventSheetMap)) {
         sheetToLayout[sheetName] = layoutName;
@@ -415,7 +422,7 @@ reg(
   async ({ sheet, offset, limit }) =>
     rwlock.read(async () => {
       checkSourceFreshness(
-        path.join(PROJECT_ROOT, "eventSheets", `${sheet}.json`),
+        path.join(PROJECT.eventSheetsDir, `${sheet}.json`),
         path.join(EXTRACTED_DIR, "eventSheets", `${sheet}.dsl.txt`),
       );
       const text = readExtracted(`eventSheets/${sheet}.dsl.txt`);
@@ -447,7 +454,7 @@ reg(
   async ({ sheet, grep, offset, limit }) =>
     rwlock.read(async () => {
       checkSourceFreshness(
-        path.join(PROJECT_ROOT, "eventSheets", `${sheet}.json`),
+        path.join(PROJECT.eventSheetsDir, `${sheet}.json`),
         path.join(EXTRACTED_DIR, "eventSheets", `${sheet}.dsl.idx.txt`),
       );
       let text = readExtracted(`eventSheets/${sheet}.dsl.idx.txt`);
@@ -484,7 +491,7 @@ reg(
   },
   async ({ sheet, grep }) =>
     rwlock.read(async () => {
-      const sourcePath = path.join(PROJECT_ROOT, "eventSheets", `${sheet}.json`);
+      const sourcePath = path.join(PROJECT.eventSheetsDir, `${sheet}.json`);
       if (!fs.existsSync(sourcePath)) {
         return mcpError(`No event sheet found for '${sheet}'. Use list-event-sheets to see available sheets.`, {
           prefix: "read-event-sids:",
@@ -523,7 +530,7 @@ reg(
   async ({ sheet, offset, limit }) =>
     rwlock.read(async () => {
       checkSourceFreshness(
-        path.join(PROJECT_ROOT, "eventSheets", `${sheet}.json`),
+        path.join(PROJECT.eventSheetsDir, `${sheet}.json`),
         path.join(EXTRACTED_DIR, "eventSheets", `${sheet}.ts`),
       );
       const text = readExtracted(`eventSheets/${sheet}.ts`);
@@ -554,7 +561,7 @@ reg(
   async ({ layout, offset, limit }) =>
     rwlock.read(async () => {
       checkSourceFreshness(
-        path.join(PROJECT_ROOT, "layouts", `${layout}.json`),
+        path.join(PROJECT.layoutsDir, `${layout}.json`),
         path.join(EXTRACTED_DIR, "layouts", `${layout}.layout.txt`),
       );
       const text = readExtracted(`layouts/${layout}.layout.txt`);
@@ -770,7 +777,7 @@ reg(
   async ({ sheet, by, value }) =>
     rwlock.read(async () => {
       checkSourceFreshness(
-        path.join(PROJECT_ROOT, "eventSheets", `${sheet}.json`),
+        path.join(PROJECT.eventSheetsDir, `${sheet}.json`),
         path.join(EXTRACTED_DIR, "eventSheets", `${sheet}.dsl.idx.txt`),
       );
       const text = readExtracted(`eventSheets/${sheet}.dsl.idx.txt`);
@@ -1188,7 +1195,7 @@ reg(
             );
           }
 
-          const layoutsDir = path.join(PROJECT_ROOT, "layouts");
+          const layoutsDir = PROJECT.layoutsDir;
 
           // Path traversal check — output must stay within layouts/
           const outFullPath = resolveWithin(layoutsDir, outRelPath);
@@ -1286,7 +1293,7 @@ reg(
             );
           }
 
-          const objectTypesDir = path.join(PROJECT_ROOT, "objectTypes");
+          const objectTypesDir = PROJECT.objectTypesDir;
           const imagesDir = path.join(PROJECT_ROOT, "images");
 
           // Validate names don't contain path separators
@@ -1626,7 +1633,7 @@ reg(
   async ({ layout, layer, cascade, removeInstances, txId: expectedTxId, regenerate }, extra: Extra) =>
     rwlock.write(async () => {
       // Path traversal check — layout must stay within layouts/
-      const layoutsDir = path.join(PROJECT_ROOT, "layouts");
+      const layoutsDir = PROJECT.layoutsDir;
       const layoutFullPath = resolveWithin(layoutsDir, layout);
       if (layoutFullPath === null) {
         return mcpError(`Invalid layout path '${layout}' — must stay within layouts/`, { extraLines: [txIdLine()] });
@@ -1682,9 +1689,13 @@ export function __setExtractedDirty(value: boolean): void {
 export function __getExtractedDirty(): boolean {
   return extractedDirty;
 }
+export function __getProjectRoot(): string {
+  return PROJECT_ROOT;
+}
 export function __setProjectRoot(dir: string): void {
   PROJECT_ROOT = dir;
   EXTRACTED_DIR = path.join(dir, "extracted");
+  PROJECT = openProject(dir);
 }
 export function __setExtractedDir(dir: string): void {
   EXTRACTED_DIR = dir;
@@ -1693,14 +1704,33 @@ export function __resetTestState(): void {
   extractedDirty = false;
   PROJECT_ROOT = process.cwd();
   EXTRACTED_DIR = path.join(PROJECT_ROOT, "extracted");
+  PROJECT = openProject(PROJECT_ROOT);
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 export async function startServer(projectDir?: string, overrides?: Partial<ChefConfig>): Promise<void> {
-  if (projectDir) {
-    PROJECT_ROOT = projectDir;
+  const resolved = resolveRootFolder({
+    explicit: projectDir,
+    envVar: "C3_PROJECT_DIR",
+    marker: "project.c3proj",
+    searchDepth: 1,
+  });
+  if (isMcpError(resolved)) {
+    console.error(`[construct3-chef] Root resolution: ${mcpErrorText(resolved)} — falling back to cwd`);
+    PROJECT_ROOT = process.cwd();
+  } else {
+    PROJECT_ROOT = resolved.path;
+    if (resolved.source === "cwd") {
+      console.error(
+        `[construct3-chef] Warning: no project.c3proj found via --project-dir, $C3_PROJECT_DIR, or discovery — using cwd ${PROJECT_ROOT}`,
+      );
+    }
   }
+  PROJECT = openProject(PROJECT_ROOT);
+  console.error(
+    `[construct3-chef] Root: ${PROJECT_ROOT} (source: ${isMcpError(resolved) ? "cwd-fallback" : resolved.source})`,
+  );
   const config = await loadChefConfig(PROJECT_ROOT, overrides);
   EXTRACTED_DIR = path.join(PROJECT_ROOT, config.extractedDir);
 

@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { EventSheet, FunctionParameter } from "@genvid/c3source";
-import { extractIncludes, extractFunctions as extractFunctionsUpstream } from "@genvid/c3source";
+import { extractIncludes, extractFunctions as extractFunctionsUpstream, openProject } from "@genvid/c3source";
 
 export interface IncludeTreeNode {
   /** Sheet name (e.g., "CommonEvents") */
@@ -19,7 +19,7 @@ export interface IncludeTreeNode {
  * Sheet names are filenames without extension (e.g., "CommonEvents").
  */
 export function buildSheetNameMap(projectDir: string): Map<string, string> {
-  const esDir = path.join(projectDir, "eventSheets");
+  const esDir = openProject(projectDir).eventSheetsDir;
   const map = new Map<string, string>();
 
   function scan(dir: string): void {

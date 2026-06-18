@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import path from "node:path";
 import os from "node:os";
 import { generateSidRegistry } from "../../src/c3/generators.js";
+import { openProject } from "@genvid/c3source";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -283,5 +284,32 @@ describe("generateSidRegistry", () => {
     assert.isOk(ajaxEntry, `AJAX objectType root SID ${ajaxRootSid} should appear in registry`);
     assert.equal(ajaxEntry!.location, "objectType");
     assert.include(ajaxEntry!.sourceFile, "AJAX.json");
+  });
+});
+
+describe("openProject field equality", () => {
+  it("eventSheetsDir equals path.join(root, 'eventSheets')", () => {
+    const r = path.resolve("some-proj");
+    assert.strictEqual(openProject(r).eventSheetsDir, path.join(r, "eventSheets"));
+  });
+
+  it("layoutsDir equals path.join(root, 'layouts')", () => {
+    const r = path.resolve("some-proj");
+    assert.strictEqual(openProject(r).layoutsDir, path.join(r, "layouts"));
+  });
+
+  it("objectTypesDir equals path.join(root, 'objectTypes')", () => {
+    const r = path.resolve("some-proj");
+    assert.strictEqual(openProject(r).objectTypesDir, path.join(r, "objectTypes"));
+  });
+
+  it("familiesDir equals path.join(root, 'families')", () => {
+    const r = path.resolve("some-proj");
+    assert.strictEqual(openProject(r).familiesDir, path.join(r, "families"));
+  });
+
+  it("scriptsDir equals path.join(root, 'scripts')", () => {
+    const r = path.resolve("some-proj");
+    assert.strictEqual(openProject(r).scriptsDir, path.join(r, "scripts"));
   });
 });
