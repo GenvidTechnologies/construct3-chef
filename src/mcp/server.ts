@@ -22,6 +22,8 @@ import {
   REGENERATE,
   MUTATE,
   NON_IDEMPOTENT_READ,
+  resolveRootFolder,
+  isMcpError,
 } from "@genvid/mcp-utils";
 import type { Logger } from "@genvid/mcp-utils";
 import { applyParsed } from "../c3/recipeApplier.js";
@@ -92,6 +94,12 @@ const expectedChanges = new ExpectedChanges();
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
+
+/** Extract the error message text from a CallToolResult returned by resolveRootFolder. */
+function mcpErrorText(r: CallToolResult): string {
+  const block = r.content[0];
+  return block && block.type === "text" ? (block as { type: "text"; text: string }).text : String(r);
+}
 
 // ── Handler registry (also enables direct handler invocation in tests) ─────────
 const handlers = new Map<string, (args: any, extra: Extra) => Promise<unknown>>();
@@ -1702,9 +1710,27 @@ export function __resetTestState(): void {
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 export async function startServer(projectDir?: string, overrides?: Partial<ChefConfig>): Promise<void> {
-  if (projectDir) {
-    PROJECT_ROOT = projectDir;
+  const resolved = resolveRootFolder({
+    explicit: projectDir,
+    envVar: "C3_PROJECT_DIR",
+    marker: "project.c3proj",
+    searchDepth: 1,
+  });
+  if (isMcpError(resolved)) {
+    console.error(`[construct3-chef] Root resolution: ${mcpErrorText(resolved)} — falling back to cwd`);
+    PROJECT_ROOT = process.cwd();
+  } else {
+    PROJECT_ROOT = resolved.path;
+    if (resolved.source === "cwd") {
+      console.error(
+        `[construct3-chef] Warning: no project.c3proj found via --project-dir, $C3_PROJECT_DIR, or discovery — using cwd ${PROJECT_ROOT}`,
+      );
+    }
   }
+  PROJECT = openProject(PROJECT_ROOT);
+  console.error(
+    `[construct3-chef] Root: ${PROJECT_ROOT} (source: ${isMcpError(resolved) ? "cwd-fallback" : resolved.source})`,
+  );
   const config = await loadChefConfig(PROJECT_ROOT, overrides);
   EXTRACTED_DIR = path.join(PROJECT_ROOT, config.extractedDir);
 

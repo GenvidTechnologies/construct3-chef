@@ -47,8 +47,8 @@ const pkgVersion = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8")) as { version: string }
 ).version;
 
-function resolveProjectDir(argv: { projectDir: string }): string {
-  return path.resolve(argv.projectDir);
+function resolveProjectDir(argv: { projectDir?: string }): string {
+  return path.resolve(argv.projectDir ?? process.cwd());
 }
 
 async function resolveExtractedDir(rootDir: string): Promise<string> {
@@ -80,7 +80,7 @@ function runGenerators(rootDir: string, extractedDir: string, only?: GeneratorNa
 yargs(hideBin(process.argv))
   .option("project-dir", {
     type: "string",
-    default: process.cwd(),
+    defaultDescription: "cwd",
     describe: "Root directory of the C3 project",
     global: true,
   })
@@ -90,7 +90,7 @@ yargs(hideBin(process.argv))
     () => {},
     async (argv) => {
       const { startServer } = await import("./mcp/server.js");
-      await startServer(resolveProjectDir(argv));
+      await startServer(argv.projectDir);
     },
   )
   .command(
