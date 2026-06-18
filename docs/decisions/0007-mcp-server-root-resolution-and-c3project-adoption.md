@@ -1,4 +1,4 @@
-# 0001. MCP server root resolution and C3Project handle adoption
+# 0007. MCP server root resolution and C3Project handle adoption
 
 - **Status:** Accepted
 - **Date:** 2026-06-17

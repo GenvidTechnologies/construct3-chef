@@ -1,11 +1,11 @@
-# 0007. Upstream ownership boundary and young-package adoption posture
+# 0006. Upstream ownership boundary and young-package adoption posture
 
 - **Status:** Accepted (retroactively documented)
-- **Date:** 2026-06-18
+- **Date:** 2026-05-31
 
 ## Context
 
-This decision predates ADR 0001 and is recorded retroactively.
+Recorded retroactively — this posture formed with the first upstream adoption (2026-05-31, [#12](https://github.com/genvid-holdings/construct3-chef/issues/12)); the `docs/decisions/` convention was introduced later (ADR 0007).
 
 construct3-chef sits atop two young `@genvid` packages (`@genvid/c3source`, `@genvid/mcp-utils`) and a sibling tool (`c3-domain-manager`). Capabilities are constantly pulled in both directions — some rightly belong upstream (reducing duplication across the two sibling tools), some rightly stay local (presentation and rendering specific to this tool's invented read surface). Without an explicit boundary, each decision is re-litigated ad-hoc and workarounds entrench.
 
@@ -37,5 +37,5 @@ The forced-partial-fit anti-pattern (adopting an upstream primitive whose shape 
 
 - Governs the whole adoption issue stream (#25, #26, #27, #28, #42, #47, #94, and future issues).
 - Barrel-breaking removals (symbols deleted from re-exported modules) are semver-breaking at any version; they are noted in commit bodies and flagged at release tags.
-- ADR 0001 is itself an instance of this posture: `resolveRootFolder` (plumbing) moved to `mcp-utils`, `openProject`/`C3Project` (domain handle) moved to `c3source`, rendering stayed local.
+- ADR 0007 is itself an instance of this posture: `resolveRootFolder` (plumbing) moved to `mcp-utils`, `openProject`/`C3Project` (domain handle) moved to `c3source`, rendering stayed local.
 - When an upstream primitive is missing, file an intent request on the upstream repo rather than re-rolling it locally. See CLAUDE.md § "Adoption posture" for the `c3source` vs. `mcp-utils` routing guidance.

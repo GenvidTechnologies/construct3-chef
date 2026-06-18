@@ -1,11 +1,11 @@
-# 0006. MCP server optimistic-concurrency model
+# 0005. MCP server optimistic-concurrency model
 
 - **Status:** Accepted (retroactively documented)
-- **Date:** 2026-06-18
+- **Date:** 2026-04-03
 
 ## Context
 
-This decision predates ADR 0001 and is recorded retroactively.
+Recorded retroactively — the mechanism arrived at the repo's initial release (2026-04-03), imported from the prior c3-mcp-server initiative; the `docs/decisions/` convention was introduced later (ADR 0007).
 
 Unlike the stateless CLI, the MCP server serves concurrent read requests alongside serialized writes, while external file edits (from the C3 editor or the user) are possible at any time. Without a staleness and conflict-detection mechanism, a validate→apply sequence can operate on stale source, and two simultaneous write handlers can interleave at any `await` and corrupt files.
 

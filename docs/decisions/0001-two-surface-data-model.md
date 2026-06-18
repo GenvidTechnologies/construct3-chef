@@ -1,11 +1,11 @@
-# 0002. Two-surface data model
+# 0001. Two-surface data model
 
 - **Status:** Accepted (retroactively documented)
-- **Date:** 2026-06-18
+- **Date:** 2026-04-03
 
 ## Context
 
-This decision predates ADR 0001 and is recorded retroactively.
+Recorded retroactively — the mechanism arrived at the repo's initial release (2026-04-03), imported from the prior c3-mcp-server initiative; the `docs/decisions/` convention was introduced later (ADR 0007).
 
 C3 stores a project as JSON on disk (`eventSheets/`, `layouts/`, `objectTypes/`, `scripts/`). Raw C3 JSON is verbose and not reasoning-friendly: event trees are deeply nested, SIDs are opaque integers, and TypeScript scripts are embedded as JSON string blobs. Humans and AI agents need a readable, diffable view to locate mutation targets and review changes without parsing raw JSON.
 

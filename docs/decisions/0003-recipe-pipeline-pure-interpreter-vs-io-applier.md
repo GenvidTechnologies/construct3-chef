@@ -1,11 +1,11 @@
-# 0004. Recipe pipeline split: pure interpreter vs. I/O applier
+# 0003. Recipe pipeline split: pure interpreter vs. I/O applier
 
 - **Status:** Accepted (retroactively documented)
-- **Date:** 2026-06-18
+- **Date:** 2026-04-03
 
 ## Context
 
-This decision predates ADR 0001 and is recorded retroactively.
+Recorded retroactively — the mechanism arrived at the repo's initial release (2026-04-03), imported from the prior c3-mcp-server initiative; the `docs/decisions/` convention was introduced later (ADR 0007).
 
 Recipe execution has two distinct requirements: (1) it must be unit-testable and support dry-run preview without writing any files; (2) it must perform the actual I/O — reading project files, writing mutations, triggering regeneration, and syncing `project.c3proj`. Combining these in one layer would make the dry-run path indistinguishable from the write path and force filesystem mocking in unit tests.
 

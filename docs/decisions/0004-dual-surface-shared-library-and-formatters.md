@@ -1,11 +1,11 @@
-# 0005. Dual CLI + MCP surface over one shared pure library and shared formatters
+# 0004. Dual CLI + MCP surface over one shared pure library and shared formatters
 
 - **Status:** Accepted (retroactively documented)
-- **Date:** 2026-06-18
+- **Date:** 2026-04-03
 
 ## Context
 
-This decision predates ADR 0001 and is recorded retroactively.
+Recorded retroactively — the mechanism arrived at the repo's initial release (2026-04-03), imported from the prior c3-mcp-server initiative; the `docs/decisions/` convention was introduced later (ADR 0007).
 
 The same capabilities are exposed two ways: a yargs CLI (`src/cli.ts`) and an MCP server (`src/mcp/server.ts`). With two separate surfaces, there is a persistent risk that their behavior and output format drift over time — especially for output formatting, where subtle differences accumulate silently.
 

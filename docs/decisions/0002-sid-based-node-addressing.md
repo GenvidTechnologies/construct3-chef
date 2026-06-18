@@ -1,11 +1,11 @@
-# 0003. SID-based node addressing
+# 0002. SID-based node addressing
 
 - **Status:** Accepted (retroactively documented)
-- **Date:** 2026-06-18
+- **Date:** 2026-04-03
 
 ## Context
 
-This decision predates ADR 0001 and is recorded retroactively.
+Recorded retroactively — the mechanism arrived at the repo's initial release (2026-04-03), imported from the prior c3-mcp-server initiative; the `docs/decisions/` convention was introduced later (ADR 0007).
 
 Recipes must target event-tree and layout nodes stably. C3 event sheets are mutable trees: inserting, removing, or reordering events changes every positional index and JSON path for all subsequent siblings and descendants. Within a single recipe batch, an earlier op can splice an array before a later op resolves its target — making positional addressing unsafe for multi-op recipes.
 
