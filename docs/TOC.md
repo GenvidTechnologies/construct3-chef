@@ -22,6 +22,10 @@ map (§ "Where to read more").
 - `mcp-architecture.md` — MCP server design (stdio transport, file-based model, txId/extractedDirty/watcher concurrency, Logger/ReadWriteLock decisions, security posture, SDK research, prior-art comparison)
 - `prior-art-construct3-mcp.md` — imported reference/design record from the originating monorepo
 
+## Decision Records
+
+- `decisions/0001-mcp-server-root-resolution-and-c3project-adoption.md` — MCP root resolution via mcp-utils `resolveRootFolder` (env/discovery/cwd precedence) and hybrid C3Project handle adoption; rejected alternatives and deliberate non-adoptions ([#94](https://github.com/genvid-holdings/construct3-chef/issues/94))
+
 ## C3 platform reference (the *why* behind the gotchas)
 
 C3 platform reference (event-sheet & layout JSON structure, the scripting API,
