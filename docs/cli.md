@@ -55,6 +55,33 @@ Start the MCP server over stdio. AI coding agents connect to this to read and mu
 npx construct3-chef server [--project-dir <path>]
 ```
 
+### Project root resolution
+
+The server resolves its project root in the following order of precedence:
+
+1. `--project-dir <path>` — explicit flag (not path-contained; `../sibling` roots are allowed)
+2. `C3_PROJECT_DIR` environment variable — set this when the server is launched by a bundled MCP host config or an `npx` invocation where passing `--project-dir` is not possible (e.g. `plugin.json` `mcpServers`). It is shared with the sibling c3-domain-manager server, so one variable targets both.
+3. Single-child discovery — if neither of the above is set, the server scans the immediate subdirectories of cwd (`searchDepth: 1`) for a `project.c3proj` file. If exactly one child directory contains one, that directory becomes the root. Useful when launching the server from a parent workspace that contains exactly one C3 project.
+4. cwd fallback — used when none of the above yields a root.
+
+On ambiguous discovery (two or more immediate child directories each containing `project.c3proj`) or an I/O error, the server logs a message to stderr and falls back to cwd — it does **not** exit. A cwd fall-through (no marker found anywhere) also emits a warning. In both cases a startup line `[construct3-chef] Root: <path> (source: …)` reports the resolved outcome.
+
+**Non-server subcommands are unaffected.** Every other subcommand (`generate`, `apply-recipe`, etc.) defaults `--project-dir` to cwd exactly as before; the env-var and discovery steps run only at server startup.
+
+Examples:
+
+```bash
+# Explicit flag (equivalent to other subcommands)
+npx @genvid/construct3-chef server --project-dir /path/to/my-game
+
+# Env var — useful in a bundled MCP host config where flags can't be passed
+C3_PROJECT_DIR=/path/to/my-game npx @genvid/construct3-chef server
+
+# Discovery — run from a workspace parent; server finds the one child with project.c3proj
+cd /workspace  # contains workspace/my-game/project.c3proj
+npx @genvid/construct3-chef server
+```
+
 The server auto-generates `extracted/` on startup if it does not exist. It warns but does not fail if `project.c3proj` is not found.
 
 See [README.md](../README.md#mcp-server) for the full list of MCP tools.
