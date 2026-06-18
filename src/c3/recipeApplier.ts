@@ -11,6 +11,7 @@ import {
   find_all_layouts_path,
   findSid,
   validateForEditor,
+  openProject,
 } from "@genvid/c3source";
 import {
   type Recipe,
@@ -278,7 +279,7 @@ export function updateObjects(
 // ─── addInstVars helpers ───
 
 export function findObjectTypeFile(rootDir: string, typeName: string): string | null {
-  const objectTypesDir = path.join(rootDir, "objectTypes");
+  const objectTypesDir = openProject(rootDir).objectTypesDir;
   const allPaths = find_all_objectTypes_path(objectTypesDir);
   for (const p of allPaths) {
     const basename = path.basename(p, ".json");
@@ -342,7 +343,7 @@ export function processAddInstVars(
     }
 
     // 2. Update layout instances
-    const layoutsDir = path.join(rootDir, "layouts");
+    const layoutsDir = openProject(rootDir).layoutsDir;
     const allLayouts = find_all_layouts_path(layoutsDir);
     let totalInstances = 0;
     for (const layoutPath of allLayouts) {
@@ -478,7 +479,7 @@ function checkMoveVariableDemotions(rootDir: string, files: NonNullable<Recipe["
   }
   if (demotions.length === 0) return;
 
-  const allFiles = find_all_eventsheets_path(path.join(rootDir, "eventSheets"));
+  const allFiles = find_all_eventsheets_path(openProject(rootDir).eventSheetsDir);
   for (const { filePath, varName } of demotions) {
     const targetResolved = path.resolve(rootDir, filePath);
     const wordRe = new RegExp(`\\b${escapeRegExp(varName)}\\b`);
@@ -841,7 +842,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
     // primitive sequence, matching what apply will do.
     if (layoutsForLoop.size > 0) {
       log("layouts:");
-      const layoutsDir = path.join(rootDir, "layouts");
+      const layoutsDir = openProject(rootDir).layoutsDir;
       const allUids = collectAllUids(layoutsDir);
       const dryRunUidCounter = { next: maxFromSet(allUids) + 1 };
       const dryRunSourceCache = new Map<string, MutatorLayoutJson>();
@@ -1060,7 +1061,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   // each layout is loaded once, all its ops run, then it's written back.
   if (layoutsForLoop.size > 0) {
     log("\nlayouts:");
-    const layoutsDir = path.join(rootDir, "layouts");
+    const layoutsDir = openProject(rootDir).layoutsDir;
     const allUids = collectAllUids(layoutsDir);
     const uidCounter = { next: maxFromSet(allUids) + 1 };
     const sourceLayoutCache = new Map<string, MutatorLayoutJson>();
@@ -1193,8 +1194,7 @@ export function renameSymbols(
   }
 
   // Discover all eventSheet files
-  const eventSheetsDir = path.join(rootDir, "eventSheets");
-  const allFiles = find_all_eventsheets_path(eventSheetsDir);
+  const allFiles = find_all_eventsheets_path(openProject(rootDir).eventSheetsDir);
   log(`\nScanning ${allFiles.length} eventSheet file(s)...\n`);
 
   // Apply replacements to each file
