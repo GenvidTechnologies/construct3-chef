@@ -17,7 +17,7 @@ construct3-chef mutates Construct 3 projects, which store their data as JSON fil
 
 ## Commands
 
-This repo uses **npm** (committed `package-lock.json`). It's published to npmjs.com as `@genvid/construct3-chef` via the genvid-public-ci GitHub Actions recipe (`.github/workflows/`); the gate runs `npm ci`.
+This repo uses **npm** (committed `package-lock.json`). It's published to npmjs.com as `@genvid/construct3-chef` via the `GenvidTechnologies/public-github-actions` GitHub Actions recipe (`.github/workflows/`; formerly `genvid-holdings/genvid-public-ci`); the gate runs `npm ci`.
 
 ```bash
 npm install                             # install deps (fetches @genvid/* from npm)
@@ -110,7 +110,7 @@ The CLI is stateless; the server adds a concurrency layer worth understanding be
 
 - C3 JSON is written tab-indented with a trailing newline: `JSON.stringify(x, null, "\t") + "\n"`. Match this when writing project files.
 - Prettier: 120 cols, spaces for `.ts`, **tabs** for `.json`. ESLint extends prettier and disables `no-unused-vars` / `no-explicit-any`.
-- **Formatting IS gated by `npm run lint`** (as of #54). `lint` runs ESLint *and then* `npm run format:check` (`prettier --check "src/**/*.ts" "test/**/*.ts"`), so Prettier conformance is enforced wherever lint runs (incl. the shared `genvid-public-ci` gate). ESLint itself still extends `eslint-config-prettier`, which only *disables* ESLint's formatting rules — it never runs Prettier — so the `format:check` step is what actually enforces it. The whole repo conforms; run `npm run format` (`prettier --write`) to fix drift before committing. **`test/fixtures/` is `.prettierignore`'d wholesale** — it's real C3-export data (the SDK runtime/plugin `*.d.ts`, fixture scripts) plus the generated `extracted/` read-surface the golden test diffs byte-for-byte; never reformat it. (Pre-#54 history: `projectSync.ts` was whole-file tab-indented and ~21 files had drifted because formatting was ungated; #54 conformed them in one isolated `style:` commit and wired the gate.)
+- **Formatting IS gated by `npm run lint`** (as of #54). `lint` runs ESLint *and then* `npm run format:check` (`prettier --check "src/**/*.ts" "test/**/*.ts"`), so Prettier conformance is enforced wherever lint runs (incl. the shared `public-github-actions` gate). ESLint itself still extends `eslint-config-prettier`, which only *disables* ESLint's formatting rules — it never runs Prettier — so the `format:check` step is what actually enforces it. The whole repo conforms; run `npm run format` (`prettier --write`) to fix drift before committing. **`test/fixtures/` is `.prettierignore`'d wholesale** — it's real C3-export data (the SDK runtime/plugin `*.d.ts`, fixture scripts) plus the generated `extracted/` read-surface the golden test diffs byte-for-byte; never reformat it. (Pre-#54 history: `projectSync.ts` was whole-file tab-indented and ~21 files had drifted because formatting was ungated; #54 conformed them in one isolated `style:` commit and wired the gate.)
 - All file I/O is rooted at a `--project-dir` (defaults to cwd); paths inside recipes/tools are relative to that root. Mutate tools include path-traversal guards — keep them.
 
 ## Commit Format
