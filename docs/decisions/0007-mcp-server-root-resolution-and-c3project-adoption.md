@@ -19,7 +19,7 @@ The MCP server resolved its project root from `--project-dir` or, failing that, 
 
 The env var is `C3_PROJECT_DIR` (not a chef-specific name) — shared deliberately with the sibling c3-domain-manager server so one variable targets both. On ambiguous discovery (≥ 2 child markers) or I/O error, `resolveRootFolder` returns an mcpError; the server logs to stderr and falls back to cwd rather than exiting, consistent with the pre-existing warn-only posture for a missing `project.c3proj`.
 
-**C3Project handle** (#94, c3source#36): a module-level `PROJECT` handle (`openProject(root): C3Project` from `@genvid/c3source@1.5.0`) sits beside `PROJECT_ROOT`/`EXTRACTED_DIR` in `server.ts`. Inside each function, `path.join(root, "eventSheets")` etc. are replaced with `project.eventSheetsDir`, `project.layoutsDir`, `project.objectTypesDir`, `project.familiesDir`, `project.scriptsDir`. Because `openProject`'s `*Dir` fields are documented as plain string joins with no I/O, output is byte-identical (locked by an equality assertion) and no barrel-exported signature changes — zero semver exposure and zero golden-test risk.
+**C3Project handle** (#94, c3source#36): a module-level `PROJECT` handle (`openProject(root): C3Project` from `@genvid/c3source@1.5.0` (now `@genvidtech/c3source`)) sits beside `PROJECT_ROOT`/`EXTRACTED_DIR` in `server.ts`. Inside each function, `path.join(root, "eventSheets")` etc. are replaced with `project.eventSheetsDir`, `project.layoutsDir`, `project.objectTypesDir`, `project.familiesDir`, `project.scriptsDir`. Because `openProject`'s `*Dir` fields are documented as plain string joins with no I/O, output is byte-identical (locked by an equality assertion) and no barrel-exported signature changes — zero semver exposure and zero golden-test risk.
 
 ## Compromise
 
@@ -37,7 +37,7 @@ Three alternative scopes for the C3Project adoption were considered:
 - `projectSync.ts` section configs — model 12 disk directories plus per-section metadata and feed the c3source drift API; the handle's 5 dirs cover only a subset, so partial adoption would add surface rather than simplify.
 - Barrel-exported `SID_SOURCE_DIRS` — deliberately excludes `families/`, so it is not derivable from the handle's dir set.
 
-The gap for `images/` and secondary section dirs is filed as c3source#38. This mirrors the repo's established posture: don't force a partial upstream fit — request the right shape upstream and wait for it.
+The gap for `images/` and secondary section dirs is filed as c3source#38 (resolved in `@genvidtech/c3source@1.6.0`, which added `imagesDir` to `C3Project`). This mirrors the repo's established posture: don't force a partial upstream fit — request the right shape upstream and wait for it.
 
 ## Consequences
 
