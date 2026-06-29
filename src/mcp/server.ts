@@ -1294,7 +1294,7 @@ reg(
           }
 
           const objectTypesDir = PROJECT.objectTypesDir;
-          const imagesDir = path.join(PROJECT_ROOT, "images");
+          const imagesDir = PROJECT.imagesDir;
 
           // Validate names don't contain path separators
           for (const [label, val] of [
