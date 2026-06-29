@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import path from "node:path";
 import os from "node:os";
 import { generateSidRegistry } from "../../src/c3/generators.js";
-import { openProject } from "@genvid/c3source";
+import { openProject } from "@genvidtech/c3source";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

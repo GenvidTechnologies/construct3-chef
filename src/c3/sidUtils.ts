@@ -95,4 +95,4 @@ export function mintUniqueSid(usedSids: Set<number>): number {
 // `collectSids` (collect every numeric `sid` in a C3 JSON subtree, returning an
 // empty Set for null/undefined/non-object input) now lives in c3source.
 // Re-exported here so existing `./sidUtils` importers are unaffected.
-export { collectSids } from "@genvid/c3source";
+export { collectSids } from "@genvidtech/c3source";

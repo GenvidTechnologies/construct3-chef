@@ -7,7 +7,7 @@ import type {
   FunctionBlockEvent,
   GroupEvent,
   Condition,
-} from "@genvid/c3source";
+} from "@genvidtech/c3source";
 import {
   insertEvent,
   removeEvent,

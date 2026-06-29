@@ -5,7 +5,7 @@ import path from "node:path";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { walkFiles, toPosixPath } from "@genvid/mcp-utils";
-import { openProject } from "@genvid/c3source";
+import { openProject } from "@genvidtech/c3source";
 import { loadChefConfig, resolveOpsDir } from "./c3/chefConfig.js";
 import {
   extractScripts,
@@ -243,7 +243,7 @@ yargs(hideBin(process.argv))
     (argv) => {
       const rootDir = resolveProjectDir(argv);
       const objectTypesDir = openProject(rootDir).objectTypesDir;
-      const imagesDir = path.join(rootDir, "images");
+      const imagesDir = openProject(rootDir).imagesDir;
       const sourceFile = path.join(objectTypesDir, `${argv.source}.json`);
       const source = JSON.parse(readFileSync(sourceFile, "utf-8")) as Record<string, unknown>;
       const existingSids = collectAllObjectTypeSids(objectTypesDir);

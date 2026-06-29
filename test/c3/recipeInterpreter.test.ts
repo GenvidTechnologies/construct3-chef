@@ -10,7 +10,7 @@ import type {
   GroupEvent,
   Condition,
   ScriptAction,
-} from "@genvid/c3source";
+} from "@genvidtech/c3source";
 import {
   buildBlock,
   buildFunctionBlock,

@@ -16,7 +16,7 @@ import {
   formatSidPath,
   isEditorLocalPath,
   openProject,
-} from "@genvid/c3source";
+} from "@genvidtech/c3source";
 import { formatEventSheet, formatIndex } from "./dslFormatter.js";
 import {
   formatLayout,

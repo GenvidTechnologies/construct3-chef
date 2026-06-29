@@ -4,7 +4,7 @@ import { extractScripts, generateDSL, generateLayoutSummaries } from "./generato
 import type { Logger } from "@genvid/mcp-utils";
 import { escapeRegExp } from "@genvid/mcp-utils";
 import type { ApplyOptions } from "./types.js";
-import type { EventSheet, EventSheetEvent, SidSlot } from "@genvid/c3source";
+import type { EventSheet, EventSheetEvent, SidSlot } from "@genvidtech/c3source";
 import {
   find_all_eventsheets_path,
   find_all_objectTypes_path,
@@ -12,7 +12,7 @@ import {
   findSid,
   validateForEditor,
   openProject,
-} from "@genvid/c3source";
+} from "@genvidtech/c3source";
 import {
   type Recipe,
   type ObjectTypeCreate,

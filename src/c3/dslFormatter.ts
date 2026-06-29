@@ -1,5 +1,5 @@
 import path from "node:path";
-import { formatCondition, formatAction, normalizeLineEndings, visitEvents } from "@genvid/c3source";
+import { formatCondition, formatAction, normalizeLineEndings, visitEvents } from "@genvidtech/c3source";
 import type {
   EventSheetEvent,
   EventSheet,
@@ -7,7 +7,7 @@ import type {
   FunctionBlockEvent,
   CustomAceBlockEvent,
   FunctionParameter,
-} from "@genvid/c3source";
+} from "@genvidtech/c3source";
 
 /** One row of the DSL coordinate index. */
 export interface DslIndexEntry {

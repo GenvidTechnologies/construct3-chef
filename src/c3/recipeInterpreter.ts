@@ -10,8 +10,8 @@ import type {
   FunctionBlockEvent,
   CustomAceBlockEvent,
   FunctionParameter,
-} from "@genvid/c3source";
-import { isScriptAction } from "@genvid/c3source";
+} from "@genvidtech/c3source";
+import { isScriptAction } from "@genvidtech/c3source";
 import { escapeRegExp } from "@genvid/mcp-utils";
 
 import {

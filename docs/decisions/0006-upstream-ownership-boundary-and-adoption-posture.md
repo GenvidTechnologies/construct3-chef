@@ -7,7 +7,7 @@
 
 Recorded retroactively — this posture formed with the first upstream adoption (2026-05-31, [#12](https://github.com/genvid-holdings/construct3-chef/issues/12)); the `docs/decisions/` convention was introduced later (ADR 0007).
 
-construct3-chef sits atop two young `@genvid` packages (`@genvid/c3source`, `@genvid/mcp-utils`) and a sibling tool (`c3-domain-manager`). Capabilities are constantly pulled in both directions — some rightly belong upstream (reducing duplication across the two sibling tools), some rightly stay local (presentation and rendering specific to this tool's invented read surface). Without an explicit boundary, each decision is re-litigated ad-hoc and workarounds entrench.
+construct3-chef sits atop two young `@genvid` packages (`@genvid/c3source` (now `@genvidtech/c3source` as of 1.6.0), `@genvid/mcp-utils`) and a sibling tool (`c3-domain-manager`). Capabilities are constantly pulled in both directions — some rightly belong upstream (reducing duplication across the two sibling tools), some rightly stay local (presentation and rendering specific to this tool's invented read surface). Without an explicit boundary, each decision is re-litigated ad-hoc and workarounds entrench.
 
 ## Decision
 

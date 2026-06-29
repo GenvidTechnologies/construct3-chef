@@ -11,11 +11,11 @@ import type {
   Condition,
   FunctionParameter,
   ScriptAction,
-} from "@genvid/c3source";
-import { isScriptAction, hasActions, hasConditions, canHaveChildren, visitEvents } from "@genvid/c3source";
+} from "@genvidtech/c3source";
+import { isScriptAction, hasActions, hasConditions, canHaveChildren, visitEvents } from "@genvidtech/c3source";
 import type { SidGenerator } from "./sidUtils.js";
 
-export type { ScriptAction, IncludeEvent, CommentEvent } from "@genvid/c3source";
+export type { ScriptAction, IncludeEvent, CommentEvent } from "@genvidtech/c3source";
 export { hasActions, canHaveChildren };
 
 /** Entry in the SID-based event index. */

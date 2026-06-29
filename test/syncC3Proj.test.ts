@@ -4,7 +4,7 @@ import tmp from "tmp";
 import { mkdirSync, writeFileSync, readFileSync, cpSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { detectManifestDrift, detectImageDrift, deriveExpectedImageNames, type DriftEntry } from "@genvid/c3source";
+import { detectManifestDrift, detectImageDrift, deriveExpectedImageNames, type DriftEntry } from "@genvidtech/c3source";
 import {
   inferMimeType,
   collectAllSids,

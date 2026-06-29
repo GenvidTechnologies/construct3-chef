@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
-import type { EventSheet, FunctionParameter } from "@genvid/c3source";
-import { extractIncludes, extractFunctions as extractFunctionsUpstream, openProject } from "@genvid/c3source";
+import type { EventSheet, FunctionParameter } from "@genvidtech/c3source";
+import { extractIncludes, extractFunctions as extractFunctionsUpstream, openProject } from "@genvidtech/c3source";
 
 export interface IncludeTreeNode {
   /** Sheet name (e.g., "CommonEvents") */
