@@ -225,7 +225,7 @@ export function updateInstanceTypes(
   dryRun: boolean,
   log: Logger = console.log,
 ): void {
-  const filePath = path.join(rootDir, "scripts/ts-defs/instanceTypes.d.ts");
+  const filePath = path.join(openProject(rootDir).scriptsDir, "ts-defs/instanceTypes.d.ts");
   const content = readFileSync(filePath, "utf-8");
 
   const baseClass = PLUGIN_BASE_CLASS[objectType.plugin];
@@ -258,7 +258,7 @@ export function updateObjects(
   dryRun: boolean,
   log: Logger = console.log,
 ): void {
-  const filePath = path.join(rootDir, "scripts/ts-defs/objects.d.ts");
+  const filePath = path.join(openProject(rootDir).scriptsDir, "ts-defs/objects.d.ts");
   const content = readFileSync(filePath, "utf-8");
 
   const line = `\treadonly ${objectType.name}: IObjectType<InstanceType.${objectType.name}>;`;
@@ -366,7 +366,7 @@ export function processAddInstVars(
 
     // 3. Update instanceTypes.d.ts
     if (added.length > 0) {
-      const typesFile = path.join(rootDir, "scripts/ts-defs/instanceTypes.d.ts");
+      const typesFile = path.join(openProject(rootDir).scriptsDir, "ts-defs/instanceTypes.d.ts");
       const typesContent = readFileSync(typesFile, "utf-8");
       const updatedTypes = addInstVarsToTypesDts(typesContent, entry.type, newVars);
       if (updatedTypes === null) {
