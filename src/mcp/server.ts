@@ -41,8 +41,8 @@ import {
 import { runSync, reportImageDrift } from "../c3/projectSync.js";
 import { readRegistryFile, mintUniqueSid } from "../c3/sidUtils.js";
 import { filterIndex, buildShallowSidMap, type SidMapEntry } from "../c3/dslFormatter.js";
-import { find_all_eventsheets_path, find_all_layouts_path, openProject } from "@genvid/c3source";
-import type { EventSheet, C3Project } from "@genvid/c3source";
+import { find_all_eventsheets_path, find_all_layouts_path, openProject } from "@genvidtech/c3source";
+import type { EventSheet, C3Project } from "@genvidtech/c3source";
 import { resolveIncludeTree, formatIncludeTree, flattenIncludeTree } from "../c3/includeTree.js";
 import { collectAllUids, cloneLayout } from "../c3/layoutScaffold.js";
 import { search } from "../c3/search.js";

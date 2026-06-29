@@ -2,8 +2,8 @@ import { describe, it } from "mocha";
 import { assert } from "chai";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import * as path from "node:path";
-import { find_all_eventsheets_path, validateForEditor } from "@genvid/c3source";
-import type { EventSheet } from "@genvid/c3source";
+import { find_all_eventsheets_path, validateForEditor } from "@genvidtech/c3source";
+import type { EventSheet } from "@genvidtech/c3source";
 
 /**
  * Validates that every fixture event sheet in test/fixtures/ is editor-valid

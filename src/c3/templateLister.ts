@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { type Layout, find_all_layouts_path, visitLayers } from "@genvid/c3source";
+import { type Layout, find_all_layouts_path, visitLayers } from "@genvidtech/c3source";
 
 export function findTemplates(layoutsDir: string): Array<{ layout: string; type: string }> {
   const layoutPaths = find_all_layouts_path(layoutsDir);

@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import * as path from "node:path";
-import type { EventSheet } from "@genvid/c3source";
-import { extractFunctions, find_all_eventsheets_path, visitEvents, openProject } from "@genvid/c3source";
+import type { EventSheet } from "@genvidtech/c3source";
+import { extractFunctions, find_all_eventsheets_path, visitEvents, openProject } from "@genvidtech/c3source";
 import type { C3Action } from "./eventSheetMutator.js";
 import { isCustomAction } from "./eventSheetMutator.js";
 

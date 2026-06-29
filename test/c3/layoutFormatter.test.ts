@@ -11,7 +11,7 @@ import {
   buildGlobalLayerReport,
   formatGlobalLayers,
 } from "../../src/c3/layoutFormatter.js";
-import type { Layout, Layer, Instance } from "@genvid/c3source";
+import type { Layout, Layer, Instance } from "@genvidtech/c3source";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_LAYOUTS_DIR = path.join(__dirname, "../fixtures/construct3-chef-sample/layouts");

@@ -3,7 +3,7 @@ import { assert } from "chai";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as os from "node:os";
-import type { EventSheet } from "@genvid/c3source";
+import type { EventSheet } from "@genvidtech/c3source";
 import type { CustomAceIndex } from "../../src/c3/customAceIndex.js";
 import { buildCustomAceIndex, validateInsertedCustomActions } from "../../src/c3/customAceIndex.js";
 

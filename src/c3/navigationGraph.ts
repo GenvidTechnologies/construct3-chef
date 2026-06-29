@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { find_all_files_path, find_all_layouts_path, type Layout } from "@genvid/c3source";
+import { find_all_files_path, find_all_layouts_path, type Layout } from "@genvidtech/c3source";
 import { type NavConvention, defaultNavConvention } from "./navConvention.js";
 
 /** Map from layoutName -> primary eventSheet name (from layout JSON) */

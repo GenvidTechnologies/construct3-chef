@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import type { BlockEvent } from "@genvid/c3source";
+import type { BlockEvent } from "@genvidtech/c3source";
 import { buildShallowSidMap, type SidMapEntry } from "../../src/c3/dslFormatter.js";
 import { renderEventSidRows } from "../../src/mcp/server.js";
 

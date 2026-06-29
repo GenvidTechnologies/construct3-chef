@@ -9,7 +9,7 @@ import {
   type Layout,
   type Layer,
   type Instance,
-} from "@genvid/c3source";
+} from "@genvidtech/c3source";
 
 // These were once local `Record<string, unknown>` aliases (a cast barrier that
 // forced `as unknown as Layout` at every c3source call site). They now alias
