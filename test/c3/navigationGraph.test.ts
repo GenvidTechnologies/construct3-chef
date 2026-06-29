@@ -416,7 +416,7 @@ describe("navigationGraph", () => {
       const sorted = [...entries].sort((a, b) => a.fromSheet.localeCompare(b.fromSheet));
 
       assert.deepEqual(sorted, [
-        { fromSheet: "Event sheet 1", targetLayout: "Second Layout", lineNumber: 11 },
+        { fromSheet: "Event sheet 1", targetLayout: "Second Layout", lineNumber: 12 },
         { fromSheet: "Event sheet 2", targetLayout: "Main Layout", lineNumber: 7 },
       ] satisfies NavEntry[]);
     });

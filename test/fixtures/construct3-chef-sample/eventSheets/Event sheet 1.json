@@ -35,6 +35,16 @@
 							"id": "on-clicked",
 							"objectClass": "NavButton",
 							"sid": 718113556931833
+						},
+						{
+							"id": "compare-two-values",
+							"objectClass": "System",
+							"sid": 624180597436215,
+							"parameters": {
+								"first-value": "score",
+								"comparison": 4,
+								"second-value": "0"
+							}
 						}
 					],
 					"actions": [
