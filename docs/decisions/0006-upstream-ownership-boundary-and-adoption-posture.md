@@ -7,7 +7,7 @@
 
 Recorded retroactively — this posture formed with the first upstream adoption (2026-05-31, [#12](https://github.com/genvid-holdings/construct3-chef/issues/12)); the `docs/decisions/` convention was introduced later (ADR 0007).
 
-construct3-chef sits atop two young `@genvid` packages (`@genvid/c3source` (now `@genvidtech/c3source` as of 1.6.0), `@genvid/mcp-utils`) and a sibling tool (`c3-domain-manager`). Capabilities are constantly pulled in both directions — some rightly belong upstream (reducing duplication across the two sibling tools), some rightly stay local (presentation and rendering specific to this tool's invented read surface). Without an explicit boundary, each decision is re-litigated ad-hoc and workarounds entrench.
+construct3-chef sits atop two young `@genvid` packages (`@genvid/c3source` (now `@genvidtech/c3source` as of 1.6.0), `@genvid/mcp-utils` (now `@genvidtech/mcp-utils` as of 0.5.1)) and a sibling tool (`c3-domain-manager`). Capabilities are constantly pulled in both directions — some rightly belong upstream (reducing duplication across the two sibling tools), some rightly stay local (presentation and rendering specific to this tool's invented read surface). Without an explicit boundary, each decision is re-litigated ad-hoc and workarounds entrench.
 
 ## Decision
 
@@ -15,7 +15,7 @@ The boundary runs as follows:
 
 - **Push into `@genvid/c3source`**: traversal, numbering, discovery, and C3 domain facts — `visitEvents`, `isCountingEvent`, the `find_all_*_path` finders, `walkSids`, `openProject`, `isEditorLocalPath`, `readProjectManifest`, `detectManifestDrift`, `extractIncludes`, `extractFunctions`, `validateForEditor`. These are C3 on-disk schema facts and traversal primitives.
 
-- **Push into `@genvid/mcp-utils`**: generic MCP/config plumbing — `loadProjectConfig`, `resolveWithin`, `resolveRootFolder`, response-shaping helpers (`paginatedContent`, `mcpContent`, `mcpError`, `withMcpErrors`), concurrency primitives (`ReadWriteLock`, `OptimisticWatcher`, `ExpectedChanges`).
+- **Push into `@genvidtech/mcp-utils`**: generic MCP/config plumbing — `loadProjectConfig`, `resolveWithin`, `resolveRootFolder`, response-shaping helpers (`paginatedContent`, `mcpContent`, `mcpError`, `withMcpErrors`), concurrency primitives (`ReadWriteLock`, `OptimisticWatcher`, `ExpectedChanges`).
 
 - **Keep local**: rendering and presentation — the `extracted/` read surface (DSL text, DSL index, layout summaries, `sid-registry.txt`, `template-scope.txt`) is this tool's invention, not C3 on-disk schema, and must not move upstream even when a c3source helper could shave lines. The `ChefConfig` schema, the recipe interpreter/applier, `customAceIndex`, and all op-template logic are also local.
 

@@ -17,7 +17,7 @@ The server uses an optimistic-concurrency model with three interlocking mechanis
 
 - **`extractedDirty` flag** — set true on source writes or detected external changes; cleared when `regenerate` (or `apply-recipe` with `regenerate: true`) completes. Read tools serving from `extracted/` append a staleness warning when dirty — they do not block or auto-regenerate. `checkSourceFreshness()` also flips it by comparing source vs. extracted mtimes, catching external edits that arrive without a watcher event.
 
-- **`ReadWriteLock`** (from `@genvid/mcp-utils`) — allows concurrent reads, exclusive writes, queues new reads behind pending writes. The check-and-increment of `txId` is atomic inside `rwlock.write()`.
+- **`ReadWriteLock`** (from `@genvidtech/mcp-utils`) — allows concurrent reads, exclusive writes, queues new reads behind pending writes. The check-and-increment of `txId` is atomic inside `rwlock.write()`.
 
 Self-induced writes are masked by wrapping them in `watcher.suppress(async () => { … })` plus `watcher.expect(absPath)` for paths whose watcher event may land after the suppress window closes. `CancelledError` paths still bump `txId` and set `extractedDirty`, because source was already written before regeneration was interrupted.
 

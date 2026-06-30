@@ -45,7 +45,7 @@ isolated nicety. Blocked-on-upstream items that can't start yet are not P0/P1.
   - `area:cli` — yargs CLI surface.
   - `area:generators` — `extracted/` read surface + the 6 generators.
   - `area:config` — configuration layer (`construct3-chef.config.json`, nav-convention, ops registry).
-  - `area:c3source-adoption` — adopting upstream `@genvidtech/c3source` / `@genvid/mcp-utils` primitives.
+  - `area:c3source-adoption` — adopting upstream `@genvidtech/c3source` / `@genvidtech/mcp-utils` primitives.
   - `area:live-editor` — C3 live-editor integration (Playwright/addon bridge).
   - `area:testing` — golden test, fixtures, test infrastructure.
   - `area:docs` — documentation.
