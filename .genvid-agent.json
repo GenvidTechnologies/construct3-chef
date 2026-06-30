@@ -1,6 +1,6 @@
 {
   "project": {
-    "name": "@genvid/construct3-chef",
+    "name": "@genvidtech/construct3-chef",
     "description": "CLI + MCP server that mutates Construct 3 projects (event sheets, layouts, objectTypes) stored as on-disk JSON, via SID-addressed recipes and a read-side extracted/ generator pipeline.",
     "languages": ["typescript"]
   },

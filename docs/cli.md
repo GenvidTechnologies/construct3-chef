@@ -72,14 +72,14 @@ Examples:
 
 ```bash
 # Explicit flag (equivalent to other subcommands)
-npx @genvid/construct3-chef server --project-dir /path/to/my-game
+npx @genvidtech/construct3-chef server --project-dir /path/to/my-game
 
 # Env var — useful in a bundled MCP host config where flags can't be passed
-C3_PROJECT_DIR=/path/to/my-game npx @genvid/construct3-chef server
+C3_PROJECT_DIR=/path/to/my-game npx @genvidtech/construct3-chef server
 
 # Discovery — run from a workspace parent; server finds the one child with project.c3proj
 cd /workspace  # contains workspace/my-game/project.c3proj
-npx @genvid/construct3-chef server
+npx @genvidtech/construct3-chef server
 ```
 
 The server auto-generates `extracted/` on startup if it does not exist. It warns but does not fail if `project.c3proj` is not found.
