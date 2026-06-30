@@ -8,4 +8,5 @@ group "GameLoop" (active)
 
   block
     when: NavButton.on-clicked()
+    when: System.compare-two-values(first-value=score, comparison=4 (>), second-value=0)
     do: System.go-to-layout(layout=Second Layout)

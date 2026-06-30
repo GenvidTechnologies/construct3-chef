@@ -716,6 +716,8 @@ Each workflow is also exposed as a standalone MCP tool with matching parameters,
 | `4` | `>` Greater than |
 | `5` | `>=` Greater or equal |
 
+Its `params` are keyed `first-value`, `comparison` (the integer above), and `second-value` — e.g. `{ "first-value": "score", "comparison": 4, "second-value": "0" }` ("score > 0"). The C3 export uses `first-value`/`second-value`, **not** the `first`/`second` shorthand some builders passively accept. In the `extracted/` DSL read-surface the operator is annotated inline from its integer — `comparison=4 (>)` — via c3source's `comparisonSymbol` (since 1.7.0), using Unicode symbols (`=` `≠` `<` `≤` `>` `≥`) that differ from the ASCII in the table above; the recipe **input** is always the integer.
+
 ### Events
 
 ```json

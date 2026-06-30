@@ -6,4 +6,4 @@
   -     | events[0]             | §100000000000020 | 4        | global var score: number = 0
   1     | events[1]             | §100000000000022 | 6        | group "GameLoop"
   -     | events[1].children[0] | §100000000000021 | 7        | var temp: number = 0
-  2     | events[1].children[1] | §573288374737163 | 9        | block ⟪search⟫ NavButton.on-clicked() System.go-to-layout(layout=Second Layout)
+  2     | events[1].children[1] | §573288374737163 | 9        | block ⟪search⟫ NavButton.on-clicked() System.compare-two-values(first-value=score, comparison=4 (>), second-value=0) System.go-to-layout(layout=Second Layout)

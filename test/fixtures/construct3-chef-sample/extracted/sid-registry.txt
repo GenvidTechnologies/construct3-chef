@@ -37,6 +37,7 @@
 603614350847496	layouts/Main Layout.json	layout
 604751578828694	objectTypes/images/9patch.json	objectType
 612798495723368	objectTypes/images/Sprite3.json	objectType
+624180597436215	eventSheets/Event sheet 1.json	events[1].children[1].conditions[1]
 635424354242082	eventSheets/Event sheet 2.json	events[0].children[0].actions[0]
 635959236260852	eventSheets/Event sheet 1.json	sheet
 659718123724261	objectTypes/NavButton.json	objectType
