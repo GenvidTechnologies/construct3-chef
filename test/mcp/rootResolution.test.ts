@@ -2,7 +2,7 @@ import { expect } from "chai";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resolveRootFolder, isMcpError } from "@genvid/mcp-utils";
+import { resolveRootFolder, isMcpError } from "@genvidtech/mcp-utils";
 
 // ── Dirent fake helpers ───────────────────────────────────────────────────────
 // We build the fakeReaddir on top of real temp dirs so that path.join /

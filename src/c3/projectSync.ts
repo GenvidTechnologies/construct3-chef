@@ -1,6 +1,6 @@
 import { writeFileSync, readdirSync, existsSync } from "node:fs";
 import path from "node:path";
-import type { Logger } from "@genvid/mcp-utils";
+import type { Logger } from "@genvidtech/mcp-utils";
 import { readProjectManifest, detectImageDrift, detectManifestDrift, type DriftEntry } from "@genvidtech/c3source";
 import { mintUniqueSid } from "./sidUtils.js";
 

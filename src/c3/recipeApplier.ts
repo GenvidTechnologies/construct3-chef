@@ -1,8 +1,8 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { extractScripts, generateDSL, generateLayoutSummaries } from "./generators.js";
-import type { Logger } from "@genvid/mcp-utils";
-import { escapeRegExp } from "@genvid/mcp-utils";
+import type { Logger } from "@genvidtech/mcp-utils";
+import { escapeRegExp } from "@genvidtech/mcp-utils";
 import type { ApplyOptions } from "./types.js";
 import type { EventSheet, EventSheetEvent, SidSlot } from "@genvidtech/c3source";
 import {

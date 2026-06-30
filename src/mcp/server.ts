@@ -24,8 +24,8 @@ import {
   NON_IDEMPOTENT_READ,
   resolveRootFolder,
   isMcpError,
-} from "@genvid/mcp-utils";
-import type { Logger } from "@genvid/mcp-utils";
+} from "@genvidtech/mcp-utils";
+import type { Logger } from "@genvidtech/mcp-utils";
 import { applyParsed } from "../c3/recipeApplier.js";
 import { validateRecipe, type Recipe } from "../c3/recipeInterpreter.js";
 import {
@@ -87,7 +87,7 @@ let watcher!: OptimisticWatcher;
 const expectedChanges = new ExpectedChanges();
 
 // Tool annotation presets (READ_ONLY / REGENERATE / MUTATE / NON_IDEMPOTENT_READ)
-// are imported from @genvid/mcp-utils. NON_IDEMPOTENT_READ marks tools that read
+// are imported from @genvidtech/mcp-utils. NON_IDEMPOTENT_READ marks tools that read
 // source only but return different output per call (e.g. random-SID minting) —
 // clients must NOT treat them as idempotent for retry/cache purposes.
 

@@ -7,7 +7,7 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { z } from "zod";
-import { mcpContent, mcpError, READ_ONLY, MUTATE } from "@genvid/mcp-utils";
+import { mcpContent, mcpError, READ_ONLY, MUTATE } from "@genvidtech/mcp-utils";
 import type { Recipe } from "../c3/recipeInterpreter.js";
 import {
   loadOpsFromDir,

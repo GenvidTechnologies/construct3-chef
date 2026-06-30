@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import { z } from "zod";
-import { resolveWithin } from "@genvid/mcp-utils";
+import { resolveWithin } from "@genvidtech/mcp-utils";
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 

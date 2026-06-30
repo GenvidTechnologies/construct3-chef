@@ -12,7 +12,7 @@ import type {
   FunctionParameter,
 } from "@genvidtech/c3source";
 import { isScriptAction } from "@genvidtech/c3source";
-import { escapeRegExp } from "@genvid/mcp-utils";
+import { escapeRegExp } from "@genvidtech/mcp-utils";
 
 import {
   buildBlock,
