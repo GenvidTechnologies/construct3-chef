@@ -42,6 +42,6 @@ The gap for `images/` and secondary section dirs is filed as c3source#38 (resolv
 ## Consequences
 
 - Behavioral change: omitting `--project-dir` on `server` now discovers a nested project instead of silently using cwd. This is release-note-worthy but is not a barrel break.
-- The "where is the root" resolution lives in `@genvid/mcp-utils`; the "what is the project" structural handle lives in `@genvid/c3source`. construct3-chef consumes both, consistent with the existing layering.
+- The "where is the root" resolution lives in `@genvidtech/mcp-utils`; the "what is the project" structural handle lives in `@genvidtech/c3source`. construct3-chef consumes both, consistent with the existing layering.
 - Multi-root support (serving > 1 project per server process) is tracked in #95; the single `PROJECT` handle would need to become per-request state. That work is deferred.
 - The c3-domain-manager server shares the same `C3_PROJECT_DIR` convention; the companion adoption is tracked in c3-domain-manager#16.

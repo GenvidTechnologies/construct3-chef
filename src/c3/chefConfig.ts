@@ -1,6 +1,6 @@
 import path from "node:path";
 import { z, type ZodType } from "zod";
-import { loadProjectConfig, isMcpError, resolveWithin } from "@genvid/mcp-utils";
+import { loadProjectConfig, isMcpError, resolveWithin } from "@genvidtech/mcp-utils";
 
 export const ChefConfigSchema = z.object({
   extractedDir: z.string().default("extracted"),

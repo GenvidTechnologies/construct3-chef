@@ -25,8 +25,8 @@ import {
   buildGlobalLayerReport,
   formatGlobalLayers,
 } from "./layoutFormatter.js";
-import { walkFiles, type Logger } from "@genvid/mcp-utils";
-export { type Logger } from "@genvid/mcp-utils";
+import { walkFiles, type Logger } from "@genvidtech/mcp-utils";
+export { type Logger } from "@genvidtech/mcp-utils";
 
 // ─── Script extraction ───
 
