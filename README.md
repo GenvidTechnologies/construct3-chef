@@ -136,7 +136,7 @@ Configure it in your MCP client (example for Claude Desktop or similar):
 | `resolve-anchor` | Look up a DSL coordinate by line number, SID, or name pattern |
 | `validate-recipe` | Validate a recipe JSON without applying it (returns txId) |
 | `validate-project` | Dry-run project.c3proj sync check |
-| `read-addon` | Read a C3 addon's extracted files |
+| `read-addon` | Read a C3 addon's metadata + ACE summary (or a raw entry, or list all addons); works on extracted and archive-only addons |
 | `get-state` | Return server state: txId and extractedDirty flag |
 
 **Mutate tools** (modify source files):
