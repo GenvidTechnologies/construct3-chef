@@ -75,7 +75,13 @@ function mapAceItems(items: unknown[], kind: "action" | "condition" | "expressio
   return out;
 }
 
-function parseAcesJson(raw: unknown, objectClass: string): AceEntry[] {
+/**
+ * Map a parsed `aces.json` object into a flat `AceEntry[]` for one addon
+ * (`objectClass`). Exported so the per-addon `.c3addon` reader (addonReader.ts)
+ * decodes hybrid-sourced aces.json bytes through the same parser the aggregate
+ * `buildAddonAceRegistry` uses — keeping ACE parsing single-sourced.
+ */
+export function mapAcesJsonToEntries(raw: unknown, objectClass: string): AceEntry[] {
   if (!isObject(raw)) return [];
   const out: AceEntry[] = [];
 
@@ -130,7 +136,7 @@ export function buildAddonAceRegistry(projectRoot: string): AceEntry[] {
     }
 
     try {
-      out.push(...parseAcesJson(parsed, addon.name));
+      out.push(...mapAcesJsonToEntries(parsed, addon.name));
     } catch {
       // Unexpected shape — skip this addon.
       continue;
