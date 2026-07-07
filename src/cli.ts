@@ -36,6 +36,8 @@ import {
 import { resolveNavConvention } from "./c3/navConvention.js";
 import { lookup, formatLookupResult } from "./c3/aceLookup.js";
 import { loadOpsFromDir, substituteOp, formatOpsList, coerceArgs } from "./c3/opTemplate.js";
+import { discoverAddons } from "./c3/addonDiscovery.js";
+import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "./c3/addonReader.js";
 
 const GENERATOR_NAMES = ["scripts", "dsl", "layouts", "templates", "sid-registry", "global-layers"] as const;
 type GeneratorName = (typeof GENERATOR_NAMES)[number];
@@ -443,6 +445,50 @@ yargs(hideBin(process.argv))
         limit,
       });
       console.log(formatLookupResult(result));
+    },
+  )
+  .command(
+    "read-addon [name]",
+    "Read a C3 addon's metadata + ACE summary, a raw entry within it, or list all discovered addons",
+    (y) =>
+      y
+        .positional("name", { type: "string", describe: "Addon name (e.g. 'FixtureClock'). Omit to list all addons." })
+        .option("file", {
+          type: "string",
+          describe: "Read a raw entry within the addon (extracted dir or archive), e.g. 'aces.json'",
+        }),
+    async (argv) => {
+      const rootDir = resolveProjectDir(argv);
+
+      if (!argv.name) {
+        console.log(formatAddonList(discoverAddons(rootDir)));
+        return;
+      }
+
+      if (!argv.file) {
+        const info = readAddon(rootDir, argv.name);
+        if (info === null) {
+          console.error(`Addon '${argv.name}' not found`);
+          process.exitCode = 1;
+          return;
+        }
+        console.log(formatAddonInfo(info));
+        return;
+      }
+
+      const addon = discoverAddons(rootDir).find((a) => a.name === argv.name);
+      if (!addon) {
+        console.error(`Addon '${argv.name}' not found`);
+        process.exitCode = 1;
+        return;
+      }
+      const content = readAddonEntry(addon, argv.file);
+      if (content === null) {
+        console.error(`File '${argv.file}' not found in addon '${argv.name}'`);
+        process.exitCode = 1;
+        return;
+      }
+      console.log(content);
     },
   )
   .command(
