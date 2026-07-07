@@ -62,7 +62,8 @@ import {
   generatePlantUML,
 } from "../c3/navigationGraph.js";
 import { resolveNavConvention } from "../c3/navConvention.js";
-import { discoverAddons, findAddonExtractedDir } from "../c3/addonDiscovery.js";
+import { discoverAddons } from "../c3/addonDiscovery.js";
+import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "../c3/addonReader.js";
 import { lookup, formatLookupResult } from "../c3/aceLookup.js";
 import { OpsRegistry } from "./opsRegistry.js";
 
@@ -1051,53 +1052,61 @@ reg(
   {
     title: "Read Addon",
     description:
-      "Read a C3 addon's extracted files (default: aces.json). Without a name, lists all available addons from addons/plugin/ and addons/effect/ with their extraction status.",
+      "Read a C3 addon. Without a name, lists all available addons from addons/plugin/ and addons/effect/ with their extraction status. With a name and no file, returns the addon's metadata (id/version/author/sdk-version) plus its ACE summary. With a name and file, reads a single raw entry (e.g. 'addon.json') from within the addon — works whether the addon is extracted or archive-only.",
     annotations: READ_ONLY,
     inputSchema: {
       name: z.string().optional().describe("Addon name (e.g. 'CV_Clock'). Omit to list all available addons."),
-      file: z.string().optional().describe("File to read within the extracted addon folder (default: 'aces.json')"),
+      file: z.string().optional().describe("Raw file entry to read within the addon (e.g. 'addon.json')"),
     },
   },
   async ({ name, file }) =>
-    rwlock.read(async () => {
-      if (!name) {
-        // List all addons
-        const entries = discoverAddons(PROJECT_ROOT).map(
-          (a) => `${a.name}  (${a.kind})  ${a.extractedDir ? "extracted" : "archive only"}`,
-        );
-        if (entries.length === 0) {
-          return { content: [{ type: "text", text: "No addons found." }] };
-        }
-        return { content: [{ type: "text", text: entries.sort().join("\n") }] };
-      }
+    rwlock.read(
+      withMcpErrors(
+        async () => {
+          if (!name) {
+            const addons = discoverAddons(PROJECT_ROOT);
+            if (addons.length === 0) {
+              return mcpContent("No addons found.");
+            }
+            return mcpContent(formatAddonList(addons));
+          }
 
-      // Find extracted addon folder
-      const addonPath = findAddonExtractedDir(PROJECT_ROOT, name);
+          if (!file) {
+            const info = readAddon(PROJECT_ROOT, name);
+            if (info === null) {
+              return mcpError(`Addon '${name}' not found`, { prefix: "read-addon:" });
+            }
+            emitLog(
+              "info",
+              `read-addon: name=${name}, kind=${info.kind}, source=${info.source}, aces=${info.aces.length}`,
+            );
+            return mcpContent(formatAddonInfo(info));
+          }
 
-      if (!addonPath) {
-        return mcpError(
-          `Addon '${name}' not installed locally — extract from addons/plugin/${name}.c3addon or addons/effect/${name}.c3addon first`,
-          { prefix: "read-addon:" },
-        );
-      }
+          // Path traversal guard — belt-and-suspenders on top of readAddonEntry's
+          // internal resolveWithin (extracted branch); the zip branch matches by
+          // exact entry name so it can't escape the archive.
+          if (file.includes("..") || path.isAbsolute(file)) {
+            return mcpError(`Invalid file path '${file}' — must stay within addon directory`, {
+              prefix: "read-addon:",
+            });
+          }
 
-      const targetFile = file ?? "aces.json";
+          const addon = discoverAddons(PROJECT_ROOT).find((a) => a.name === name);
+          if (addon === undefined) {
+            return mcpError(`Addon '${name}' not found`, { prefix: "read-addon:" });
+          }
 
-      // Path traversal check — reject paths that escape the addon directory
-      const filePath = resolveWithin(addonPath, targetFile);
-      if (filePath === null) {
-        return mcpError(`Invalid file path '${targetFile}' — must stay within addon directory`, {
-          prefix: "read-addon:",
-        });
-      }
+          const content = readAddonEntry(addon, file);
+          if (content === null) {
+            return mcpError(`File '${file}' not found in addon '${name}'`, { prefix: "read-addon:" });
+          }
 
-      if (!fs.existsSync(filePath)) {
-        return mcpError(`File '${targetFile}' not found in addon '${name}'`, { prefix: "read-addon:" });
-      }
-
-      const content = fs.readFileSync(filePath, "utf-8");
-      return { content: [{ type: "text", text: content }] };
-    }),
+          return mcpContent(content);
+        },
+        { prefix: "read-addon:" },
+      ),
+    ),
 );
 
 // ── Search Docs Tool ─────────────────────────────────────────────────────────
