@@ -476,6 +476,14 @@ yargs(hideBin(process.argv))
         return;
       }
 
+      // Path traversal guard — mirrors the MCP read-addon tool (belt-and-suspenders
+      // on top of readAddonEntry's internal resolveWithin; the zip branch matches
+      // by exact entry name so it can't escape the archive).
+      if (argv.file.includes("..") || path.isAbsolute(argv.file)) {
+        console.error(`Invalid file path '${argv.file}' — must stay within addon directory`);
+        process.exitCode = 1;
+        return;
+      }
       const addon = discoverAddons(rootDir).find((a) => a.name === argv.name);
       if (!addon) {
         console.error(`Addon '${argv.name}' not found`);

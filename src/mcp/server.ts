@@ -1064,11 +1064,9 @@ reg(
       withMcpErrors(
         async () => {
           if (!name) {
-            const addons = discoverAddons(PROJECT_ROOT);
-            if (addons.length === 0) {
-              return mcpContent("No addons found.");
-            }
-            return mcpContent(formatAddonList(addons));
+            // formatAddonList owns the empty case ("No addons found."), so the
+            // CLI and MCP list output stays byte-identical.
+            return mcpContent(formatAddonList(discoverAddons(PROJECT_ROOT)));
           }
 
           if (!file) {

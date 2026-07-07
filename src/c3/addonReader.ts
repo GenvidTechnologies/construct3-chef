@@ -194,10 +194,12 @@ export function formatAddonInfo(info: AddonInfo): string {
 
 /**
  * Render a discovered-addon list to plain text: one line per addon,
- * `<name>  (<kind>)  <extracted|archive only>`, sorted by name. Mirrors the
- * MCP `list-addons` output so the CLI/MCP surfaces stay byte-identical.
+ * `<name>  (<kind>)  <extracted|archive only>`, sorted by name, or
+ * `No addons found.` when empty. Owning the empty case here keeps the CLI and
+ * MCP surfaces byte-identical (neither special-cases it at the call site).
  */
 export function formatAddonList(addons: DiscoveredAddon[]): string {
+  if (addons.length === 0) return "No addons found.";
   const sorted = [...addons].sort((a, b) => a.name.localeCompare(b.name));
   return sorted.map((a) => `${a.name}  (${a.kind})  ${a.extractedDir ? "extracted" : "archive only"}`).join("\n");
 }

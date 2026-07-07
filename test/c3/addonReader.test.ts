@@ -240,4 +240,8 @@ describe("addonReader", () => {
       ].join("\n"),
     );
   });
+
+  it("R8: formatAddonList owns the empty case (byte-identical across CLI/MCP)", () => {
+    expect(formatAddonList([])).to.equal("No addons found.");
+  });
 });
