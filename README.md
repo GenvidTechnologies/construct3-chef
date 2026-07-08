@@ -57,7 +57,7 @@ If you install globally or add to `package.json` scripts, you can omit `npx`.
 | `navigation-graph` | Print GoToLayout calls (or write a PlantUML diagram) |
 | `search-dsl <pattern>` | Regex search across extracted DSL files |
 
-See [docs/cli.md](docs/cli.md) for full flag documentation.
+See [docs/cli.md](docs/cli.md) for full flag documentation (addon-tooling commands — `read-addon`, `validate-addons` — are in [docs/cli-addons.md](docs/cli-addons.md)).
 
 ## Recipes
 
@@ -183,3 +183,4 @@ The `extracted/` directory is written by `generate` and read by the MCP server. 
 - [docs/recipe-reference.md](docs/recipe-reference.md) — Complete recipe reference: format, SID addressing, all 15 event sheet operations, all 12 layout operations, builder shorthands, gotchas
 - [docs/generators.md](docs/generators.md) — Generator internals, output format, cross-referencing C3 errors, localVars matching
 - [docs/cli.md](docs/cli.md) — Full CLI flag documentation for all subcommands
+- [docs/cli-addons.md](docs/cli-addons.md) — Addon-tooling commands (`read-addon`, `validate-addons`)
