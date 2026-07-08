@@ -64,6 +64,7 @@ import {
 import { resolveNavConvention } from "../c3/navConvention.js";
 import { discoverAddons } from "../c3/addonDiscovery.js";
 import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "../c3/addonReader.js";
+import { validateAddons, formatAddonValidation } from "../c3/addonValidator.js";
 import { lookup, formatLookupResult } from "../c3/aceLookup.js";
 import { OpsRegistry } from "./opsRegistry.js";
 
@@ -1103,6 +1104,27 @@ reg(
           return mcpContent(content);
         },
         { prefix: "read-addon:" },
+      ),
+    ),
+);
+
+reg(
+  "validate-addons",
+  {
+    title: "Validate Addons",
+    description:
+      "Validate every bundled .c3addon package under addons/ against the project.c3proj usedAddons manifest: reports metadata mismatches (id/name/author/version) and package-integrity failures (malformed zip, missing addon.json/aces.json, un-materialized git-lfs pointer, addon-id vs filename). Read-only; no mutation.",
+    annotations: READ_ONLY,
+    inputSchema: {},
+  },
+  async () =>
+    rwlock.read(
+      withMcpErrors(
+        async () => {
+          const result = validateAddons(PROJECT_ROOT);
+          return mcpContent(formatAddonValidation(result), txIdLine());
+        },
+        { prefix: "validate-addons:", extraLines: () => [txIdLine()] },
       ),
     ),
 );

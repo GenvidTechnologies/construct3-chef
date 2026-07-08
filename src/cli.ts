@@ -38,6 +38,7 @@ import { lookup, formatLookupResult } from "./c3/aceLookup.js";
 import { loadOpsFromDir, substituteOp, formatOpsList, coerceArgs } from "./c3/opTemplate.js";
 import { discoverAddons } from "./c3/addonDiscovery.js";
 import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "./c3/addonReader.js";
+import { validateAddons, formatAddonValidation } from "./c3/addonValidator.js";
 
 const GENERATOR_NAMES = ["scripts", "dsl", "layouts", "templates", "sid-registry", "global-layers"] as const;
 type GeneratorName = (typeof GENERATOR_NAMES)[number];
@@ -497,6 +498,17 @@ yargs(hideBin(process.argv))
         return;
       }
       console.log(content);
+    },
+  )
+  .command(
+    "validate-addons",
+    "Validate bundled .c3addon packages against project.c3proj.usedAddons (metadata + integrity; read-only)",
+    () => {},
+    (argv) => {
+      const rootDir = resolveProjectDir(argv);
+      const result = validateAddons(rootDir);
+      console.log(formatAddonValidation(result));
+      if (result.findings.length > 0) process.exitCode = 1;
     },
   )
   .command(
