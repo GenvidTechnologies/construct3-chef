@@ -454,42 +454,6 @@ npx construct3-chef search-docs --param x
 
 ---
 
-## read-addon
+## Addon tooling
 
-Read a bundled C3 addon's metadata + ACE summary, a raw entry within it, or list all discovered addons. Addons are read from a hybrid source: the extracted addon directory when present, falling back to decoding the `.c3addon` zip archive directly when the addon hasn't been extracted (or the extracted copy is missing the requested entry).
-
-```bash
-npx construct3-chef read-addon [name] [--file <path>] [--project-dir <path>]
-```
-
-| Argument/Option | Description |
-| --------------- | ----------- |
-| `name` | Addon name, e.g. `FixtureClock` (positional, optional). Omit to list all discovered addons. |
-| `--file <path>` | Read a raw entry from within the addon (e.g. `aces.json`, `addon.json`) instead of the metadata + ACE summary. |
-
-> **Behavior change (pre-1.0):** with a `name` and no `--file`, this command used to print the raw `aces.json` contents. It now prints a metadata header (id/version/name/author/sdk-version/min-construct-version, parsed from `addon.json`) followed by the full ACE list. The raw file is still reachable via `--file aces.json`. See [ADR 0008](decisions/0008-addon-reader-hybrid-sourcing.md).
-
-```bash
-# List all addons discovered under addons/plugin/ and addons/effect/
-npx construct3-chef read-addon --project-dir test/fixtures/addon-sample
-# FixtureClock  (plugin)  extracted
-# FixtureClockArchived  (plugin)  archive only
-
-# Metadata + ACE summary for an extracted addon
-npx construct3-chef read-addon FixtureClock --project-dir test/fixtures/addon-sample
-# FixtureClock (plugin, extracted)
-# id: FixtureClock
-# version: 1.0.0.0
-# ...
-# 3 ACE(s)
-# [addon condition] FixtureClock.is-elapsed(duration)
-# ...
-
-# Same, for an addon that only exists as a .c3addon archive (no extracted copy)
-npx construct3-chef read-addon FixtureClockArchived --project-dir test/fixtures/addon-sample
-# FixtureClockArchived (plugin, archive)
-# ...
-
-# Raw entry from within the addon, from either source
-npx construct3-chef read-addon FixtureClock --file aces.json --project-dir test/fixtures/addon-sample
-```
+Bundled `.c3addon` package commands — `read-addon` (metadata + ACE summary, or a raw entry) and `validate-addons` (read-only consistency + integrity check against `project.c3proj`, exits non-zero on any finding) — moved to [cli-addons.md](cli-addons.md) as their own reference (the c3addon-tooling cluster, #100 umbrella, keeps growing independently of the rest of this file).

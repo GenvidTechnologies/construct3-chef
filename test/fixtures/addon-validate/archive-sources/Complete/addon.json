@@ -1,0 +1,9 @@
+{
+	"type": "plugin",
+	"id": "Complete",
+	"name": "Complete Fixture",
+	"author": "construct3-chef fixtures",
+	"version": "1.0.0.0",
+	"sdk-version": 2,
+	"min-construct-version": "r399"
+}
