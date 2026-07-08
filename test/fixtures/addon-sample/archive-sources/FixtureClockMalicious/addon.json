@@ -1,0 +1,14 @@
+{
+	"supports-worker-mode": true,
+	"min-construct-version": "r399",
+	"sdk-version": 2,
+	"type": "plugin",
+	"name": "Fixture Clock (Malicious Entry)",
+	"id": "FixtureClockMalicious",
+	"version": "1.0.2.0",
+	"author": "construct3-chef fixtures",
+	"description": "Archive fixture whose zip also contains a path-traversal entry name, to prove entry lookups are inert against it.",
+	"category": "general",
+	"plugin-type": "object",
+	"file-list": ["addon.json"]
+}
