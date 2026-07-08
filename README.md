@@ -41,21 +41,27 @@ If you install globally or add to `package.json` scripts, you can omit `npx`.
 
 ## CLI Overview
 
-13 subcommands — all accept `--project-dir <path>` (defaults to `cwd`).
+17 subcommands — all accept `--project-dir <path>` (defaults to `cwd`).
 
 | Subcommand | Purpose |
 | ---------- | ------- |
 | `server` | Start the MCP server over stdio |
-| `generate [--only <type>]` | Generate all extracted/ files, or one type: `scripts`, `dsl`, `layouts`, `templates`, `sid-registry` |
+| `generate [--only <type>]` | Generate all extracted/ files, or one type: `scripts`, `dsl`, `layouts`, `templates`, `sid-registry`, `global-layers` |
 | `apply-recipe <file>` | Apply an event sheet mutation recipe |
 | `rename-symbol <from> <to>` | Rename a symbol across all event sheet scripts |
 | `validate-project` | Dry-run: check that `project.c3proj` matches files on disk |
 | `sync-project` | Write `project.c3proj` to match files on disk |
 | `scaffold-layout` | Clone a layout with remapped UIDs/SIDs |
 | `scaffold-sprite` | Clone a sprite objectType with remapped SIDs and copied images |
+| `remove-layer` | Remove a layer from a layout |
 | `list-templates` | List all template instances across layouts |
 | `navigation-graph` | Print GoToLayout calls (or write a PlantUML diagram) |
 | `search-dsl <pattern>` | Regex search across extracted DSL files |
+| `search-docs` | Search the C3 ACE reference (action/condition/expression ids, param names) for custom addons and the built-in reference cache |
+| `read-addon [name]` | Read a C3 addon's metadata + ACE summary (or a raw entry, or list all addons); works on extracted and archive-only addons |
+| `validate-addons` | Validate bundled `.c3addon` packages against `project.c3proj.usedAddons` (metadata + integrity; read-only, non-zero exit on findings) |
+| `list-ops` | List available user-defined ops |
+| `apply-op <name>` | Apply a user-defined op by name |
 
 See [docs/cli.md](docs/cli.md) for full flag documentation (addon-tooling commands — `read-addon`, `validate-addons` — are in [docs/cli-addons.md](docs/cli-addons.md)).
 
@@ -137,6 +143,7 @@ Configure it in your MCP client (example for Claude Desktop or similar):
 | `validate-recipe` | Validate a recipe JSON without applying it (returns txId) |
 | `validate-project` | Dry-run project.c3proj sync check |
 | `read-addon` | Read a C3 addon's metadata + ACE summary (or a raw entry, or list all addons); works on extracted and archive-only addons |
+| `validate-addons` | Validate bundled `.c3addon` packages against `project.c3proj.usedAddons` (metadata + integrity; read-only) |
 | `get-state` | Return server state: txId and extractedDirty flag |
 
 **Mutate tools** (modify source files):
