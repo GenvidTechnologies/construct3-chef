@@ -1,0 +1,9 @@
+{
+	"type": "plugin",
+	"id": "CleanControl",
+	"name": "Clean Control",
+	"author": "construct3-chef fixtures",
+	"version": "2.3.4.5",
+	"sdk-version": 2,
+	"min-construct-version": "r399"
+}
