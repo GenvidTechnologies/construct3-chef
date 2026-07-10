@@ -3,7 +3,9 @@ import { expect } from "chai";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { discoverAddons, findAddonExtractedDir } from "../../src/c3/addonDiscovery.js";
+import { discoverAddons, findAddonExtractedDir, resolveAddonTarget } from "../../src/c3/addonDiscovery.js";
+
+const LANG_FIXTURE_ROOT = path.resolve("test/fixtures/addon-validate-lang");
 
 describe("addonDiscovery", () => {
   let tmpDir: string;
@@ -166,6 +168,43 @@ describe("addonDiscovery", () => {
       writeFileSync(path.join(tmpDir, "addons", "plugin", "FileNotDir"), "");
 
       expect(findAddonExtractedDir(tmpDir, "FileNotDir")).to.be.null;
+    });
+  });
+
+  // ── resolveAddonTarget ──────────────────────────────────────────────────
+
+  describe("resolveAddonTarget", () => {
+    it("id-mode: resolves a discovered addon by name", () => {
+      const addon = resolveAddonTarget(LANG_FIXTURE_ROOT, "LangDefects");
+      expect(addon).to.not.be.null;
+      expect(addon!.name).to.equal("LangDefects");
+      expect(addon!.kind).to.equal("plugin");
+      expect(addon!.archivePath.endsWith(path.join("LangDefects.c3addon"))).to.be.true;
+      expect(addon!.extractedDir).to.be.null;
+    });
+
+    it("path-mode: resolves a project-root-contained source-tree directory", () => {
+      const addon = resolveAddonTarget(LANG_FIXTURE_ROOT, "archive-sources/LangDefects");
+      expect(addon).to.not.be.null;
+      expect(addon!.extractedDir!.endsWith(path.join("archive-sources", "LangDefects"))).to.be.true;
+      expect(addon!.archivePath).to.equal("");
+      expect(addon!.name).to.equal("LangDefects");
+      expect(addon!.kind).to.equal("plugin");
+    });
+
+    it("path-mode: classifies kind from addon.json's type field", () => {
+      const defects = resolveAddonTarget(LANG_FIXTURE_ROOT, "archive-sources/LangDefects");
+      const clean = resolveAddonTarget(LANG_FIXTURE_ROOT, "archive-sources/LangClean");
+      expect(defects!.kind).to.equal("plugin");
+      expect(clean!.kind).to.equal("plugin");
+    });
+
+    it("returns null when the path argument escapes the project root", () => {
+      expect(resolveAddonTarget(LANG_FIXTURE_ROOT, "../../../etc")).to.be.null;
+    });
+
+    it("returns null when neither id-mode nor path-mode resolves", () => {
+      expect(resolveAddonTarget(LANG_FIXTURE_ROOT, "DoesNotExist")).to.be.null;
     });
   });
 });
