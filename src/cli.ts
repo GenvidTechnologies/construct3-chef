@@ -39,6 +39,7 @@ import { loadOpsFromDir, substituteOp, formatOpsList, coerceArgs } from "./c3/op
 import { discoverAddons, resolveAddonTarget } from "./c3/addonDiscovery.js";
 import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "./c3/addonReader.js";
 import { validateAddons, formatAddonValidation } from "./c3/addonValidator.js";
+import { listAddons, formatAddonInventory } from "./c3/addonInventory.js";
 
 const GENERATOR_NAMES = ["scripts", "dsl", "layouts", "templates", "sid-registry", "global-layers"] as const;
 type GeneratorName = (typeof GENERATOR_NAMES)[number];
@@ -531,6 +532,15 @@ yargs(hideBin(process.argv))
       }
       console.log(formatAddonValidation(result));
       if (result.findings.length > 0) process.exitCode = 1;
+    },
+  )
+  .command(
+    "list-addons",
+    "List a unified addon inventory — bundled .c3addon packages, project.c3proj.usedAddons entries, and editor-only addons — one row per addon with status, version, and on-disk package path. Read-only.",
+    () => {},
+    (argv) => {
+      const rootDir = resolveProjectDir(argv);
+      console.log(formatAddonInventory(listAddons(rootDir)));
     },
   )
   .command(
