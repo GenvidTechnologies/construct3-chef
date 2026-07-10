@@ -502,7 +502,7 @@ yargs(hideBin(process.argv))
   )
   .command(
     "validate-addons",
-    "Validate bundled .c3addon packages against project.c3proj.usedAddons (metadata + integrity; read-only)",
+    "Validate bundled .c3addon packages against project.c3proj.usedAddons (metadata + integrity + orphan/missing/duplicate; read-only)",
     () => {},
     (argv) => {
       const rootDir = resolveProjectDir(argv);

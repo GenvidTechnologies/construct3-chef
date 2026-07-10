@@ -55,7 +55,13 @@ npx construct3-chef read-addon FixtureClock --file aces.json --project-dir test/
 
 ## validate-addons
 
-Read-only check that bundled `.c3addon` packages under `addons/plugin/` and `addons/effect/` are consistent with `project.c3proj`'s `usedAddons` manifest and internally well-formed. Reports **metadata mismatches** (`id`/`name`/`author`/`version` differing between the package's `addon.json` and the matching `usedAddons` entry, matched by `id`) and **package-integrity** problems (un-materialized git-lfs pointer, malformed zip, a missing required entry (`addon.json`/`aces.json`), or an addon `id` that doesn't match its package filename). `c3runtime` is deliberately not required — plugin/effect layouts vary. Orphan/missing/duplicate addon detection is out of scope (tracked separately as [#108](https://github.com/GenvidTechnologies/construct3-chef/issues/108)).
+Read-only check that bundled `.c3addon` packages under `addons/plugin/` and `addons/effect/` are consistent with `project.c3proj`'s `usedAddons` manifest and internally well-formed. Reports **metadata mismatches** (`id`/`name`/`author`/`version` differing between the package's `addon.json` and the matching `usedAddons` entry, matched by `id`), **package-integrity** problems (un-materialized git-lfs pointer, malformed zip, a missing required entry (`addon.json`/`aces.json`), or an addon `id` that doesn't match its package filename), and package-consistency problems:
+
+- **orphan** — a clean bundled `.c3addon` on disk (parses fine, no integrity problems) whose addon id is absent from `project.c3proj`'s `usedAddons`. A package that already fails an integrity check is reported via that finding only, not also as an orphan.
+- **missing** — a `usedAddons` entry with `bundled: true` that has no matching `.c3addon` package file on disk. `bundled: false` (editor-installed) addons are never flagged.
+- **duplicate** — two or more package files, enumerated recursively under `addons/plugin/` and `addons/effect/` (so a stale copy nested in a subfolder is caught), resolving to the same addon id.
+
+`c3runtime` is deliberately not required — plugin/effect layouts vary.
 
 ```bash
 npx construct3-chef validate-addons [--project-dir <path>]
@@ -64,12 +70,15 @@ npx construct3-chef validate-addons [--project-dir <path>]
 No options beyond `--project-dir`. Exits with code 1 if any finding is reported, so it fits a project's `commands.validate` chain.
 
 ```
-Checked 6 bundled addon(s), 5 issue(s):
+Checked 8 bundled addon(s), 8 issue(s):
   addons/plugin/Complete.c3addon: version mismatch — package '1.0.0.0' vs project.c3proj '1.0.0.9'
   addons/plugin/CorruptZip.c3addon: malformed zip (not a valid .c3addon archive)
   addons/plugin/LfsPointer.c3addon: un-materialized LFS pointer (git-lfs not fetched)
   addons/plugin/Misnamed.c3addon: addon id 'NotMisnamed' does not match package filename 'Misnamed'
   addons/plugin/MissingAces.c3addon: missing required entry: aces.json
+  addons/plugin/Orphan.c3addon: orphan — on disk but not in project.c3proj usedAddons (id 'Orphan')
+  MissingPkg: missing — declared bundled in project.c3proj but no package file on disk (version 3.2.1.0)
+  Dup: duplicate — 2 packages resolve to the same addon id: addons/plugin/Dup.c3addon, addons/plugin/nested/Dup.c3addon
 ```
 
 The clean case prints `Checked N bundled addon(s): all consistent.` Output uses the same `formatAddonValidation` formatter as the MCP `validate-addons` tool, so results are byte-identical between surfaces.

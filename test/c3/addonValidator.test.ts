@@ -12,9 +12,9 @@ function findingsFor(findings: AddonFinding[], pkg: string): AddonFinding[] {
 }
 
 describe("addonValidator", () => {
-  it("checks all 6 fixture packages", () => {
+  it("checks all 8 fixture packages", () => {
     const result = validateAddons(FIXTURE_ROOT);
-    expect(result.checked).to.equal(6);
+    expect(result.checked).to.equal(8);
   });
 
   it("Complete.c3addon: exactly one version metadata-mismatch against project.c3proj", () => {
@@ -70,9 +70,65 @@ describe("addonValidator", () => {
     expect(findings[0].problem).to.match(/LFS pointer/);
   });
 
-  it("full fixture findings set is exactly the expected 5", () => {
+  it("Orphan.c3addon: exactly one orphan finding", () => {
     const result = validateAddons(FIXTURE_ROOT);
-    expect(result.findings).to.have.lengthOf(5);
+    const findings = findingsFor(result.findings, "addons/plugin/Orphan.c3addon");
+    expect(findings).to.have.lengthOf(1);
+    expect(findings[0]).to.deep.equal({
+      package: "addons/plugin/Orphan.c3addon",
+      addonId: "Orphan",
+      kind: "orphan",
+      problem: "on disk but not in project.c3proj usedAddons",
+    });
+  });
+
+  it("Dup: exactly one duplicate finding listing both sorted packages", () => {
+    const result = validateAddons(FIXTURE_ROOT);
+    const findings = result.findings.filter((f) => f.kind === "duplicate");
+    expect(findings).to.have.lengthOf(1);
+    expect(findings[0]).to.deep.equal({
+      addonId: "Dup",
+      kind: "duplicate",
+      packages: ["addons/plugin/Dup.c3addon", "addons/plugin/nested/Dup.c3addon"],
+      problem: "2 packages resolve to the same addon id",
+    });
+  });
+
+  it("MissingPkg: exactly one missing finding carrying the manifest version", () => {
+    const result = validateAddons(FIXTURE_ROOT);
+    const findings = result.findings.filter((f) => f.kind === "missing");
+    expect(findings).to.have.lengthOf(1);
+    expect(findings[0]).to.deep.equal({
+      addonId: "MissingPkg",
+      kind: "missing",
+      problem: "declared bundled in project.c3proj but no package file on disk",
+      manifestValue: "3.2.1.0",
+    });
+  });
+
+  it("EditorOnly (bundled: false, no package on disk): produces no finding", () => {
+    const result = validateAddons(FIXTURE_ROOT);
+    expect(result.findings.some((f) => f.addonId === "EditorOnly")).to.equal(false);
+  });
+
+  it("full fixture findings set is exactly the expected 8", () => {
+    const result = validateAddons(FIXTURE_ROOT);
+    expect(result.findings).to.have.lengthOf(8);
+  });
+
+  it("formatAddonValidation: orphan/missing/duplicate line shapes", () => {
+    const result = validateAddons(FIXTURE_ROOT);
+    const lines = formatAddonValidation(result).split("\n");
+
+    expect(lines).to.include(
+      "  addons/plugin/Orphan.c3addon: orphan — on disk but not in project.c3proj usedAddons (id 'Orphan')",
+    );
+    expect(lines).to.include(
+      "  MissingPkg: missing — declared bundled in project.c3proj but no package file on disk (version 3.2.1.0)",
+    );
+    expect(lines).to.include(
+      "  Dup: duplicate — 2 packages resolve to the same addon id: addons/plugin/Dup.c3addon, addons/plugin/nested/Dup.c3addon",
+    );
   });
 
   it("formatAddonValidation: empty case on a project with no addons", () => {
@@ -92,7 +148,7 @@ describe("addonValidator", () => {
     const output = formatAddonValidation(result);
     const lines = output.split("\n");
 
-    expect(lines[0]).to.equal(`Checked 6 bundled addon(s), ${result.findings.length} issue(s):`);
+    expect(lines[0]).to.equal(`Checked 8 bundled addon(s), ${result.findings.length} issue(s):`);
     expect(lines).to.include(
       "  addons/plugin/Complete.c3addon: version mismatch — package '1.0.0.0' vs project.c3proj '1.0.0.9'",
     );
