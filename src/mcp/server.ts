@@ -65,6 +65,7 @@ import { resolveNavConvention } from "../c3/navConvention.js";
 import { discoverAddons, resolveAddonTarget } from "../c3/addonDiscovery.js";
 import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "../c3/addonReader.js";
 import { validateAddons, formatAddonValidation } from "../c3/addonValidator.js";
+import { listAddons, formatAddonInventory } from "../c3/addonInventory.js";
 import { lookup, formatLookupResult } from "../c3/aceLookup.js";
 import { OpsRegistry } from "./opsRegistry.js";
 
@@ -1147,6 +1148,24 @@ reg(
         },
         { prefix: "validate-addons:", extraLines: () => [txIdLine()] },
       ),
+    ),
+);
+
+reg(
+  "list-addons",
+  {
+    title: "List Addons",
+    description:
+      "List a unified addon inventory for the project: one row per addon reconciling bundled .c3addon packages under addons/ with project.c3proj usedAddons entries. Each row carries a status — bundled (declared and on disk), editor-only (usedAddons bundled:false), missing (declared bundled but no package on disk), or orphan (on disk but not in usedAddons) — plus the version and, for on-disk addons, the package path. Read-only; no mutation.",
+    annotations: READ_ONLY,
+    inputSchema: {},
+  },
+  async () =>
+    rwlock.read(
+      withMcpErrors(async () => mcpContent(formatAddonInventory(listAddons(PROJECT_ROOT)), txIdLine()), {
+        prefix: "list-addons:",
+        extraLines: () => [txIdLine()],
+      }),
     ),
 );
 

@@ -113,6 +113,15 @@ export function readAddonMetadata(
 }
 
 /**
+ * Resolve an addon's id: `addon.json`'s `id` field when readable, else the
+ * package's basename (archive filename without `.c3addon`). Never throws.
+ * Shared by `addonValidator` and `addonInventory` so both key on the same id.
+ */
+export function resolveAddonId(addon: DiscoveredAddon): string {
+  return readAddonMetadata(addon)?.metadata.id ?? addon.name;
+}
+
+/**
  * Read and parse an addon's `aces.json` into a flat `AceEntry[]` via the same
  * `mapAcesJsonToEntries` parser `buildAddonAceRegistry` uses. Any failure
  * (unreadable, malformed JSON, unexpected shape) yields `[]`. Never throws.
