@@ -1,0 +1,9 @@
+{
+	"projectFormatVersion": 1,
+	"name": "addon-validate-lang-fixture",
+	"runtime": "c3",
+	"usedAddons": [
+		{ "type": "plugin", "id": "LangClean", "name": "Lang Clean", "author": "construct3-chef fixtures", "version": "1.0.0.0", "bundled": true },
+		{ "type": "plugin", "id": "LangDefects", "name": "Lang Defects", "author": "construct3-chef fixtures", "version": "1.0.0.0", "bundled": true }
+	]
+}

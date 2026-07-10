@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { resolveWithin } from "@genvidtech/mcp-utils";
 
 export const ADDON_DIRS = ["addons/plugin", "addons/effect"] as const;
 
@@ -48,4 +49,57 @@ export function findAddonExtractedDir(projectRoot: string, name: string): string
     }
   }
   return null;
+}
+
+/**
+ * Best-effort read of `<dir>/addon.json`'s `type` field to classify a
+ * path-mode addon source tree. Returns "effect" only when the field is
+ * exactly "effect"; anything else (missing file, malformed JSON, absent or
+ * other `type` value) defaults to "plugin". Never throws.
+ */
+function readAddonKind(dir: string): "plugin" | "effect" {
+  try {
+    const raw = fs.readFileSync(path.join(dir, "addon.json"), "utf-8");
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed !== null && typeof parsed === "object" && (parsed as { type?: unknown }).type === "effect") {
+      return "effect";
+    }
+  } catch {
+    // fall through to the "plugin" default
+  }
+  return "plugin";
+}
+
+/**
+ * Resolve an `--addon` argument to a DiscoveredAddon in one of two modes:
+ *
+ * 1. id-mode: an addon discovered under addons/plugin|effect whose `name`
+ *    matches `addonArg` exactly — delegates to {@link discoverAddons}.
+ * 2. path-mode: a project-root-contained directory holding an addon source
+ *    tree (addon.json + aces.json + optionally lang/ + plugin.js) with no
+ *    `.c3addon` archive. Builds a synthetic DiscoveredAddon with
+ *    `archivePath: ""` (signals "no real .c3addon package" — downstream
+ *    package-integrity checks should skip when `archivePath === ""`).
+ *
+ * Returns `null` when neither mode resolves, or when the path-mode argument
+ * escapes `projectRoot`. Never throws.
+ */
+export function resolveAddonTarget(projectRoot: string, addonArg: string): DiscoveredAddon | null {
+  const byId = discoverAddons(projectRoot).find((a) => a.name === addonArg);
+  if (byId !== undefined) return byId;
+
+  try {
+    const resolved = resolveWithin(projectRoot, addonArg);
+    if (resolved === null) return null;
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) return null;
+
+    return {
+      name: path.basename(resolved),
+      kind: readAddonKind(resolved),
+      archivePath: "",
+      extractedDir: resolved,
+    };
+  } catch {
+    return null;
+  }
 }

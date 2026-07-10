@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
-import { resolveWithin } from "@genvidtech/mcp-utils";
+import * as path from "node:path";
+import { resolveWithin, toPosixPath } from "@genvidtech/mcp-utils";
 import { unzipSync } from "fflate";
 import { discoverAddons, type DiscoveredAddon } from "./addonDiscovery.js";
 import { mapAcesJsonToEntries } from "./aceRegistry.js";
@@ -132,6 +133,49 @@ export function readAddonAces(addon: DiscoveredAddon): AceEntry[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * Enumerate every entry within an addon whose POSIX-relative name starts with
+ * `prefix` (e.g. "lang/"), drawn from BOTH the extracted directory (recursive
+ * walk) and the .c3addon zip archive, deduplicated. Mirrors readAddonEntry's
+ * hybrid sourcing: an entry present in only one source is still returned, so a
+ * lang/ dir that exists in the zip but not the (incomplete) extracted dir is
+ * found. Returns sorted, unique entry names relative to the addon root. Never
+ * throws; an unreadable/absent source contributes nothing.
+ */
+export function listAddonEntries(addon: DiscoveredAddon, prefix: string): string[] {
+  const names = new Set<string>();
+
+  // ── Extracted dir ────────────────────────────────────────────────────────
+  if (addon.extractedDir !== null) {
+    try {
+      const entries = fs.readdirSync(addon.extractedDir, { recursive: true, withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        const parentDir = entry.parentPath ?? entry.path;
+        const abs = path.join(parentDir, entry.name);
+        const rel = toPosixPath(path.relative(addon.extractedDir, abs));
+        if (rel.startsWith(prefix)) names.add(rel);
+      }
+    } catch {
+      // contributes nothing
+    }
+  }
+
+  // ── Zip archive ──────────────────────────────────────────────────────────
+  try {
+    const buf = fs.readFileSync(addon.archivePath);
+    const unzipped = unzipSync(new Uint8Array(buf), { filter: (f) => f.name.startsWith(prefix) });
+    for (const name of Object.keys(unzipped)) {
+      if (name.endsWith("/")) continue;
+      if (name.startsWith(prefix)) names.add(name);
+    }
+  } catch {
+    // contributes nothing
+  }
+
+  return [...names].sort();
 }
 
 /**

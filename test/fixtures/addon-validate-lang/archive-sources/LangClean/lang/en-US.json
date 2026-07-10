@@ -1,0 +1,33 @@
+{
+	"$schema": "../../lang.schema.json",
+	"languageTag": "en-US",
+	"fileDescription": "English strings for LangClean.",
+	"text": {
+		"plugins": {
+			"LangClean": {
+				"name": "Lang Clean",
+				"description": "Fixture addon.",
+				"help-url": "https://example.invalid",
+				"aceCategories": { "default": "Default" },
+				"properties": {
+					"speed": { "name": "Speed", "desc": "Speed." },
+					"mode": { "name": "Mode", "desc": "Mode.", "items": { "fast": "Fast", "slow": "Slow" } }
+				},
+				"conditions": {
+					"is-ready": { "list-name": "Is ready", "display-text": "Is ready", "description": "d", "params": {} }
+				},
+				"actions": {
+					"resync": {
+						"list-name": "Resync",
+						"display-text": "Resync",
+						"description": "d",
+						"params": { "offset": { "name": "Offset", "desc": "Offset." } }
+					}
+				},
+				"expressions": {
+					"drift": { "description": "Drift.", "params": {} }
+				}
+			}
+		}
+	}
+}
