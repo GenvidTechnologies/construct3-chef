@@ -62,7 +62,7 @@ import {
   generatePlantUML,
 } from "../c3/navigationGraph.js";
 import { resolveNavConvention } from "../c3/navConvention.js";
-import { discoverAddons } from "../c3/addonDiscovery.js";
+import { discoverAddons, resolveAddonTarget } from "../c3/addonDiscovery.js";
 import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "../c3/addonReader.js";
 import { validateAddons, formatAddonValidation } from "../c3/addonValidator.js";
 import { lookup, formatLookupResult } from "../c3/aceLookup.js";
@@ -1113,15 +1113,36 @@ reg(
   {
     title: "Validate Addons",
     description:
-      "Validate every bundled .c3addon package under addons/ against the project.c3proj usedAddons manifest: reports metadata mismatches (id/name/author/version), package-integrity failures (malformed zip, missing addon.json/aces.json, un-materialized git-lfs pointer, addon-id vs filename), orphan packages (on disk but not in usedAddons), missing packages (usedAddons bundled:true with no package on disk), and duplicate packages (multiple archives resolving to the same addon id). Read-only; no mutation.",
+      "Validate every bundled .c3addon package under addons/ against the project.c3proj usedAddons manifest: reports metadata mismatches (id/name/author/version), package-integrity failures (malformed zip, missing addon.json/aces.json, un-materialized git-lfs pointer, addon-id vs filename), aces.json vs lang/ ACE-entry consistency, orphan packages (on disk but not in usedAddons), missing packages (usedAddons bundled:true with no package on disk), and duplicate packages (multiple archives resolving to the same addon id). With `addon`, scope validation to a single addon (by discovered id, or by path to an addon source tree) instead of the whole project. Read-only; no mutation.",
     annotations: READ_ONLY,
-    inputSchema: {},
+    inputSchema: {
+      addon: z
+        .string()
+        .optional()
+        .describe(
+          "Validate a single addon by discovered id or by path to an addon source tree (aces.json + lang/). Omit to validate all bundled addons.",
+        ),
+    },
   },
-  async () =>
+  async ({ addon }) =>
     rwlock.read(
       withMcpErrors(
         async () => {
-          const result = validateAddons(PROJECT_ROOT);
+          let result;
+          if (addon !== undefined) {
+            if (addon.includes("..") || path.isAbsolute(addon)) {
+              return mcpError(`Invalid addon path '${addon}' — must stay within the project directory`, {
+                prefix: "validate-addons:",
+              });
+            }
+            const target = resolveAddonTarget(PROJECT_ROOT, addon);
+            if (target === null) {
+              return mcpError(`Addon '${addon}' not found`, { prefix: "validate-addons:" });
+            }
+            result = validateAddons(PROJECT_ROOT, target);
+          } else {
+            result = validateAddons(PROJECT_ROOT);
+          }
           return mcpContent(formatAddonValidation(result), txIdLine());
         },
         { prefix: "validate-addons:", extraLines: () => [txIdLine()] },
