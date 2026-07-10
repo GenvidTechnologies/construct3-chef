@@ -3,9 +3,12 @@ import { expect } from "chai";
 import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { fileURLToPath } from "node:url";
 import { validateAddons, formatAddonValidation, type AddonFinding } from "../../src/c3/addonValidator.js";
+import { resolveAddonTarget } from "../../src/c3/addonDiscovery.js";
 
 const FIXTURE_ROOT = path.resolve("test/fixtures/addon-validate");
+const LANG_FIXTURE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures/addon-validate-lang");
 
 function findingsFor(findings: AddonFinding[], pkg: string): AddonFinding[] {
   return findings.filter((f) => f.package === pkg);
@@ -152,5 +155,74 @@ describe("addonValidator", () => {
     expect(lines).to.include(
       "  addons/plugin/Complete.c3addon: version mismatch — package '1.0.0.0' vs project.c3proj '1.0.0.9'",
     );
+  });
+
+  describe("regression: addon-validate fixture unaffected by lang wiring", () => {
+    // The addon-validate fixture ships no lang/ files, so the lang-presence
+    // gate in the full-scan loop skips every package — the finding set and
+    // checked count above (asserted throughout this file) must stay
+    // byte-identical to before the aces/lang cross-check was wired in.
+    it("still reports exactly the pre-existing 8 findings", () => {
+      const result = validateAddons(FIXTURE_ROOT);
+      expect(result.checked).to.equal(8);
+      expect(result.findings).to.have.lengthOf(8);
+      expect(result.findings.some((f) => f.kind.startsWith("lang-"))).to.equal(false);
+    });
+  });
+
+  describe("aces/lang cross-check wiring (#98)", () => {
+    it("full scan: exactly the 4 expected lang findings, checked === 2", () => {
+      const result = validateAddons(LANG_FIXTURE_ROOT);
+      expect(result.checked).to.equal(2);
+      expect(result.findings).to.have.lengthOf(4);
+      expect(result.findings.every((f) => f.kind.startsWith("lang-"))).to.equal(true);
+      expect(result.findings.every((f) => f.addonId === "LangDefects" && f.lang === "lang/en-US.json")).to.equal(true);
+
+      const missingAce = result.findings.find((f) => f.kind === "lang-missing-ace");
+      expect(missingAce?.aceId).to.equal("drift");
+
+      const missingParam = result.findings.find((f) => f.kind === "lang-missing-param");
+      expect(missingParam?.paramId).to.equal("offset");
+
+      const propertyFindings = result.findings.filter((f) => f.kind === "lang-missing-property");
+      expect(propertyFindings).to.have.lengthOf(2);
+      expect(propertyFindings.some((f) => f.propId === "speed" && f.itemId === undefined)).to.equal(true);
+      expect(propertyFindings.some((f) => f.propId === "mode" && f.itemId === "slow")).to.equal(true);
+    });
+
+    it("target mode, discovered id: same 4 lang findings, checked === 1", () => {
+      const target = resolveAddonTarget(LANG_FIXTURE_ROOT, "LangDefects");
+      expect(target).to.not.equal(null);
+      const result = validateAddons(LANG_FIXTURE_ROOT, target!);
+      expect(result.checked).to.equal(1);
+      expect(result.findings).to.have.lengthOf(4);
+      expect(result.findings.every((f) => f.kind.startsWith("lang-"))).to.equal(true);
+    });
+
+    it("target mode, raw source-tree path: same 4 lang findings (lang-only), checked === 1", () => {
+      const target = resolveAddonTarget(LANG_FIXTURE_ROOT, "archive-sources/LangDefects");
+      expect(target).to.not.equal(null);
+      expect(target!.archivePath).to.equal("");
+      const result = validateAddons(LANG_FIXTURE_ROOT, target!);
+      expect(result.checked).to.equal(1);
+      expect(result.findings).to.have.lengthOf(4);
+      expect(result.findings.every((f) => f.kind.startsWith("lang-"))).to.equal(true);
+    });
+
+    it("target mode, clean addon (by id): no findings, checked === 1", () => {
+      const target = resolveAddonTarget(LANG_FIXTURE_ROOT, "LangClean");
+      expect(target).to.not.equal(null);
+      const result = validateAddons(LANG_FIXTURE_ROOT, target!);
+      expect(result.checked).to.equal(1);
+      expect(result.findings).to.have.lengthOf(0);
+    });
+
+    it("target mode, clean addon (by raw path): no findings, checked === 1", () => {
+      const target = resolveAddonTarget(LANG_FIXTURE_ROOT, "archive-sources/LangClean");
+      expect(target).to.not.equal(null);
+      const result = validateAddons(LANG_FIXTURE_ROOT, target!);
+      expect(result.checked).to.equal(1);
+      expect(result.findings).to.have.lengthOf(0);
+    });
   });
 });

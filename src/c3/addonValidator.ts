@@ -3,7 +3,8 @@ import * as path from "node:path";
 import { toPosixPath } from "@genvidtech/mcp-utils";
 import { unzipSync } from "fflate";
 import { ADDON_DIRS, discoverAddons, type DiscoveredAddon } from "./addonDiscovery.js";
-import { readAddonMetadata } from "./addonReader.js";
+import { checkAddonLang } from "./addonLangValidator.js";
+import { listAddonEntries, readAddonMetadata } from "./addonReader.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -259,24 +260,89 @@ function findAllAddonArchives(projectRoot: string): RawAddonArchive[] {
   return results;
 }
 
+/**
+ * Run the per-package checks (integrity + metadata-mismatch) for a single
+ * discovered addon, shared by both the full scan and single-target mode.
+ * Returns every finding raised, the resolved addon id, the package's
+ * projectRoot-relative POSIX path, and whether the package is "clean" (zip
+ * parsed with zero integrity findings — the subset the orphan pass draws
+ * from). Never throws.
+ */
+function checkPackage(
+  projectRoot: string,
+  addon: DiscoveredAddon,
+  usedById: Map<string, UsedAddonEntry>,
+): { findings: AddonFinding[]; addonId: string; pkg: string; clean: boolean } {
+  const pkg = toPosixPath(path.relative(projectRoot, addon.archivePath));
+  const findings: AddonFinding[] = [];
+
+  const { findings: integrityFindings, zipOk } = checkIntegrity(addon, pkg);
+  findings.push(...integrityFindings);
+
+  const addonId = resolveAddonId(addon);
+
+  if (zipOk) {
+    findings.push(...checkMetadataMismatch(addon, pkg, usedById));
+  }
+
+  return { findings, addonId, pkg, clean: zipOk && integrityFindings.length === 0 };
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Validate every bundled addon (`addons/plugin` + `addons/effect`) under
- * `projectRoot`: integrity checks (LFS-pointer / malformed-zip / missing
- * required entries / id-filename mismatch) run on every package, and
- * metadata comparisons against `project.c3proj`'s `usedAddons` run for
- * packages that parsed cleanly and have a matching entry. Three further,
- * additive passes then run: orphan (a *clean* discovered package — zip
- * parsed, zero integrity findings — with no matching `usedAddons` entry; a
- * package that already has an integrity failure is reported via that finding
- * instead, not also as an orphan off an unreliable id), missing (a
- * `bundled: true` `usedAddons` entry with no discovered package on disk), and
- * duplicate (2+ discovered packages, enumerated recursively, resolving to the
- * same addon id). Never throws — a problem with one package is reported as a
- * finding, not an exception.
+ * Validate bundled addons (`addons/plugin` + `addons/effect`) under
+ * `projectRoot`. Two modes:
+ *
+ * - **Full scan** (`target` omitted): every discovered package gets
+ *   integrity checks (LFS-pointer / malformed-zip / missing required entries
+ *   / id-filename mismatch), metadata comparisons against `project.c3proj`'s
+ *   `usedAddons` (packages that parsed cleanly and have a matching entry),
+ *   and — gated on the package shipping at least one `lang/*.json` entry — an
+ *   aces/lang cross-check ({@link checkAddonLang}). Three further, additive
+ *   passes then run: orphan (a *clean* discovered package — zip parsed, zero
+ *   integrity findings — with no matching `usedAddons` entry; a package that
+ *   already has an integrity failure is reported via that finding instead,
+ *   not also as an orphan off an unreliable id), missing (a `bundled: true`
+ *   `usedAddons` entry with no discovered package on disk), and duplicate
+ *   (2+ discovered packages, enumerated recursively, resolving to the same
+ *   addon id).
+ * - **Single target** (`target` given): scopes to just that addon. When
+ *   `target.archivePath` is non-empty (a real discovered `.c3addon`), runs
+ *   the same integrity + metadata-mismatch + orphan checks as the full scan,
+ *   scoped to that one package (no missing/duplicate passes — neither is
+ *   meaningful for a single target). When `target.archivePath` is empty (a
+ *   raw source-tree target with no archive), only the lang cross-check runs.
+ *   The lang cross-check itself runs unconditionally on an explicit target
+ *   (no lang-file-presence gate needed — `checkAddonLang` is already inert
+ *   without lang files). `checked` is always 1.
+ *
+ * Never throws — a problem with one package is reported as a finding, not an
+ * exception.
  */
-export function validateAddons(projectRoot: string): AddonValidationResult {
+export function validateAddons(projectRoot: string, target?: DiscoveredAddon): AddonValidationResult {
+  if (target !== undefined) {
+    const findings: AddonFinding[] = [];
+
+    if (target.archivePath !== "") {
+      const usedById = readUsedAddons(projectRoot);
+      const { findings: pkgFindings, addonId, pkg, clean } = checkPackage(projectRoot, target, usedById);
+      findings.push(...pkgFindings);
+      if (clean && !usedById.has(addonId)) {
+        findings.push({
+          package: pkg,
+          addonId,
+          kind: "orphan",
+          problem: "on disk but not in project.c3proj usedAddons",
+        });
+      }
+    }
+
+    findings.push(...checkAddonLang(target));
+
+    return { checked: 1, findings };
+  }
+
   const addons = discoverAddons(projectRoot);
   const usedById = readUsedAddons(projectRoot);
   const findings: AddonFinding[] = [];
@@ -291,20 +357,14 @@ export function validateAddons(projectRoot: string): AddonValidationResult {
 
   for (const addon of addons) {
     try {
-      const pkg = toPosixPath(path.relative(projectRoot, addon.archivePath));
-
-      const { findings: integrityFindings, zipOk } = checkIntegrity(addon, pkg);
-      findings.push(...integrityFindings);
-
-      const addonId = resolveAddonId(addon);
+      const { findings: pkgFindings, addonId, pkg, clean } = checkPackage(projectRoot, addon, usedById);
+      findings.push(...pkgFindings);
       discoveredIds.add(addonId);
-      if (zipOk && integrityFindings.length === 0) {
-        cleanPackages.push({ pkg, addonId });
+      if (clean) cleanPackages.push({ pkg, addonId });
+
+      if (listAddonEntries(addon, "lang/").length > 0) {
+        findings.push(...checkAddonLang(addon));
       }
-
-      if (!zipOk) continue;
-
-      findings.push(...checkMetadataMismatch(addon, pkg, usedById));
     } catch {
       // A single bad package must never abort the whole scan.
       continue;
