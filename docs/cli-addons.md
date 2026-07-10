@@ -1,8 +1,8 @@
 # CLI Reference — Addon Tooling
 
-Bundled `.c3addon` package commands (`read-addon`, `validate-addons`), split out of
-[cli.md](cli.md) as the c3addon-tooling cluster (#100 umbrella, #106–#111/#98)
-grows. Both commands accept the global `--project-dir` option — see
+Bundled `.c3addon` package commands (`read-addon`, `validate-addons`, `list-addons`),
+split out of [cli.md](cli.md) as the c3addon-tooling cluster (#100 umbrella,
+#106–#111/#98) grows. All commands accept the global `--project-dir` option — see
 [cli.md § Global Options](cli.md#global-options).
 
 ```bash
@@ -99,3 +99,36 @@ Checked 2 bundled addon(s), 4 issue(s):
 ```
 
 The clean case prints `Checked N bundled addon(s): all consistent.` Output uses the same `formatAddonValidation` formatter as the MCP `validate-addons` tool, so results are byte-identical between surfaces.
+
+---
+
+## list-addons
+
+Read-only **unified inventory** that reconciles three sources into one row per addon id: bundled `.c3addon` packages on disk (flat discovery under `addons/plugin/` and `addons/effect/`, the same set `read-addon` with no name lists), `project.c3proj`'s `usedAddons` entries, and editor-only addons. Each row carries a **status**, the declared **version**, and — for on-disk addons — the **package path**:
+
+- **bundled** — declared in `usedAddons` **and** present on disk.
+- **editor-only** — a `usedAddons` entry with `bundled: false` (supplied by the C3 editor's installed addons; no package expected on disk).
+- **missing** — a `usedAddons` entry with `bundled: true` but no package file on disk.
+- **orphan** — a package on disk with no matching `usedAddons` entry.
+
+Rows are keyed by the addon's real `id` (from `addon.json`, falling back to the package filename), so a package whose filename diverges from its id still matches its manifest entry. The version shown is the project's **declared** (`usedAddons`) version when present, else the package's `addon.json` version; version *mismatches* between the two are `validate-addons`' job, not this listing's. Where `validate-addons` reports package-consistency problems as *findings* (and exits non-zero), `list-addons` presents the same reconciliation as an *inventory* and never fails — it's for eyeballing what a project pulls in.
+
+```bash
+npx construct3-chef list-addons [--project-dir <path>]
+```
+
+```
+10 addon(s):
+  CleanControl  bundled  2.3.4.5  addons/plugin/CleanControl.c3addon
+  Complete  bundled  1.0.0.9  addons/plugin/Complete.c3addon
+  CorruptZip  orphan  —  addons/plugin/CorruptZip.c3addon (not in project.c3proj)
+  Dup  bundled  1.0.0.0  addons/plugin/Dup.c3addon
+  EditorOnly  editor-only  —
+  LfsPointer  orphan  —  addons/plugin/LfsPointer.c3addon (not in project.c3proj)
+  MissingAces  orphan  1.0.0.0  addons/plugin/MissingAces.c3addon (not in project.c3proj)
+  MissingPkg  missing  3.2.1.0  (declared bundled, no package on disk)
+  NotMisnamed  orphan  1.0.0.0  addons/plugin/Misnamed.c3addon (not in project.c3proj)
+  Orphan  orphan  1.0.0.0  addons/plugin/Orphan.c3addon (not in project.c3proj)
+```
+
+An empty project prints `No addons found.` Output uses the shared `formatAddonInventory` formatter, so the CLI and MCP `list-addons` surfaces are byte-identical. (Duplicate/nested-package detection is intentionally out of scope here — that's a `validate-addons` finding; `list-addons` uses flat discovery.)
