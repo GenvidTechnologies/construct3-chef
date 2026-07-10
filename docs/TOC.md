@@ -35,6 +35,7 @@ _Numbered chronologically by when the decision landed (earliest first); 0001–0
 - `decisions/0006-upstream-ownership-boundary-and-adoption-posture.md` — traversal/discovery/domain-facts to `c3source`, MCP/config plumbing to `mcp-utils`, rendering local; young-package adoption posture and the forced-partial-fit anti-pattern
 - `decisions/0007-mcp-server-root-resolution-and-c3project-adoption.md` — MCP root resolution via mcp-utils `resolveRootFolder` (env/discovery/cwd precedence) and hybrid C3Project handle adoption; rejected alternatives and deliberate non-adoptions ([#94](https://github.com/genvid-holdings/construct3-chef/issues/94))
 - `decisions/0008-addon-reader-hybrid-sourcing.md` — shared addon reader prefers extracted dir, falls back to reading the `.c3addon` zip archive directly; parser-only sharing with `aceRegistry`, off-barrel placement, `fflate` for sync zip reads ([#106](https://github.com/GenvidTechnologies/construct3-chef/issues/106), part of the #100 c3addon-tooling umbrella)
+- `decisions/0009-addon-lang-consistency-check.md` — aces.json/properties ↔ lang/*.json cross-validation folded into `validate-addons` (not a separate `validate-addon` command); lang check gated on `lang/` presence; best-effort string-literal scan for JS-declared plugin `properties` ([#98](https://github.com/GenvidTechnologies/construct3-chef/issues/98), part of the #100 c3addon-tooling umbrella)
 
 ## C3 platform reference (the *why* behind the gotchas)
 
