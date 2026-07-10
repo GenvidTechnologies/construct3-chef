@@ -4,6 +4,9 @@
 	"runtime": "c3",
 	"usedAddons": [
 		{ "type": "plugin", "id": "Complete", "name": "Complete Fixture", "author": "construct3-chef fixtures", "version": "1.0.0.9", "bundled": true },
-		{ "type": "plugin", "id": "CleanControl", "name": "Clean Control", "author": "construct3-chef fixtures", "version": "2.3.4.5", "bundled": true }
+		{ "type": "plugin", "id": "CleanControl", "name": "Clean Control", "author": "construct3-chef fixtures", "version": "2.3.4.5", "bundled": true },
+		{ "type": "plugin", "id": "Dup", "name": "Dup Fixture", "author": "construct3-chef fixtures", "version": "1.0.0.0", "bundled": true },
+		{ "type": "plugin", "id": "MissingPkg", "name": "Missing Package", "author": "construct3-chef fixtures", "version": "3.2.1.0", "bundled": true },
+		{ "type": "plugin", "id": "EditorOnly", "name": "Editor Only", "bundled": false }
 	]
 }

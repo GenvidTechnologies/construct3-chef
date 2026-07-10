@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 // Deterministically (re)generates the `.c3addon` fixtures under
-// `addons/plugin/` used by `test/c3/addonValidator.test.ts`. Six archives are
-// produced: three real zip addons built from `archive-sources/` (a clean
-// one, one whose manifest version drifts from project.c3proj, and one whose
-// addon.json id doesn't match its package filename), one real zip archive
-// deliberately missing its `aces.json` entry, one corrupt (non-zip) archive,
-// and one un-materialized git-lfs pointer file. Run with:
+// `addons/plugin/` used by `test/c3/addonValidator.test.ts`. Archives are
+// produced: five real zip addons built from `archive-sources/` (a clean one,
+// one whose manifest version drifts from project.c3proj, one whose
+// addon.json id doesn't match its package filename, one clean-but-orphaned
+// package with no matching `usedAddons` entry, and one clean package
+// duplicated at both `addons/plugin/Dup.c3addon` and
+// `addons/plugin/nested/Dup.c3addon` — identical bytes, to exercise the
+// recursive duplicate-id walk), one real zip archive deliberately missing its
+// `aces.json` entry, one corrupt (non-zip) archive, and one un-materialized
+// git-lfs pointer file. Run with:
 // `node test/fixtures/addon-validate/build-archive.mjs`.
 //
 // Zip entries are written with a fixed mtime (DOS zip timestamps only cover
@@ -28,12 +32,12 @@ function readEntry(dir, entryName) {
 }
 
 /**
- * Builds a `<name>.c3addon` zip from `archive-sources/<sourceName>/`,
- * including `addon.json`, `aces.json`, and `c3runtime/plugin.js`.
+ * Zips `archive-sources/<sourceName>/`'s `addon.json`, `aces.json`, and
+ * `c3runtime/plugin.js` into a single deterministic buffer.
  */
-function buildFullAddon(sourceName, outName) {
+function buildZipData(sourceName) {
   const srcDir = path.join(sourcesDir, sourceName);
-  const zipData = zipSync(
+  return zipSync(
     {
       "addon.json": [readEntry(srcDir, "addon.json"), { mtime: FIXED_MTIME }],
       "aces.json": [readEntry(srcDir, "aces.json"), { mtime: FIXED_MTIME }],
@@ -41,7 +45,27 @@ function buildFullAddon(sourceName, outName) {
     },
     { mtime: FIXED_MTIME },
   );
-  fs.writeFileSync(path.join(pluginDir, `${outName}.c3addon`), zipData);
+}
+
+/**
+ * Builds a `<name>.c3addon` zip from `archive-sources/<sourceName>/`,
+ * including `addon.json`, `aces.json`, and `c3runtime/plugin.js`.
+ */
+function buildFullAddon(sourceName, outName) {
+  fs.writeFileSync(path.join(pluginDir, `${outName}.c3addon`), buildZipData(sourceName));
+}
+
+/**
+ * Dup.c3addon (+ nested/Dup.c3addon) — a clean addon written to two
+ * locations with byte-identical content, to exercise the recursive
+ * duplicate-id detection (which the flat `addons/plugin/` walk alone can't).
+ */
+function buildDup() {
+  const zipData = buildZipData("Dup");
+  fs.writeFileSync(path.join(pluginDir, "Dup.c3addon"), zipData);
+  const nestedDir = path.join(pluginDir, "nested");
+  fs.mkdirSync(nestedDir, { recursive: true });
+  fs.writeFileSync(path.join(nestedDir, "Dup.c3addon"), zipData);
 }
 
 /**
@@ -84,8 +108,12 @@ fs.mkdirSync(pluginDir, { recursive: true });
 buildFullAddon("Complete", "Complete");
 buildFullAddon("CleanControl", "CleanControl");
 buildFullAddon("Misnamed", "Misnamed");
+buildFullAddon("Orphan", "Orphan");
 buildMissingAces();
 buildCorruptZip();
 buildLfsPointer();
+buildDup();
 
-console.log("Rebuilt Complete/CleanControl/Misnamed/MissingAces/CorruptZip/LfsPointer .c3addon fixtures");
+console.log(
+  "Rebuilt Complete/CleanControl/Misnamed/Orphan/MissingAces/CorruptZip/LfsPointer/Dup(+nested/Dup) .c3addon fixtures",
+);
