@@ -9,6 +9,7 @@ import {
   readAddonEntry,
   readAddonMetadata,
   readAddonAces,
+  listAddonEntries,
   formatAddonInfo,
   formatAddonList,
 } from "../../src/c3/addonReader.js";
@@ -16,6 +17,7 @@ import { discoverAddons, type DiscoveredAddon } from "../../src/c3/addonDiscover
 import { buildAddonAceRegistry } from "../../src/c3/aceRegistry.js";
 
 const FIXTURE_ROOT = path.resolve("test/fixtures/addon-sample");
+const LANG_FIXTURE_ROOT = path.resolve("test/fixtures/addon-validate-lang");
 
 describe("addonReader", () => {
   // ── R1: extracted-dir read ───────────────────────────────────────────────
@@ -243,5 +245,88 @@ describe("addonReader", () => {
 
   it("R8: formatAddonList owns the empty case (byte-identical across CLI/MCP)", () => {
     expect(formatAddonList([])).to.equal("No addons found.");
+  });
+
+  // ── R9: listAddonEntries ──────────────────────────────────────────────────
+
+  describe("listAddonEntries", () => {
+    it("R9: zip branch — returns sorted entries under the prefix from the archive", () => {
+      const defects: DiscoveredAddon = {
+        name: "LangDefects",
+        kind: "plugin",
+        archivePath: path.join(LANG_FIXTURE_ROOT, "addons", "plugin", "LangDefects.c3addon"),
+        extractedDir: null,
+      };
+      expect(listAddonEntries(defects, "lang/")).to.deep.equal(["lang/en-US.json", "lang/fr-FR.json"]);
+
+      const clean: DiscoveredAddon = {
+        name: "LangClean",
+        kind: "plugin",
+        archivePath: path.join(LANG_FIXTURE_ROOT, "addons", "plugin", "LangClean.c3addon"),
+        extractedDir: null,
+      };
+      expect(listAddonEntries(clean, "lang/")).to.deep.equal(["lang/en-US.json"]);
+    });
+
+    it("R9: extracted branch — returns sorted entries under the prefix from the extracted dir", () => {
+      const addon: DiscoveredAddon = {
+        name: "LangDefects",
+        kind: "plugin",
+        archivePath: "",
+        extractedDir: path.join(LANG_FIXTURE_ROOT, "archive-sources", "LangDefects"),
+      };
+      expect(listAddonEntries(addon, "lang/")).to.deep.equal(["lang/en-US.json", "lang/fr-FR.json"]);
+    });
+
+    it("R9: union/dedup — both sources present yields no duplicates", () => {
+      const addon: DiscoveredAddon = {
+        name: "LangDefects",
+        kind: "plugin",
+        archivePath: path.join(LANG_FIXTURE_ROOT, "addons", "plugin", "LangDefects.c3addon"),
+        extractedDir: path.join(LANG_FIXTURE_ROOT, "archive-sources", "LangDefects"),
+      };
+      expect(listAddonEntries(addon, "lang/")).to.deep.equal(["lang/en-US.json", "lang/fr-FR.json"]);
+    });
+
+    it("R9: empty result for a prefix present in neither source", () => {
+      const addon: DiscoveredAddon = {
+        name: "LangDefects",
+        kind: "plugin",
+        archivePath: path.join(LANG_FIXTURE_ROOT, "addons", "plugin", "LangDefects.c3addon"),
+        extractedDir: path.join(LANG_FIXTURE_ROOT, "archive-sources", "LangDefects"),
+      };
+      expect(listAddonEntries(addon, "nonexistent/")).to.deep.equal([]);
+    });
+
+    it("R9: an entry found in only one source is still returned", () => {
+      // extractedDir lacks the prefix entirely, zip has it.
+      const zipOnly: DiscoveredAddon = {
+        name: "LangDefects",
+        kind: "plugin",
+        archivePath: path.join(LANG_FIXTURE_ROOT, "addons", "plugin", "LangDefects.c3addon"),
+        extractedDir: path.join(LANG_FIXTURE_ROOT, "archive-sources", "LangClean"),
+      };
+      expect(listAddonEntries(zipOnly, "lang/")).to.deep.equal(["lang/en-US.json", "lang/fr-FR.json"]);
+
+      // extractedDir has the prefix, archivePath is bogus/absent.
+      const extractedOnly: DiscoveredAddon = {
+        name: "LangDefects",
+        kind: "plugin",
+        archivePath: path.join(LANG_FIXTURE_ROOT, "addons", "plugin", "DoesNotExist.c3addon"),
+        extractedDir: path.join(LANG_FIXTURE_ROOT, "archive-sources", "LangDefects"),
+      };
+      expect(listAddonEntries(extractedOnly, "lang/")).to.deep.equal(["lang/en-US.json", "lang/fr-FR.json"]);
+    });
+
+    it("R9: never throws — bogus archivePath, no extractedDir, yields []", () => {
+      const addon: DiscoveredAddon = {
+        name: "Bogus",
+        kind: "plugin",
+        archivePath: path.join(LANG_FIXTURE_ROOT, "addons", "plugin", "DoesNotExist.c3addon"),
+        extractedDir: null,
+      };
+      expect(() => listAddonEntries(addon, "lang/")).to.not.throw();
+      expect(listAddonEntries(addon, "lang/")).to.deep.equal([]);
+    });
   });
 });
