@@ -36,7 +36,7 @@ import {
 import { resolveNavConvention } from "./c3/navConvention.js";
 import { lookup, formatLookupResult } from "./c3/aceLookup.js";
 import { loadOpsFromDir, substituteOp, formatOpsList, coerceArgs } from "./c3/opTemplate.js";
-import { discoverAddons } from "./c3/addonDiscovery.js";
+import { discoverAddons, resolveAddonTarget } from "./c3/addonDiscovery.js";
 import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "./c3/addonReader.js";
 import { validateAddons, formatAddonValidation } from "./c3/addonValidator.js";
 
@@ -502,11 +502,33 @@ yargs(hideBin(process.argv))
   )
   .command(
     "validate-addons",
-    "Validate bundled .c3addon packages against project.c3proj.usedAddons (metadata + integrity + orphan/missing/duplicate; read-only)",
-    () => {},
+    "Validate bundled .c3addon packages against project.c3proj.usedAddons (metadata + integrity + orphan/missing/duplicate) and each addon's aces.json/properties against its lang/*.json; --addon scopes to one addon or source tree. Read-only.",
+    (y) =>
+      y.option("addon", {
+        type: "string",
+        describe:
+          "Validate a single addon by discovered id or by path to an addon source tree (aces.json + lang/). Omit to validate all bundled addons.",
+      }),
     (argv) => {
       const rootDir = resolveProjectDir(argv);
-      const result = validateAddons(rootDir);
+      let result;
+      if (argv.addon) {
+        // Belt-and-suspenders traversal guard (resolveAddonTarget also containment-checks via resolveWithin).
+        if (argv.addon.includes("..") || path.isAbsolute(argv.addon)) {
+          console.error(`Invalid --addon path '${argv.addon}' — must stay within the project directory`);
+          process.exitCode = 1;
+          return;
+        }
+        const target = resolveAddonTarget(rootDir, argv.addon);
+        if (target === null) {
+          console.error(`Addon '${argv.addon}' not found`);
+          process.exitCode = 1;
+          return;
+        }
+        result = validateAddons(rootDir, target);
+      } else {
+        result = validateAddons(rootDir);
+      }
       console.log(formatAddonValidation(result));
       if (result.findings.length > 0) process.exitCode = 1;
     },
