@@ -1,0 +1,8 @@
+{
+	"$schema": "../aces.schema.json",
+	"LangDefects": {
+		"conditions": [{ "id": "is-ready", "scriptName": "IsReady", "params": [] }],
+		"actions": [{ "id": "resync", "scriptName": "Resync", "params": [{ "id": "offset", "type": "number" }] }],
+		"expressions": [{ "id": "drift", "expressionName": "Drift", "returnType": "number", "params": [] }]
+	}
+}
