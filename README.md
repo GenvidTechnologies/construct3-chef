@@ -59,7 +59,7 @@ If you install globally or add to `package.json` scripts, you can omit `npx`.
 | `search-dsl <pattern>` | Regex search across extracted DSL files |
 | `search-docs` | Search the C3 ACE reference (action/condition/expression ids, param names) for custom addons and the built-in reference cache |
 | `read-addon [name]` | Read a C3 addon's metadata + ACE summary (or a raw entry, or list all addons); works on extracted and archive-only addons |
-| `validate-addons` | Validate bundled `.c3addon` packages against `project.c3proj.usedAddons` (metadata, integrity, orphan/missing/duplicate; read-only, non-zero exit on findings) |
+| `validate-addons [--addon <id|path>]` | Validate bundled `.c3addon` packages against `project.c3proj.usedAddons` (metadata, integrity, orphan/missing/duplicate) and each addon's `aces.json`/`plugin.js` properties against its `lang/*.json` locales; `--addon` scopes to one addon (by id or source-tree path). Read-only, non-zero exit on findings |
 | `list-ops` | List available user-defined ops |
 | `apply-op <name>` | Apply a user-defined op by name |
 
@@ -143,7 +143,7 @@ Configure it in your MCP client (example for Claude Desktop or similar):
 | `validate-recipe` | Validate a recipe JSON without applying it (returns txId) |
 | `validate-project` | Dry-run project.c3proj sync check |
 | `read-addon` | Read a C3 addon's metadata + ACE summary (or a raw entry, or list all addons); works on extracted and archive-only addons |
-| `validate-addons` | Validate bundled `.c3addon` packages against `project.c3proj.usedAddons` (metadata, integrity, orphan/missing/duplicate; read-only) |
+| `validate-addons` | Validate bundled `.c3addon` packages against `project.c3proj.usedAddons` (metadata, integrity, orphan/missing/duplicate) and each addon's `aces.json`/`plugin.js` properties against its `lang/*.json` locales; optional `addon` param scopes to one addon (by id or source-tree path). Read-only |
 | `get-state` | Return server state: txId and extractedDirty flag |
 
 **Mutate tools** (modify source files):

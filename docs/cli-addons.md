@@ -63,11 +63,17 @@ Read-only check that bundled `.c3addon` packages under `addons/plugin/` and `add
 
 `c3runtime` is deliberately not required — plugin/effect layouts vary.
 
+`validate-addons` also cross-checks each addon's `aces.json` (actions/conditions/expressions and their params) and editor-`plugin.js` `properties` (including combo `items`) against every `lang/*.json` locale it ships, catching the "language string missing" class of error that Construct otherwise only surfaces as an opaque error at addon-load time. Each locale is checked independently and findings are reported per file, so a defect in `lang/fr-FR.json` doesn't mask (or get masked by) `lang/en-US.json` being clean. **Lang-presence gate:** an addon that ships no `lang/*.json` at all is silently skipped by this check (not flagged) — it's additive, so addons with no localization are unaffected and package-integrity/metadata findings for them are unchanged. The `properties` check is best-effort: property ids are recovered by scanning the editor `plugin.js` source for `SDK.PluginProperty(...)` string-literal ids, since properties are declared in JavaScript, not JSON; an unparseable or unconventional `plugin.js` causes the check to under-report rather than false-flag (see [ADR 0009](decisions/0009-addon-lang-consistency-check.md)).
+
 ```bash
-npx construct3-chef validate-addons [--project-dir <path>]
+npx construct3-chef validate-addons [--project-dir <path>] [--addon <id|path>]
 ```
 
-No options beyond `--project-dir`. Exits with code 1 if any finding is reported, so it fits a project's `commands.validate` chain.
+| Option | Description |
+| ------ | ----------- |
+| `--addon <id|path>` | Scope validation to a single addon instead of every bundled addon. Resolved two ways, tried in order: (1) a discovered bundled addon **id** (matches `discoverAddons`, same as the `read-addon` `name` argument); (2) a **path** to a raw addon source tree (a directory containing `aces.json`, `lang/`, and the editor `plugin.js` — no `.c3addon` archive required). Path mode lets the command run against an addon-dev repo, not just a C3 project with bundled `.c3addon` packages: with no archive, only the aces/properties ↔ lang cross-check runs (package-integrity and `project.c3proj` metadata/orphan checks are skipped, since there's no package or manifest entry to check against). The path is traversal-guarded — it must resolve within `--project-dir`. |
+
+Exits with code 1 if any finding is reported, so it fits a project's `commands.validate` chain.
 
 ```
 Checked 8 bundled addon(s), 8 issue(s):
@@ -79,6 +85,17 @@ Checked 8 bundled addon(s), 8 issue(s):
   addons/plugin/Orphan.c3addon: orphan — on disk but not in project.c3proj usedAddons (id 'Orphan')
   MissingPkg: missing — declared bundled in project.c3proj but no package file on disk (version 3.2.1.0)
   Dup: duplicate — 2 packages resolve to the same addon id: addons/plugin/Dup.c3addon, addons/plugin/nested/Dup.c3addon
+```
+
+The aces/properties ↔ lang findings appear the same way, one line per missing string, e.g.:
+
+```
+$ construct3-chef validate-addons --project-dir <project>
+Checked 2 bundled addon(s), 4 issue(s):
+  LangDefects [lang/en-US.json]: param 'offset' of action 'resync' has no lang name
+  LangDefects [lang/en-US.json]: expression 'drift' has no lang entry
+  LangDefects [lang/en-US.json]: property 'speed' has no lang name
+  LangDefects [lang/en-US.json]: item 'slow' of property 'mode' has no lang string
 ```
 
 The clean case prints `Checked N bundled addon(s): all consistent.` Output uses the same `formatAddonValidation` formatter as the MCP `validate-addons` tool, so results are byte-identical between surfaces.
