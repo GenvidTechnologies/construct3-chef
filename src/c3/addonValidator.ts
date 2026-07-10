@@ -2,19 +2,20 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { toPosixPath } from "@genvidtech/mcp-utils";
 import { unzipSync } from "fflate";
-import { discoverAddons, type DiscoveredAddon } from "./addonDiscovery.js";
+import { ADDON_DIRS, discoverAddons, type DiscoveredAddon } from "./addonDiscovery.js";
 import { readAddonMetadata } from "./addonReader.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface AddonFinding {
-  package: string; // path relative to projectRoot, POSIX separators
+  package?: string; // path relative to projectRoot, POSIX separators (absent for "missing")
+  packages?: string[]; // duplicate only: every resolving path, POSIX-relative, sorted
   addonId?: string; // resolved addon id when known (from addon.json)
-  kind: "metadata-mismatch" | "integrity";
+  kind: "metadata-mismatch" | "integrity" | "orphan" | "missing" | "duplicate";
   field?: "id" | "name" | "author" | "version"; // metadata-mismatch only
   packageValue?: string; // metadata-mismatch: addon.json value
-  manifestValue?: string; // metadata-mismatch: usedAddons value
-  problem?: string; // integrity only: human-readable problem string
+  manifestValue?: string; // metadata-mismatch / missing: usedAddons value
+  problem?: string; // human-readable problem string (all kinds but metadata-mismatch)
 }
 
 export interface AddonValidationResult {
@@ -199,6 +200,51 @@ function checkMetadataMismatch(
   return findings;
 }
 
+/**
+ * Resolve an addon's id: `addon.json`'s `id` field when readable, else the
+ * package's basename (archive filename without `.c3addon`). Never throws.
+ */
+function resolveAddonId(addon: DiscoveredAddon): string {
+  return readAddonMetadata(addon)?.metadata.id ?? addon.name;
+}
+
+interface RawAddonArchive {
+  archivePath: string; // absolute path to the .c3addon file
+  name: string; // archive basename without .c3addon
+  kind: "plugin" | "effect";
+}
+
+/**
+ * Enumerate every `.c3addon` file under both `ADDON_DIRS`, recursively (unlike
+ * `discoverAddons`, which is flat). Used only for duplicate-id detection, so a
+ * package nested under a subfolder of `addons/plugin`/`addons/effect` is still
+ * caught. Never throws: a per-dir read failure is skipped rather than
+ * aborting the whole scan.
+ */
+function findAllAddonArchives(projectRoot: string): RawAddonArchive[] {
+  const results: RawAddonArchive[] = [];
+  for (const addonDir of ADDON_DIRS) {
+    const kind: "plugin" | "effect" = addonDir === "addons/plugin" ? "plugin" : "effect";
+    const fullDir = path.join(projectRoot, addonDir);
+    if (!fs.existsSync(fullDir)) continue;
+    try {
+      const entries = fs.readdirSync(fullDir, { recursive: true, withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.endsWith(".c3addon")) continue;
+        const parentDir = entry.parentPath ?? entry.path;
+        results.push({
+          archivePath: path.join(parentDir, entry.name),
+          name: entry.name.replace(/\.c3addon$/, ""),
+          kind,
+        });
+      }
+    } catch {
+      continue;
+    }
+  }
+  return results;
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
@@ -206,13 +252,28 @@ function checkMetadataMismatch(
  * `projectRoot`: integrity checks (LFS-pointer / malformed-zip / missing
  * required entries / id-filename mismatch) run on every package, and
  * metadata comparisons against `project.c3proj`'s `usedAddons` run for
- * packages that parsed cleanly and have a matching entry. Never throws — a
- * problem with one package is reported as a finding, not an exception.
+ * packages that parsed cleanly and have a matching entry. Three further,
+ * additive passes then run: orphan (a *clean* discovered package — zip
+ * parsed, zero integrity findings — with no matching `usedAddons` entry; a
+ * package that already has an integrity failure is reported via that finding
+ * instead, not also as an orphan off an unreliable id), missing (a
+ * `bundled: true` `usedAddons` entry with no discovered package on disk), and
+ * duplicate (2+ discovered packages, enumerated recursively, resolving to the
+ * same addon id). Never throws — a problem with one package is reported as a
+ * finding, not an exception.
  */
 export function validateAddons(projectRoot: string): AddonValidationResult {
   const addons = discoverAddons(projectRoot);
   const usedById = readUsedAddons(projectRoot);
   const findings: AddonFinding[] = [];
+
+  // discoveredIds covers every discovered package (even ones that failed
+  // integrity checks) so the missing pass below doesn't misreport a package
+  // that exists on disk, just broken, as absent. cleanPackages is the
+  // narrower subset (zipOk && zero integrity findings) the orphan pass draws
+  // from.
+  const discoveredIds = new Set<string>();
+  const cleanPackages: { pkg: string; addonId: string }[] = [];
 
   for (const addon of addons) {
     try {
@@ -220,6 +281,13 @@ export function validateAddons(projectRoot: string): AddonValidationResult {
 
       const { findings: integrityFindings, zipOk } = checkIntegrity(addon, pkg);
       findings.push(...integrityFindings);
+
+      const addonId = resolveAddonId(addon);
+      discoveredIds.add(addonId);
+      if (zipOk && integrityFindings.length === 0) {
+        cleanPackages.push({ pkg, addonId });
+      }
+
       if (!zipOk) continue;
 
       findings.push(...checkMetadataMismatch(addon, pkg, usedById));
@@ -227,6 +295,60 @@ export function validateAddons(projectRoot: string): AddonValidationResult {
       // A single bad package must never abort the whole scan.
       continue;
     }
+  }
+
+  // ── Orphan pass (clean packages only) ────────────────────────────────────
+  for (const { pkg, addonId } of cleanPackages) {
+    if (!usedById.has(addonId)) {
+      findings.push({
+        package: pkg,
+        addonId,
+        kind: "orphan",
+        problem: "on disk but not in project.c3proj usedAddons",
+      });
+    }
+  }
+
+  // ── Missing pass (bundled usedAddons entries absent from disk) ──────────
+  for (const [addonId, used] of usedById) {
+    if (used.bundled !== true || discoveredIds.has(addonId)) continue;
+    const finding: AddonFinding = {
+      addonId,
+      kind: "missing",
+      problem: "declared bundled in project.c3proj but no package file on disk",
+    };
+    if (used.version !== undefined) finding.manifestValue = used.version;
+    findings.push(finding);
+  }
+
+  // ── Duplicate pass (recursive archive set) ───────────────────────────────
+  const packagesById = new Map<string, string[]>();
+  for (const archive of findAllAddonArchives(projectRoot)) {
+    try {
+      const discovered: DiscoveredAddon = {
+        name: archive.name,
+        kind: archive.kind,
+        archivePath: archive.archivePath,
+        extractedDir: null,
+      };
+      const addonId = resolveAddonId(discovered);
+      const pkg = toPosixPath(path.relative(projectRoot, archive.archivePath));
+      const list = packagesById.get(addonId);
+      if (list === undefined) packagesById.set(addonId, [pkg]);
+      else list.push(pkg);
+    } catch {
+      continue;
+    }
+  }
+  for (const [addonId, packages] of packagesById) {
+    if (packages.length < 2) continue;
+    const sorted = [...packages].sort();
+    findings.push({
+      addonId,
+      kind: "duplicate",
+      packages: sorted,
+      problem: `${sorted.length} packages resolve to the same addon id`,
+    });
   }
 
   return { checked: addons.length, findings };
@@ -249,6 +371,13 @@ export function formatAddonValidation(result: AddonValidationResult): string {
       lines.push(
         `  ${finding.package}: ${finding.field} mismatch — package '${finding.packageValue}' vs project.c3proj '${finding.manifestValue}'`,
       );
+    } else if (finding.kind === "orphan") {
+      lines.push(`  ${finding.package}: orphan — ${finding.problem} (id '${finding.addonId}')`);
+    } else if (finding.kind === "missing") {
+      const versionSuffix = finding.manifestValue !== undefined ? ` (version ${finding.manifestValue})` : "";
+      lines.push(`  ${finding.addonId}: missing — ${finding.problem}${versionSuffix}`);
+    } else if (finding.kind === "duplicate") {
+      lines.push(`  ${finding.addonId}: duplicate — ${finding.problem}: ${(finding.packages ?? []).join(", ")}`);
     } else {
       lines.push(`  ${finding.package}: ${finding.problem}`);
     }
