@@ -11,11 +11,25 @@ export interface AddonFinding {
   package?: string; // path relative to projectRoot, POSIX separators (absent for "missing")
   packages?: string[]; // duplicate only: every resolving path, POSIX-relative, sorted
   addonId?: string; // resolved addon id when known (from addon.json)
-  kind: "metadata-mismatch" | "integrity" | "orphan" | "missing" | "duplicate";
+  kind:
+    | "metadata-mismatch"
+    | "integrity"
+    | "orphan"
+    | "missing"
+    | "duplicate"
+    | "lang-missing-ace"
+    | "lang-missing-param"
+    | "lang-missing-property";
   field?: "id" | "name" | "author" | "version"; // metadata-mismatch only
   packageValue?: string; // metadata-mismatch: addon.json value
   manifestValue?: string; // metadata-mismatch / missing: usedAddons value
   problem?: string; // human-readable problem string (all kinds but metadata-mismatch)
+  lang?: string; // lang-missing-*: the lang entry name, e.g. "lang/en-US.json"
+  aceId?: string; // lang-missing-ace / lang-missing-param: the ACE id
+  paramId?: string; // lang-missing-param: the param id
+  propId?: string; // lang-missing-property: the property id
+  itemId?: string; // lang-missing-property: the combo item id (item-variant findings only)
+  context?: string; // lang-missing-*: dotted path mirroring Construct's lang-file addressing
 }
 
 export interface AddonValidationResult {
@@ -378,6 +392,12 @@ export function formatAddonValidation(result: AddonValidationResult): string {
       lines.push(`  ${finding.addonId}: missing — ${finding.problem}${versionSuffix}`);
     } else if (finding.kind === "duplicate") {
       lines.push(`  ${finding.addonId}: duplicate — ${finding.problem}: ${(finding.packages ?? []).join(", ")}`);
+    } else if (
+      finding.kind === "lang-missing-ace" ||
+      finding.kind === "lang-missing-param" ||
+      finding.kind === "lang-missing-property"
+    ) {
+      lines.push(`  ${finding.addonId} [${finding.lang}]: ${finding.problem}`);
     } else {
       lines.push(`  ${finding.package}: ${finding.problem}`);
     }
