@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { readAddonAces } from "./addonReader.js";
+import { readAddonAces, resolveAddonId } from "./addonReader.js";
 import { resolveAddonTarget, type DiscoveredAddon } from "./addonDiscovery.js";
 import type { AceEntry } from "./c3Reference.js";
 
@@ -16,7 +16,7 @@ export interface AceDiff {
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 function aceKey(ace: AceEntry): string {
-  return `${ace.kind}:${ace.objectClass}:${ace.id}`;
+  return `${ace.kind}:${ace.id}`;
 }
 
 function paramsEqual(a: AceEntry, b: AceEntry): boolean {
@@ -34,8 +34,17 @@ function byKey(a: { key: string }, b: { key: string }): number {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Diff two ACE lists by identity key `<kind>:<objectClass>:<id>`. Pure —
- * takes/returns plain data, no I/O. Buckets are sorted by key for a
+ * Diff two ACE lists by identity key `<kind>:<id>`. Pure — takes/returns
+ * plain data, no I/O. `objectClass` deliberately does NOT participate in the
+ * identity key: `readAddonAces`/`mapAcesJsonToEntries` stamp every ACE in an
+ * `aces.json` with the addon's *name* (the `.c3addon` filename basename, or
+ * discovered id) as `objectClass`, which is constant within one addon but
+ * commonly differs between two versions of the same addon (e.g.
+ * `GCore-1.0.c3addon` vs `GCore-2.0.c3addon`, or once `resolveAceSource`
+ * resolves each side to its real addon id). Keying on `objectClass` too would
+ * make every ACE of a renamed/re-versioned addon show as removed+added
+ * instead of unchanged/changed. `kind` stays in the key so a condition and an
+ * action sharing an `id` remain distinct. Buckets are sorted by key for a
  * deterministic, stable output regardless of input ordering. Duplicate keys
  * within one side are resolved last-wins (defensive; well-formed aces.json
  * never produces duplicates).
@@ -105,6 +114,12 @@ export function resolveAceSource(
         archivePath: resolvedPath,
         extractedDir: null,
       };
+      // Rename to the addon's real, stable id (addon.json's `id`, falling
+      // back to the basename) before reading ACEs, so the objectClass
+      // stamped onto every entry reflects the addon's identity rather than
+      // the archive's filename — filenames commonly encode a version suffix
+      // (e.g. `GCore-2.0.c3addon`) that would otherwise leak into display.
+      addon.name = resolveAddonId(addon);
       return { label: path.basename(resolvedPath), aces: readAddonAces(addon) };
     }
   } catch {

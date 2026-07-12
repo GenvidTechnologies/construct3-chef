@@ -1,0 +1,26 @@
+{
+	"$schema": "../aces.schema.json",
+	"account": {
+		"conditions": [],
+		"actions": [
+			{
+				"id": "login",
+				"scriptName": "Login",
+				"params": [{ "id": "token", "type": "string" }]
+			},
+			{
+				"id": "sync",
+				"scriptName": "Sync",
+				"params": []
+			}
+		],
+		"expressions": [
+			{
+				"id": "sdk-version",
+				"expressionName": "SdkVersion",
+				"returnType": "string",
+				"params": []
+			}
+		]
+	}
+}

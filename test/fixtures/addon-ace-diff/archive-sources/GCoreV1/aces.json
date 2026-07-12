@@ -1,0 +1,28 @@
+{
+	"$schema": "../aces.schema.json",
+	"account": {
+		"conditions": [
+			{
+				"id": "is-legacy-account",
+				"scriptName": "IsLegacyAccount",
+				"params": []
+			}
+		],
+		"actions": [
+			{
+				"id": "login",
+				"scriptName": "Login",
+				"params": [
+					{ "id": "token", "type": "string" },
+					{ "id": "region", "type": "string" }
+				]
+			},
+			{
+				"id": "sync",
+				"scriptName": "Sync",
+				"params": []
+			}
+		],
+		"expressions": []
+	}
+}
