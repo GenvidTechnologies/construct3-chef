@@ -37,7 +37,7 @@ Summary of the standalone MCP security/best-practices audit (the full per-issue 
 
 **In place:**
 
-- **Path-traversal guards** (`path.relative()` + `startsWith("..")` containment) on every path-taking surface: `readExtracted`, `read-addon`, `scaffold-layout` (source + output), `scaffold-sprite`, and the `search` glob/path parameter. *Keep these when adding path-taking tools.* `search-docs` reads only `<extractedDir>/c3-reference/` (the local reference cache) and the project's own `addons/`; it never fetches anything and has no network surface.
+- **Path-traversal guards** (`path.relative()` + `startsWith("..")` containment) on every path-taking surface: `readExtracted`, `read-addon`, `scaffold-layout` (source + output), `scaffold-sprite`, and the `search` glob/path parameter. *Keep these when adding path-taking tools.* `search-docs` reads only `<extractedDir>/c3-reference/` (the local reference cache) and the project's own `addons/`; it never fetches anything and has no network surface. `diff-addon-aces` is a deliberate exception: its `.c3addon`-file-path source form is **not** containment-guarded to `--project-dir`, since the tool's purpose is diffing packages that live outside the project (e.g. a freshly downloaded release archive) — it stays read-only and its addon-id/dir source form still resolves (and containment-checks) through the same `resolveAddonTarget` the siblings use.
 - **Optimistic concurrency** via `txId` (above).
 - **Input validation** — Zod schemas on every tool, with `.describe()` on every parameter.
 - **Two-tier error handling** — caught exceptions become `isError: true` content (a single block via upstream `mcpError`/`withMcpErrors`, see the response-shape bullet above); bad input surfaces as protocol errors.

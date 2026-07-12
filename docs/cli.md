@@ -456,4 +456,4 @@ npx construct3-chef search-docs --param x
 
 ## Addon tooling
 
-Bundled `.c3addon` package commands — `read-addon` (metadata + ACE summary, or a raw entry) and `validate-addons` (read-only metadata/integrity/orphan/missing/duplicate consistency check against `project.c3proj`, exits non-zero on any finding) — moved to [cli-addons.md](cli-addons.md) as their own reference (the c3addon-tooling cluster, #100 umbrella, keeps growing independently of the rest of this file).
+Bundled `.c3addon` package commands — `read-addon` (metadata + ACE summary, or a raw entry), `validate-addons` (read-only metadata/integrity/orphan/missing/duplicate consistency check against `project.c3proj`, exits non-zero on any finding), `list-addons` (read-only unified bundled + `usedAddons` + editor-only inventory), and `diff-addon-aces` (read-only ACE-contract diff between two local addon versions) — moved to [cli-addons.md](cli-addons.md) as their own reference (the c3addon-tooling cluster, #100 umbrella, keeps growing independently of the rest of this file).
