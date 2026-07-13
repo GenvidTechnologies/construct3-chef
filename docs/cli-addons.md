@@ -1,9 +1,9 @@
 # CLI Reference — Addon Tooling
 
-Bundled `.c3addon` package commands (`read-addon`, `validate-addons`, `list-addons`),
-split out of [cli.md](cli.md) as the c3addon-tooling cluster (#100 umbrella,
-#106–#111/#98) grows. All commands accept the global `--project-dir` option — see
-[cli.md § Global Options](cli.md#global-options).
+Bundled `.c3addon` package commands (`read-addon`, `validate-addons`, `list-addons`,
+`diff-addon-aces`), split out of [cli.md](cli.md) as the c3addon-tooling cluster
+(#100 umbrella, #106–#111/#98/#109) grows. All commands accept the global
+`--project-dir` option — see [cli.md § Global Options](cli.md#global-options).
 
 ```bash
 npx construct3-chef <subcommand> [options]
@@ -132,3 +132,47 @@ npx construct3-chef list-addons [--project-dir <path>]
 ```
 
 An empty project prints `No addons found.` Output uses the shared `formatAddonInventory` formatter, so the CLI and MCP `list-addons` surfaces are byte-identical. (Duplicate/nested-package detection is intentionally out of scope here — that's a `validate-addons` finding; `list-addons` uses flat discovery.)
+
+---
+
+## diff-addon-aces
+
+Read-only diff of the ACE contract between two addon versions: reports added, removed, and changed ACEs (actions/conditions/expressions), including changed parameter signatures. Built for planning an addon upgrade (e.g. bundled GCore vN → vN+1) — it surfaces the breaking-change surface (a dropped action param, a renamed/removed ACE) before you touch the project.
+
+```bash
+npx construct3-chef diff-addon-aces <from> <to> [--project-dir <path>]
+```
+
+| Argument | Description |
+| -------- | ----------- |
+| `from` | First ACE source (positional, required). |
+| `to` | Second ACE source (positional, required). |
+
+Each of `from`/`to` is one of:
+
+- a path to a local `.c3addon` file — absolute or relative to cwd. **Not** containment-guarded to `--project-dir`: unlike `read-addon`/`validate-addons`, this command is read-only and exists to diff packages that may live outside the project (e.g. a newly downloaded release archive sitting next to the bundled one).
+- a project-discovered addon id (same resolution as `read-addon`'s `name` argument).
+- a path to an extracted addon directory.
+
+**Local-only.** A remote source (a GitHub release tag or URL, fetched on the fly) is not yet supported — download both `.c3addon` files first (e.g. `gh release download`) and diff the local files. Remote sourcing is deferred to a follow-up issue.
+
+```
+$ construct3-chef diff-addon-aces GCoreV1.c3addon GCoreV2.c3addon
+diff-addon-aces: GCoreV1.c3addon → GCoreV2.c3addon
+  +1 added, -1 removed, ~1 changed  (1 unchanged)
+
+Added (A):
+  [expression] GCore.sdk-version()
+
+Removed (R):
+  [condition] GCore.is-legacy-account()
+
+Changed (C):
+  [action] GCore.login
+    - (token, region)
+    + (token)
+```
+
+The `objectClass` shown (`GCore`) is resolved from each side's `addon.json` `id`, so it stays stable even when the two archive filenames differ (e.g. a version suffix). The clean case prints `No ACE differences.` An unresolvable source prints `addon source not found: <arg>` and exits 1.
+
+Output uses the shared `formatAceDiff` formatter, so the CLI and MCP `diff-addon-aces` surfaces are byte-identical.

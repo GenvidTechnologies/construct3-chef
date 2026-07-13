@@ -66,6 +66,7 @@ import { discoverAddons, resolveAddonTarget } from "../c3/addonDiscovery.js";
 import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "../c3/addonReader.js";
 import { validateAddons, formatAddonValidation } from "../c3/addonValidator.js";
 import { listAddons, formatAddonInventory } from "../c3/addonInventory.js";
+import { diffAddonAces, formatAceDiff, resolveAceSource } from "../c3/addonAceDiff.js";
 import { lookup, formatLookupResult } from "../c3/aceLookup.js";
 import { OpsRegistry } from "./opsRegistry.js";
 
@@ -1166,6 +1167,40 @@ reg(
         prefix: "list-addons:",
         extraLines: () => [txIdLine()],
       }),
+    ),
+);
+
+reg(
+  "diff-addon-aces",
+  {
+    title: "Diff Addon ACEs",
+    description:
+      "Diff the ACE contract (added/removed/changed ACEs + changed param signatures) between two addon sources — a .c3addon file path, or a discovered addon id/dir. Read-only.",
+    annotations: READ_ONLY,
+    inputSchema: {
+      from: z.string().describe("First ACE source: a .c3addon file path, or a discovered addon id/dir"),
+      to: z.string().describe("Second ACE source (same forms as 'from')"),
+    },
+  },
+  // No path-traversal guard here — a deliberate departure from the
+  // read-addon/validate-addons sibling guards. diff-addon-aces exists
+  // specifically to diff .c3addon files that live outside the project
+  // (e.g. two downloaded release archives), and the tool is strictly
+  // read-only; resolveAceSource containment-checks the addon-id/dir branch
+  // internally. No txId footer either — addon packages aren't tx-tracked
+  // (not in SOURCE_DIRS, not project.c3proj), same as read-addon.
+  async ({ from, to }) =>
+    rwlock.read(
+      withMcpErrors(
+        async () => {
+          const a = resolveAceSource(PROJECT_ROOT, from);
+          if ("error" in a) return mcpError(a.error, { prefix: "diff-addon-aces:" });
+          const b = resolveAceSource(PROJECT_ROOT, to);
+          if ("error" in b) return mcpError(b.error, { prefix: "diff-addon-aces:" });
+          return mcpContent(formatAceDiff(diffAddonAces(a.aces, b.aces), a.label, b.label));
+        },
+        { prefix: "diff-addon-aces:" },
+      ),
     ),
 );
 

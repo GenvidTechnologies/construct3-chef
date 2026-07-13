@@ -11,7 +11,7 @@ map (§ "Where to read more").
 - `recipe-reference.md` — all event-sheet + layout + workflow recipe ops, SID addressing, builder shorthands, and the numbered recipe gotchas/bugs (read before touching the recipe interpreter/validator)
 - `generators.md` — the 6 generators, `extracted/` output format, cross-referencing, localVars matching
 - `cli.md` — full CLI flag documentation for every subcommand except the addon-tooling cluster
-- `cli-addons.md` — CLI flag documentation for the addon-tooling commands (`read-addon`, `validate-addons`, `list-addons`), split out of `cli.md` as that cluster grows
+- `cli-addons.md` — CLI flag documentation for the addon-tooling commands (`read-addon`, `validate-addons`, `list-addons`, `diff-addon-aces`), split out of `cli.md` as that cluster grows
 - `ops.md` — user-defined ops: op file format, param types, substitution rules, MCP (`list-ops` / `op-<name>` / hot reload) and CLI (`list-ops` / `apply-op`) surfaces, and the `ops.dir` / `ops.watch` config keys
 
 ## Process & contracts

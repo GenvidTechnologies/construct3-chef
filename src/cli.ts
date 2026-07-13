@@ -40,6 +40,7 @@ import { discoverAddons, resolveAddonTarget } from "./c3/addonDiscovery.js";
 import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "./c3/addonReader.js";
 import { validateAddons, formatAddonValidation } from "./c3/addonValidator.js";
 import { listAddons, formatAddonInventory } from "./c3/addonInventory.js";
+import { diffAddonAces, formatAceDiff, resolveAceSource } from "./c3/addonAceDiff.js";
 
 const GENERATOR_NAMES = ["scripts", "dsl", "layouts", "templates", "sid-registry", "global-layers"] as const;
 type GeneratorName = (typeof GENERATOR_NAMES)[number];
@@ -541,6 +542,44 @@ yargs(hideBin(process.argv))
     (argv) => {
       const rootDir = resolveProjectDir(argv);
       console.log(formatAddonInventory(listAddons(rootDir)));
+    },
+  )
+  .command(
+    "diff-addon-aces <from> <to>",
+    "Diff the ACE contract (added/removed/changed ACEs + changed param signatures) between two addon sources. Read-only.",
+    (y) =>
+      y
+        .positional("from", {
+          type: "string",
+          demandOption: true,
+          describe: "First ACE source: a .c3addon file path, or a discovered addon id/dir",
+        })
+        .positional("to", {
+          type: "string",
+          demandOption: true,
+          describe: "Second ACE source (same forms as 'from')",
+        }),
+    // No path-traversal guard here — a deliberate departure from the
+    // read-addon/validate-addons sibling guards. diff-addon-aces exists
+    // specifically to diff .c3addon files that live outside the project
+    // (e.g. two downloaded release archives), and the tool is strictly
+    // read-only; resolveAceSource containment-checks the addon-id/dir branch
+    // internally.
+    (argv) => {
+      const rootDir = resolveProjectDir(argv);
+      const a = resolveAceSource(rootDir, argv.from);
+      if ("error" in a) {
+        console.error(a.error);
+        process.exitCode = 1;
+        return;
+      }
+      const b = resolveAceSource(rootDir, argv.to);
+      if ("error" in b) {
+        console.error(b.error);
+        process.exitCode = 1;
+        return;
+      }
+      console.log(formatAceDiff(diffAddonAces(a.aces, b.aces), a.label, b.label));
     },
   )
   .command(
