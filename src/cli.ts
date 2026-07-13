@@ -41,6 +41,7 @@ import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "./c
 import { validateAddons, formatAddonValidation } from "./c3/addonValidator.js";
 import { listAddons, formatAddonInventory } from "./c3/addonInventory.js";
 import { diffAddonAces, formatAceDiff, resolveAceSource } from "./c3/addonAceDiff.js";
+import { scanAddonUsage, formatAddonUsage } from "./c3/addonAceUsage.js";
 
 const GENERATOR_NAMES = ["scripts", "dsl", "layouts", "templates", "sid-registry", "global-layers"] as const;
 type GeneratorName = (typeof GENERATOR_NAMES)[number];
@@ -580,6 +581,35 @@ yargs(hideBin(process.argv))
         return;
       }
       console.log(formatAceDiff(diffAddonAces(a.aces, b.aces), a.label, b.label));
+    },
+  )
+  .command(
+    "scan-addon-usage <addon>",
+    "Scan a project's event sheets for call sites of an addon's ACEs (presence + call sites); --from diffs against an old addon version and reports blast radius, exiting non-zero when any call site is affected. Read-only.",
+    (y) =>
+      y
+        .positional("addon", {
+          type: "string",
+          demandOption: true,
+          describe:
+            "Addon source to scan usage of: a discovered addon id, a .c3addon file path, or an extracted addon dir",
+        })
+        .option("from", {
+          type: "string",
+          describe: "Old-version ACE source (same forms as 'addon') to diff against, enabling blast-radius mode",
+        }),
+    (argv) => {
+      const rootDir = resolveProjectDir(argv);
+      const result = scanAddonUsage(rootDir, argv.addon, argv.from);
+      if ("error" in result) {
+        console.error(result.error);
+        process.exitCode = 1;
+        return;
+      }
+      console.log(formatAddonUsage(result));
+      if (result.blast !== undefined && result.blast.affectedCount > 0) {
+        process.exitCode = 1;
+      }
     },
   )
   .command(
