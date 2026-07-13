@@ -1,0 +1,9 @@
+{
+	"name": "Leaderboard",
+	"plugin-id": "GCore",
+	"sid": 810000000000002,
+	"isGlobal": false,
+	"editorNewInstanceIsReplica": true,
+	"instanceVariables": [],
+	"behaviorTypes": []
+}

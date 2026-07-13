@@ -1,0 +1,9 @@
+{
+	"type": "plugin",
+	"id": "GCore",
+	"name": "GCore Fixture",
+	"author": "construct3-chef fixtures",
+	"version": "1.1.0.0",
+	"sdk-version": 2,
+	"min-construct-version": "r399"
+}
