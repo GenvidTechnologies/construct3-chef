@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import type { EventSheet } from "@genvidtech/c3source";
 import { hasActions, hasConditions, openProject, visitEvents } from "@genvidtech/c3source";
+import { diffAddonAces, resolveAceSource } from "./addonAceDiff.js";
 import { resolveAddonTarget } from "./addonDiscovery.js";
 import { readAddonAces, resolveAddonId } from "./addonReader.js";
 import type { AceEntry } from "./c3Reference.js";
@@ -34,11 +35,21 @@ export interface PresenceRow {
 }
 
 /**
- * Result of a plain (non-blast) `scanAddonUsage`. `blast` is left for a
- * follow-up step (P4, #110) that annotates dangling call sites — sites whose
- * `(kind, id)` no longer exists in the addon's current ACEs, e.g. after an
- * addon upgrade removed an action — without changing this shape's meaning.
+ * Blast-radius data attached to `AddonUsageResult` when `scanAddonUsage` was
+ * called with a `fromArg` (a `--from` old-version source). `changedKeys` /
+ * `removedKeys` are `<kind>:<id>` identity keys ({@link aceKey}) drawn from
+ * `diffAddonAces(fromAces, currentAces)`'s `changed`/`removed` buckets —
+ * added ACEs are deliberately excluded, since no pre-existing call site can
+ * reference an ACE that didn't exist yet. `affectedCount` is the number of
+ * `callSites` whose `(kind, id)` falls in either set.
  */
+export interface BlastInfo {
+  fromLabel: string;
+  changedKeys: string[];
+  removedKeys: string[];
+  affectedCount: number;
+}
+
 export interface AddonUsageResult {
   addonId: string;
   addonLabel: string;
@@ -50,13 +61,15 @@ export interface AddonUsageResult {
    * names without re-reading the addon.
    */
   aces: AceEntry[];
+  /** Present only when `scanAddonUsage` was called with a `fromArg`. */
+  blast?: BlastInfo;
 }
 
 export type ScanAddonUsageResult = AddonUsageResult | { error: string };
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
-function aceKey(kind: "condition" | "action", id: string): string {
+function aceKey(kind: AceEntry["kind"], id: string): string {
   return `${kind}:${id}`;
 }
 
@@ -85,10 +98,26 @@ function byPresenceOrder(a: ObjectDefn, b: ObjectDefn): number {
  *    matches a current ACE. Conditions and actions only — expression usage
  *    isn't a structured node and is out of scope here (tracked separately).
  *
+ * Optional blast-radius mode: when `fromArg` is given, it's resolved via
+ * `addonAceDiff.resolveAceSource` — deliberately NOT contained to `rootDir`,
+ * mirroring `diff-addon-aces`'s own `resolveAceSource` call site: a `--from`
+ * source (e.g. a previously downloaded release archive) may legitimately
+ * live outside the project being scanned, and this tool is read-only. The
+ * `from` ACEs are diffed against the addon's current ACEs
+ * ({@link diffAddonAces}), and the resulting `changed`/`removed` buckets do
+ * two things: (a) widen the call-site match set to also catch *dangling*
+ * calls — a call site whose `(kind, id)` was REMOVED no longer appears in
+ * the addon's current ACEs, so the plain match rule above would silently
+ * drop it; this is exactly the "reimport didn't migrate this event sheet"
+ * scenario blast mode exists to surface — and (b) get carried on the result
+ * as `blast` so {@link formatAddonUsage} can mark affected rows/call sites
+ * without recomputing the diff.
+ *
  * Errors as values, mirroring `addonAceDiff.resolveAceSource`: returns
- * `{ error }` when the addon can't be resolved. Never throws.
+ * `{ error }` when the addon (or, in blast mode, the `from` source) can't be
+ * resolved. Never throws.
  */
-export function scanAddonUsage(rootDir: string, addonArg: string): ScanAddonUsageResult {
+export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: string): ScanAddonUsageResult {
   const target = resolveAddonTarget(rootDir, addonArg);
   if (target === null) {
     return { error: `addon source not found: ${addonArg}` };
@@ -103,6 +132,28 @@ export function scanAddonUsage(rootDir: string, addonArg: string): ScanAddonUsag
       .filter((a): a is AceEntry & { kind: "condition" | "action" } => a.kind !== "expression")
       .map((a) => aceKey(a.kind, a.id)),
   );
+
+  let matchKeySet = aceKeySet;
+  let blast: BlastInfo | undefined;
+
+  if (fromArg !== undefined) {
+    const fromSource = resolveAceSource(rootDir, fromArg);
+    if ("error" in fromSource) {
+      return { error: fromSource.error };
+    }
+
+    const diff = diffAddonAces(fromSource.aces, aces);
+    const changedKeys = diff.changed.map((c) => aceKey(c.after.kind, c.after.id));
+    const removedKeys = diff.removed.map((r) => aceKey(r.kind, r.id));
+
+    // Widen the match set with the removed keys only — changed keys are
+    // still present in `aceKeySet` (the ACE still exists, just with a
+    // different param signature), but removed keys are by definition gone
+    // from `aceKeySet` and would otherwise never surface a call site.
+    matchKeySet = new Set([...aceKeySet, ...removedKeys]);
+
+    blast = { fromLabel: fromSource.label, changedKeys, removedKeys, affectedCount: 0 };
+  }
 
   const project = openProject(rootDir);
   const objects = readProjectObjects(project);
@@ -122,7 +173,7 @@ export function scanAddonUsage(rootDir: string, addonArg: string): ScanAddonUsag
     visitEvents(sheet.events, (event, ctx) => {
       if (hasConditions(event)) {
         for (const cond of event.conditions) {
-          if (nameSet.has(cond.objectClass) && aceKeySet.has(aceKey("condition", cond.id))) {
+          if (nameSet.has(cond.objectClass) && matchKeySet.has(aceKey("condition", cond.id))) {
             callSites.push({
               sheet: sheet.name,
               eventNumber: ctx.eventNumber,
@@ -139,7 +190,7 @@ export function scanAddonUsage(rootDir: string, addonArg: string): ScanAddonUsag
       if (hasActions(event)) {
         for (const action of event.actions as C3Action[]) {
           if (!isStandardAction(action)) continue;
-          if (nameSet.has(action.objectClass) && aceKeySet.has(aceKey("action", action.id))) {
+          if (nameSet.has(action.objectClass) && matchKeySet.has(aceKey("action", action.id))) {
             callSites.push({
               sheet: sheet.name,
               eventNumber: ctx.eventNumber,
@@ -166,7 +217,16 @@ export function scanAddonUsage(rootDir: string, addonArg: string): ScanAddonUsag
     callSiteCount: callSiteCountByName.get(d.name) ?? 0,
   }));
 
-  return { addonId, addonLabel: target.name, presence, callSites, aces };
+  if (blast !== undefined) {
+    const changedSet = new Set(blast.changedKeys);
+    const removedSet = new Set(blast.removedKeys);
+    blast.affectedCount = callSites.filter((s) => {
+      const key = aceKey(s.kind, s.id);
+      return changedSet.has(key) || removedSet.has(key);
+    }).length;
+  }
+
+  return { addonId, addonLabel: target.name, presence, callSites, aces, ...(blast !== undefined ? { blast } : {}) };
 }
 
 // ── Formatter ────────────────────────────────────────────────────────────────
@@ -176,10 +236,17 @@ const PRESENCE_SECTION_TITLE: Record<PresenceRow["kind"], string> = {
   family: "Families",
 };
 
-function formatCallSiteLine(site: CallSite, aceByKey: Map<string, AceEntry>): string {
+function formatCallSiteLine(
+  site: CallSite,
+  aceByKey: Map<string, AceEntry>,
+  changedKeySet: Set<string> | undefined,
+  removedKeySet: Set<string> | undefined,
+): string {
   const ace = aceByKey.get(aceKey(site.kind, site.id));
   const paramNames = ace ? ace.params.map((p) => p.name).join(", ") : "";
-  return `    event #${site.eventNumber ?? "?"}  ${site.jsonPath}   [${site.kind}] ${site.objectClass}.${site.id}(${paramNames})`;
+  const key = aceKey(site.kind, site.id);
+  const marker = removedKeySet?.has(key) ? " ⚠ REMOVED" : changedKeySet?.has(key) ? " ⚠ CHANGED" : "";
+  return `    event #${site.eventNumber ?? "?"}  ${site.jsonPath}   [${site.kind}] ${site.objectClass}.${site.id}(${paramNames})${marker}`;
 }
 
 /**
@@ -189,13 +256,22 @@ function formatCallSiteLine(site: CallSite, aceByKey: Map<string, AceEntry>): st
  * output stays byte-identical. Owns both the empty case (`No usage of addon
  * "<id>" found.`) and the error-value case so neither call site special-cases
  * them.
+ *
+ * When `result.blast` is present (a `--from`/blast-radius scan), the output
+ * gains: a `blast radius (vs <fromLabel>): N affected call site(s)` line
+ * after the summary; a trailing ` ⚠ exposed` marker on every presence row
+ * when the diff has any changed/removed entries (a version bump touches
+ * every instance of the addon regardless of whether that instance has any
+ * matched call sites); and a trailing ` ⚠ CHANGED` / ` ⚠ REMOVED` marker on
+ * each affected call-site line. With no `blast`, output is byte-identical to
+ * the plain (P3) scan.
  */
 export function formatAddonUsage(result: ScanAddonUsageResult): string {
   if ("error" in result) {
     return `scan-addon-usage: ${result.error}`;
   }
 
-  const { addonId, presence, callSites, aces } = result;
+  const { addonId, presence, callSites, aces, blast } = result;
 
   if (presence.length === 0 && callSites.length === 0) {
     return `No usage of addon "${addonId}" found.`;
@@ -210,6 +286,12 @@ export function formatAddonUsage(result: ScanAddonUsageResult): string {
       `call sites: ${callSites.length}`,
   ];
 
+  if (blast !== undefined) {
+    lines.push(`blast radius (vs ${blast.fromLabel}): ${blast.affectedCount} affected call site(s)`);
+  }
+
+  const exposed = blast !== undefined && (blast.changedKeys.length > 0 || blast.removedKeys.length > 0);
+
   if (presence.length > 0) {
     for (const kind of ["objectType", "family"] as const) {
       const rows = presence.filter((p) => p.kind === kind);
@@ -218,7 +300,8 @@ export function formatAddonUsage(result: ScanAddonUsageResult): string {
       lines.push(`${PRESENCE_SECTION_TITLE[kind]}:`);
       for (const row of rows) {
         const suffix = row.callSiteCount === 0 ? " (instantiated, no ACE calls)" : "";
-        lines.push(`  ${row.name}   ${row.callSiteCount} call site(s)${suffix}`);
+        const exposedMarker = exposed ? " ⚠ exposed" : "";
+        lines.push(`  ${row.name}   ${row.callSiteCount} call site(s)${suffix}${exposedMarker}`);
       }
     }
   }
@@ -229,6 +312,9 @@ export function formatAddonUsage(result: ScanAddonUsageResult): string {
       if (ace.kind === "expression") continue;
       aceByKey.set(aceKey(ace.kind, ace.id), ace);
     }
+
+    const changedKeySet = blast !== undefined ? new Set(blast.changedKeys) : undefined;
+    const removedKeySet = blast !== undefined ? new Set(blast.removedKeys) : undefined;
 
     const bySheet = new Map<string, CallSite[]>();
     for (const site of callSites) {
@@ -245,7 +331,7 @@ export function formatAddonUsage(result: ScanAddonUsageResult): string {
     for (const [sheet, sites] of bySheet) {
       lines.push(`  ${sheet}`);
       for (const site of sites) {
-        lines.push(formatCallSiteLine(site, aceByKey));
+        lines.push(formatCallSiteLine(site, aceByKey, changedKeySet, removedKeySet));
       }
     }
   }

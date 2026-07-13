@@ -4,6 +4,7 @@ import path from "node:path";
 import { scanAddonUsage, formatAddonUsage, type AddonUsageResult, type CallSite } from "../../src/c3/addonAceUsage.js";
 
 const FIXTURE_ROOT = path.resolve("test/fixtures/addon-ace-usage");
+const GCORE_OLD_SOURCE = path.join("archive-sources", "GCoreOld");
 
 function ok(result: ReturnType<typeof scanAddonUsage>): AddonUsageResult {
   expect("error" in result).to.be.false;
@@ -156,6 +157,126 @@ describe("addonAceUsage", () => {
         aces: [],
       };
       expect(formatAddonUsage(empty)).to.equal('No usage of addon "Nowhere" found.');
+    });
+  });
+
+  // ── Blast-radius mode (--from) — P4, #110 ─────────────────────────────────
+  //
+  // archive-sources/GCoreOld -> GCore.c3addon (built from GCoreNew, see
+  // build-archive.mjs) exercises every diff bucket the blast-radius match
+  // widening + markers rely on:
+  //   - "is-logged-in" condition / "login" condition: UNCHANGED
+  //   - "login" action: CHANGED (New drops the `region` param)
+  //   - "logout" action: REMOVED in New — the fixture's Events.json still
+  //     calls it (Account.logout, sid 820000000000005), which is exactly the
+  //     dangling "reimport didn't migrate this event sheet" call a plain scan
+  //     silently drops (see U9) and blast mode must surface.
+
+  describe("scanAddonUsage — blast radius (--from)", () => {
+    it("B1 (red-first against plain P3 matching): Account.logout dangling call site is FOUND when --from is given", () => {
+      // Under the plain (no-blast) match rule this is exactly U9's case
+      // (findSite(...) undefined) — widening the match set with diff.removed
+      // is what makes this call site appear at all.
+      const result = ok(scanAddonUsage(FIXTURE_ROOT, "GCore", GCORE_OLD_SOURCE));
+      const site = findSite(result.callSites, "action", "Account", "logout");
+      expect(site).to.not.be.undefined;
+      expect(site?.sid).to.equal(820000000000005);
+    });
+
+    it("B2: blast.removedKeys contains action:logout, blast.changedKeys contains action:login", () => {
+      const result = ok(scanAddonUsage(FIXTURE_ROOT, "GCore", GCORE_OLD_SOURCE));
+      expect(result.blast).to.not.be.undefined;
+      expect(result.blast?.removedKeys).to.include("action:logout");
+      expect(result.blast?.changedKeys).to.include("action:login");
+      expect(result.blast?.fromLabel).to.equal("GCoreOld");
+    });
+
+    it("B3: blast.affectedCount counts the changed login call site + the removed logout call site (2)", () => {
+      const result = ok(scanAddonUsage(FIXTURE_ROOT, "GCore", GCORE_OLD_SOURCE));
+      expect(result.blast?.affectedCount).to.equal(2);
+    });
+
+    it("B4: self-diff (from === current) yields an empty diff — zero affected, no changed/removed keys", () => {
+      const result = ok(scanAddonUsage(FIXTURE_ROOT, "GCore", "GCore"));
+      expect(result.blast).to.not.be.undefined;
+      expect(result.blast?.changedKeys).to.deep.equal([]);
+      expect(result.blast?.removedKeys).to.deep.equal([]);
+      expect(result.blast?.affectedCount).to.equal(0);
+    });
+
+    it("B5: an unresolvable --from source returns an error, never throws", () => {
+      expect(() => scanAddonUsage(FIXTURE_ROOT, "GCore", "NoSuchSource")).to.not.throw();
+      const result = scanAddonUsage(FIXTURE_ROOT, "GCore", "NoSuchSource");
+      expect(result).to.deep.equal({ error: "addon source not found: NoSuchSource" });
+    });
+
+    it("B6: --from resolving a .c3addon source OUTSIDE the fixture root works without a containment error", () => {
+      // Mirrors addonAceDiff.test.ts's own non-containment coverage (I1/I2):
+      // a --from source may live under a completely different fixture root
+      // than the project being scanned — deliberately not path-contained to
+      // FIXTURE_ROOT, per resolveAceSource's docstring.
+      const outsideC3Addon = path.join(
+        path.resolve("test/fixtures/addon-ace-diff"),
+        "addons",
+        "plugin",
+        "GCoreV1.c3addon",
+      );
+      expect(() => scanAddonUsage(FIXTURE_ROOT, "GCore", outsideC3Addon)).to.not.throw();
+      const result = scanAddonUsage(FIXTURE_ROOT, "GCore", outsideC3Addon);
+      expect("error" in result).to.be.false;
+      const okResult = result as AddonUsageResult;
+      expect(okResult.blast).to.not.be.undefined;
+      expect(okResult.blast?.fromLabel).to.equal("GCoreV1.c3addon");
+    });
+  });
+
+  describe("formatAddonUsage — blast radius", () => {
+    it("FB1: renders the blast radius header line", () => {
+      const result = scanAddonUsage(FIXTURE_ROOT, "GCore", GCORE_OLD_SOURCE);
+      const output = formatAddonUsage(result);
+      expect(output).to.include("blast radius (vs GCoreOld): 2 affected call site(s)");
+    });
+
+    it("FB2: marks a changed-signature call site (Account.login, region dropped) with ⚠ CHANGED", () => {
+      const result = scanAddonUsage(FIXTURE_ROOT, "GCore", GCORE_OLD_SOURCE);
+      const output = formatAddonUsage(result);
+      expect(output).to.include("[action] Account.login(token) ⚠ CHANGED");
+    });
+
+    it("FB3: marks the dangling removed-ACE call site (Account.logout) with ⚠ REMOVED", () => {
+      const result = scanAddonUsage(FIXTURE_ROOT, "GCore", GCORE_OLD_SOURCE);
+      const output = formatAddonUsage(result);
+      expect(output).to.include("[action] Account.logout() ⚠ REMOVED");
+    });
+
+    it("FB4: every present object-type/family row gets ⚠ exposed when the diff has any changed/removed entries", () => {
+      const result = scanAddonUsage(FIXTURE_ROOT, "GCore", GCORE_OLD_SOURCE);
+      const output = formatAddonUsage(result);
+      // Account's total call-site count grows from 3 (plain scan, U10) to 4
+      // in blast mode — the widened match set also picks up the dangling
+      // logout action as a genuine call site, not just an "affected" one.
+      expect(output).to.include("Account   4 call site(s) ⚠ exposed");
+      expect(output).to.include("Leaderboard   0 call site(s) (instantiated, no ACE calls) ⚠ exposed");
+      expect(output).to.include("GCoreFamily   1 call site(s) ⚠ exposed");
+    });
+
+    it("FB5: self-diff (from === current) renders zero affected and no exposed/CHANGED/REMOVED markers", () => {
+      const result = scanAddonUsage(FIXTURE_ROOT, "GCore", "GCore");
+      const output = formatAddonUsage(result);
+      expect(output).to.include("blast radius (vs GCore): 0 affected call site(s)");
+      expect(output).to.not.include("⚠ exposed");
+      expect(output).to.not.include("⚠ CHANGED");
+      expect(output).to.not.include("⚠ REMOVED");
+    });
+
+    it("FB6: no --from produces output byte-identical to the plain P3 scan", () => {
+      const plain = formatAddonUsage(scanAddonUsage(FIXTURE_ROOT, "GCore"));
+      const explicitUndefined = formatAddonUsage(scanAddonUsage(FIXTURE_ROOT, "GCore", undefined));
+      expect(explicitUndefined).to.equal(plain);
+      expect(plain).to.not.include("blast radius");
+      expect(plain).to.not.include("⚠ exposed");
+      expect(plain).to.not.include("⚠ CHANGED");
+      expect(plain).to.not.include("⚠ REMOVED");
     });
   });
 });
