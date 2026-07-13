@@ -80,6 +80,12 @@ function mapAceItems(items: unknown[], kind: "action" | "condition" | "expressio
  * (`objectClass`). Exported so the per-addon `.c3addon` reader (addonReader.ts)
  * decodes hybrid-sourced aces.json bytes through the same parser the aggregate
  * `buildAddonAceRegistry` uses — keeping ACE parsing single-sourced.
+ *
+ * NOTE: `objectClass` is stamped verbatim from this caller-supplied arg (the
+ * addon's name/id) onto every entry — it is NOT parsed from the ACE content, so
+ * it is constant within one addon and differs between two versions whose package
+ * names differ. Do NOT use `objectClass` as a cross-addon/cross-version ACE
+ * identity; key on `(kind, id)` for that (see `addonAceDiff.diffAddonAces`).
  */
 export function mapAcesJsonToEntries(raw: unknown, objectClass: string): AceEntry[] {
   if (!isObject(raw)) return [];
