@@ -11,7 +11,7 @@ map (§ "Where to read more").
 - `recipe-reference.md` — all event-sheet + layout + workflow recipe ops, SID addressing, builder shorthands, and the numbered recipe gotchas/bugs (read before touching the recipe interpreter/validator)
 - `generators.md` — the 6 generators, `extracted/` output format, cross-referencing, localVars matching
 - `cli.md` — full CLI flag documentation for every subcommand except the addon-tooling cluster
-- `cli-addons.md` — CLI flag documentation for the addon-tooling commands (`read-addon`, `validate-addons`, `list-addons`, `diff-addon-aces`), split out of `cli.md` as that cluster grows
+- `cli-addons.md` — CLI flag documentation for the addon-tooling commands (`read-addon`, `validate-addons`, `list-addons`, `diff-addon-aces`, `scan-addon-usage`), split out of `cli.md` as that cluster grows
 - `ops.md` — user-defined ops: op file format, param types, substitution rules, MCP (`list-ops` / `op-<name>` / hot reload) and CLI (`list-ops` / `apply-op`) surfaces, and the `ops.dir` / `ops.watch` config keys
 
 ## Process & contracts
@@ -36,6 +36,7 @@ _Numbered chronologically by when the decision landed (earliest first); 0001–0
 - `decisions/0007-mcp-server-root-resolution-and-c3project-adoption.md` — MCP root resolution via mcp-utils `resolveRootFolder` (env/discovery/cwd precedence) and hybrid C3Project handle adoption; rejected alternatives and deliberate non-adoptions ([#94](https://github.com/genvid-holdings/construct3-chef/issues/94))
 - `decisions/0008-addon-reader-hybrid-sourcing.md` — shared addon reader prefers extracted dir, falls back to reading the `.c3addon` zip archive directly; parser-only sharing with `aceRegistry`, off-barrel placement, `fflate` for sync zip reads ([#106](https://github.com/GenvidTechnologies/construct3-chef/issues/106), part of the #100 c3addon-tooling umbrella)
 - `decisions/0009-addon-lang-consistency-check.md` — aces.json/properties ↔ lang/*.json cross-validation folded into `validate-addons` (not a separate `validate-addon` command); lang check gated on `lang/` presence; best-effort string-literal scan for JS-declared plugin `properties` ([#98](https://github.com/GenvidTechnologies/construct3-chef/issues/98), part of the #100 c3addon-tooling umbrella)
+- `decisions/0010-scan-addon-usage-plugins-only-v1.md` — `scan-addon-usage` scans plugin ACE call sites in event sheets only; behavior/effect/expression usage split into follow-ups (#123/#124/#125); `readProjectObjects`/`ObjectDefn` shared seam; blast-radius match-set widening for dangling calls to removed ACEs ([#110](https://github.com/GenvidTechnologies/construct3-chef/issues/110), part of the #100 c3addon-tooling umbrella)
 
 ## C3 platform reference (the *why* behind the gotchas)
 
