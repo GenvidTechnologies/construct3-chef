@@ -67,6 +67,7 @@ import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "../
 import { validateAddons, formatAddonValidation } from "../c3/addonValidator.js";
 import { listAddons, formatAddonInventory } from "../c3/addonInventory.js";
 import { diffAddonAces, formatAceDiff, resolveAceSource } from "../c3/addonAceDiff.js";
+import { scanAddonUsage, formatAddonUsage } from "../c3/addonAceUsage.js";
 import { lookup, formatLookupResult } from "../c3/aceLookup.js";
 import { OpsRegistry } from "./opsRegistry.js";
 
@@ -1201,6 +1202,34 @@ reg(
         },
         { prefix: "diff-addon-aces:" },
       ),
+    ),
+);
+
+reg(
+  "scan-addon-usage",
+  {
+    title: "Scan Addon Usage",
+    description:
+      "Scan the project's event sheets for call sites of an addon's ACEs: which object types/families are instantiated from the addon (presence), and which conditions/actions on them call one of its current ACEs (call sites), grouped by event sheet. With `from` (a .c3addon file path, or a discovered addon id/dir for a prior version), also reports blast radius — call sites whose ACE was changed or removed between `from` and the addon's current ACEs, surfacing dangling references a reimport may not have migrated. Read-only.",
+    annotations: READ_ONLY,
+    inputSchema: {
+      addon: z
+        .string()
+        .describe("The addon to scan usage for: a discovered addon id, or a path to an addon source tree"),
+      from: z
+        .string()
+        .optional()
+        .describe(
+          "Optional prior-version ACE source for blast-radius mode: a .c3addon file path, or a discovered addon id/dir",
+        ),
+    },
+  },
+  async ({ addon, from }) =>
+    rwlock.read(
+      withMcpErrors(async () => mcpContent(formatAddonUsage(scanAddonUsage(PROJECT_ROOT, addon, from)), txIdLine()), {
+        prefix: "scan-addon-usage:",
+        extraLines: () => [txIdLine()],
+      }),
     ),
 );
 
