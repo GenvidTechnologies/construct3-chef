@@ -1,0 +1,12 @@
+{
+	"name": "GCoreFamily",
+	"plugin-id": "GCore",
+	"sid": 810000000000010,
+	"instanceVariables": [],
+	"behaviorTypes": [],
+	"effectTypes": [],
+	"members": [
+		"Account",
+		"Leaderboard"
+	]
+}

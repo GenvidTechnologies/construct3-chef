@@ -1,0 +1,30 @@
+{
+	"$schema": "../aces.schema.json",
+	"account": {
+		"conditions": [
+			{
+				"id": "is-logged-in",
+				"scriptName": "IsLoggedIn",
+				"params": []
+			},
+			{
+				"id": "login",
+				"scriptName": "IsLoggingIn",
+				"params": []
+			}
+		],
+		"actions": [
+			{
+				"id": "login",
+				"scriptName": "Login",
+				"params": [{ "id": "token", "type": "string" }]
+			},
+			{
+				"id": "sync",
+				"scriptName": "Sync",
+				"params": []
+			}
+		],
+		"expressions": []
+	}
+}

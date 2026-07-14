@@ -1,0 +1,9 @@
+{
+	"name": "Account",
+	"plugin-id": "GCore",
+	"sid": 810000000000001,
+	"isGlobal": false,
+	"editorNewInstanceIsReplica": true,
+	"instanceVariables": [],
+	"behaviorTypes": []
+}

@@ -1,9 +1,10 @@
 # CLI Reference — Addon Tooling
 
 Bundled `.c3addon` package commands (`read-addon`, `validate-addons`, `list-addons`,
-`diff-addon-aces`), split out of [cli.md](cli.md) as the c3addon-tooling cluster
-(#100 umbrella, #106–#111/#98/#109) grows. All commands accept the global
-`--project-dir` option — see [cli.md § Global Options](cli.md#global-options).
+`diff-addon-aces`, `scan-addon-usage`), split out of [cli.md](cli.md) as the
+c3addon-tooling cluster (#100 umbrella, #106–#111/#98/#109/#110) grows. All
+commands accept the global `--project-dir` option — see
+[cli.md § Global Options](cli.md#global-options).
 
 ```bash
 npx construct3-chef <subcommand> [options]
@@ -176,3 +177,83 @@ Changed (C):
 The `objectClass` shown (`GCore`) is resolved from each side's `addon.json` `id`, so it stays stable even when the two archive filenames differ (e.g. a version suffix). The clean case prints `No ACE differences.` An unresolvable source prints `addon source not found: <arg>` and exits 1.
 
 Output uses the shared `formatAceDiff` formatter, so the CLI and MCP `diff-addon-aces` surfaces are byte-identical.
+
+---
+
+## scan-addon-usage
+
+Read-only scan of where a project actually uses an addon: which object types/families are instances of it (**presence**), and which event-sheet condition/action nodes call one of its ACEs (**call sites**). With `--from`, it additionally diffs the addon's current ACEs against an old version and reports the **blast radius** — how many call sites hit an ACE that changed or was removed between the two versions — so an addon upgrade's impact on the project can be assessed before touching anything.
+
+**Plugins-only v1**: this scans plugin condition/action call sites in event sheets only. Behavior usage, effect usage, and expression usage are out of scope here and tracked as separate follow-ups ([#124](https://github.com/GenvidTechnologies/construct3-chef/issues/124), [#125](https://github.com/GenvidTechnologies/construct3-chef/issues/125), [#123](https://github.com/GenvidTechnologies/construct3-chef/issues/123) respectively) — each matches on a different field than a condition/action node's `(objectClass, kind, id)`. See [ADR 0010](decisions/0010-scan-addon-usage-plugins-only-v1.md).
+
+```bash
+npx construct3-chef scan-addon-usage <addon> [--from <source>] [--project-dir <path>]
+```
+
+| Argument/Option | Description |
+| ---------------- | ----------- |
+| `addon` | Addon to scan usage of (positional, required). Same resolution as `diff-addon-aces`'s `from`/`to`: a discovered addon id, a `.c3addon` file path, or an extracted addon dir. |
+| `--from <source>` | Old-version ACE source (same forms as `addon`) to diff against, enabling blast-radius mode. |
+
+The report has two sections:
+
+- **Presence** — every `objectTypes/*.json`/`families/*.json` entry whose `plugin-id` names the addon, grouped under "Object types" and "Families", each with its call-site count (`(instantiated, no ACE calls)` when zero).
+- **Call sites** — every condition/action node, grouped by event sheet, whose `objectClass` is in the presence set and whose `(kind, id)` matches one of the addon's current ACEs. Expression usage isn't a structured condition/action node and isn't scanned (see plugins-only v1, above).
+
+```bash
+$ construct3-chef scan-addon-usage GCore --project-dir <project>
+scan-addon-usage: GCore
+presence: 2 object type(s), 1 family  call sites: 3
+
+Object types:
+  Account   2 call site(s)
+  Leaderboard   0 call site(s) (instantiated, no ACE calls)
+
+Families:
+  GCoreFamily   1 call site(s)
+
+Call sites:
+  Events
+    event #3  events[0]   [action] Account.login(token, region)
+    event #5  events[1]   [condition] Account.is-authenticated()
+    event #8  events[2]   [action] GCoreFamily.sync-progress(slot)
+```
+
+The clean case prints `No usage of addon "<id>" found.` An unresolvable addon prints `addon source not found: <arg>` and exits 1.
+
+### Blast-radius mode (`--from`)
+
+With `--from`, the addon's current ACEs are diffed against the `--from` source via the same machinery as `diff-addon-aces` (`diffAddonAces`), and the resulting **changed** and **removed** buckets (added ACEs are excluded — no pre-existing call site can reference an ACE that didn't exist yet) drive three additions to the report:
+
+- a `blast radius (vs <fromLabel>): N affected call site(s)` summary line;
+- a trailing ` ⚠ exposed` marker on **every** presence row whenever the diff has any changed/removed entries — a version bump touches every instance of the addon regardless of whether that particular instance has a matched call site;
+- a trailing ` ⚠ CHANGED` or ` ⚠ REMOVED` marker on each affected call-site line.
+
+```bash
+$ construct3-chef scan-addon-usage GCore --from GCoreOld.c3addon --project-dir <project>
+scan-addon-usage: GCore
+presence: 2 object type(s), 1 family  call sites: 3
+blast radius (vs GCoreOld.c3addon): 2 affected call site(s)
+
+Object types:
+  Account   2 call site(s) ⚠ exposed
+  Leaderboard   0 call site(s) (instantiated, no ACE calls) ⚠ exposed
+
+Families:
+  GCoreFamily   1 call site(s) ⚠ exposed
+
+Call sites:
+  Events
+    event #3  events[0]   [action] Account.login(token, region) ⚠ CHANGED
+    event #5  events[1]   [condition] Account.is-authenticated()
+    event #8  events[2]   [action] GCoreFamily.sync-progress(slot) ⚠ REMOVED
+```
+
+**Removed-ACE call sites are not dropped from the scan — they're the point.** In blast mode the call-site *match set* itself is widened to `current ACEs ∪ removed ACEs`, not just the *marking* applied afterward. A call to an ACE that the new version removed is by definition absent from the addon's current ACE list, so the plain (non-`--from`) matching rule would silently exclude it from the report entirely. Blast mode exists specifically to surface that dangling call — a stale event sheet that wasn't migrated after the addon was upgraded — so the widened match is load-bearing: without it, the one call site you most need to see after a breaking upgrade would be the one this tool stayed silent about. See [ADR 0010](decisions/0010-scan-addon-usage-plugins-only-v1.md).
+
+### Exit codes
+
+- **0** — plain scan (no `--from`), or blast-radius scan with zero affected call sites.
+- **1** — blast-radius scan with `affectedCount > 0` (fits a project's `commands.validate` chain as an upgrade gate), or an unresolvable `addon`/`--from` source.
+
+Output uses the shared `formatAddonUsage` formatter, so the CLI and MCP `scan-addon-usage` surfaces are byte-identical.

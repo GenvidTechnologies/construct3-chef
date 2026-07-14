@@ -1,0 +1,100 @@
+{
+	"name": "Events",
+	"events": [
+		{
+			"eventType": "block",
+			"conditions": [
+				{
+					"id": "is-logged-in",
+					"objectClass": "Account",
+					"sid": 820000000000001
+				}
+			],
+			"actions": [
+				{
+					"id": "login",
+					"objectClass": "Account",
+					"sid": 820000000000002,
+					"parameters": {
+						"token": "abc123",
+						"region": "us"
+					}
+				}
+			],
+			"sid": 820000000000003
+		},
+		{
+			"eventType": "block",
+			"conditions": [
+				{
+					"id": "login",
+					"objectClass": "Account",
+					"sid": 820000000000004
+				}
+			],
+			"actions": [
+				{
+					"id": "logout",
+					"objectClass": "Account",
+					"sid": 820000000000005
+				}
+			],
+			"sid": 820000000000006
+		},
+		{
+			"eventType": "block",
+			"conditions": [
+				{
+					"id": "is-logged-in",
+					"objectClass": "GCoreFamily",
+					"sid": 820000000000007
+				}
+			],
+			"actions": [],
+			"sid": 820000000000008
+		},
+		{
+			"eventType": "block",
+			"conditions": [
+				{
+					"id": "compare-two-values",
+					"objectClass": "System",
+					"sid": 820000000000009,
+					"parameters": {
+						"first-value": "1",
+						"comparison": 0,
+						"second-value": "1"
+					}
+				}
+			],
+			"actions": [
+				{
+					"id": "wait",
+					"objectClass": "System",
+					"sid": 820000000000010,
+					"parameters": {
+						"seconds": "1"
+					}
+				}
+			],
+			"sid": 820000000000011
+		},
+		{
+			"eventType": "block",
+			"conditions": [],
+			"actions": [
+				{
+					"id": "set-position",
+					"objectClass": "Hero",
+					"sid": 820000000000012,
+					"parameters": {
+						"x": "0",
+						"y": "0"
+					}
+				}
+			],
+			"sid": 820000000000013
+		}
+	],
+	"sid": 820000000000000
+}

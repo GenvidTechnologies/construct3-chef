@@ -1,0 +1,9 @@
+{
+	"name": "Hero",
+	"plugin-id": "Sprite",
+	"sid": 810000000000003,
+	"isGlobal": false,
+	"editorNewInstanceIsReplica": true,
+	"instanceVariables": [],
+	"behaviorTypes": []
+}
