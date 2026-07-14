@@ -8,7 +8,7 @@
 > section headings are fixed — the skill and analyst locate guidance by heading.
 >
 > Companion **access mechanics** (fetch queries, label names) live in the
-> `bugTracker` block of `.genvid-agent.json`.
+> `bugTracker` block of `.gvt-agent.json`.
 >
 > Tracker: **GitHub Issues via the `gh` CLI**.
 
