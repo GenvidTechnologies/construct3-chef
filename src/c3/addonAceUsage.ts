@@ -81,6 +81,51 @@ function byPresenceOrder(a: ObjectDefn, b: ObjectDefn): number {
   return a.name.localeCompare(b.name);
 }
 
+/** A condition/action node as seen mid-walk, before it's known to be a call site. */
+interface CallCandidate {
+  objectClass: string;
+  kind: "condition" | "action";
+  id: string;
+}
+
+/**
+ * Isolates the addon-kind-specific pieces of a usage scan (presence +
+ * per-node match rule + call-site attribution) behind a common seam, so the
+ * event-sheet-walk shell, blast-radius wiring, result assembly, and
+ * {@link formatAddonUsage} stay shared/kind-agnostic across addon kinds
+ * (plugin today; behavior in a follow-up).
+ */
+interface UsageMatcher {
+  /** Presence rows (name + kind), before call-site counts are known. */
+  presence: Omit<PresenceRow, "callSiteCount">[];
+  /** Does this condition/action node call the addon? */
+  matches(node: CallCandidate): boolean;
+  /**
+   * Which presence-row name a call site's `objectClass` counts toward, or
+   * `undefined` if it shouldn't be attributed to any row.
+   */
+  attributeTo(objectClass: string): string | undefined;
+}
+
+/**
+ * Builds the plugin {@link UsageMatcher}: presence is every object
+ * type/family whose `plugin-id` names the addon, a node matches when its
+ * `objectClass` is one of those presence names AND its `(kind, id)` is in
+ * `matchKeySet`, and every matched call site attributes to its own
+ * `objectClass` (which is always a presence name, by construction of
+ * `matches`).
+ */
+function createPluginUsageMatcher(addonId: string, objects: ObjectDefn[], matchKeySet: Set<string>): UsageMatcher {
+  const matched = objects.filter((d) => d.pluginId === addonId).sort(byPresenceOrder);
+  const nameSet = new Set(matched.map((d) => d.name));
+
+  return {
+    presence: matched.map((d) => ({ name: d.name, kind: d.kind })),
+    matches: (node) => nameSet.has(node.objectClass) && matchKeySet.has(aceKey(node.kind, node.id)),
+    attributeTo: (objectClass) => (nameSet.has(objectClass) ? objectClass : undefined),
+  };
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
@@ -157,8 +202,7 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
 
   const project = openProject(rootDir);
   const objects = readProjectObjects(project);
-  const matched = objects.filter((d) => d.pluginId === addonId).sort(byPresenceOrder);
-  const nameSet = new Set(matched.map((d) => d.name));
+  const matcher = createPluginUsageMatcher(addonId, objects, matchKeySet);
 
   const callSites: CallSite[] = [];
 
@@ -173,7 +217,7 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
     visitEvents(sheet.events, (event, ctx) => {
       if (hasConditions(event)) {
         for (const cond of event.conditions) {
-          if (nameSet.has(cond.objectClass) && matchKeySet.has(aceKey("condition", cond.id))) {
+          if (matcher.matches({ objectClass: cond.objectClass, kind: "condition", id: cond.id })) {
             callSites.push({
               sheet: sheet.name,
               eventNumber: ctx.eventNumber,
@@ -190,7 +234,7 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
       if (hasActions(event)) {
         for (const action of event.actions as C3Action[]) {
           if (!isStandardAction(action)) continue;
-          if (nameSet.has(action.objectClass) && matchKeySet.has(aceKey("action", action.id))) {
+          if (matcher.matches({ objectClass: action.objectClass, kind: "action", id: action.id })) {
             callSites.push({
               sheet: sheet.name,
               eventNumber: ctx.eventNumber,
@@ -208,13 +252,14 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
 
   const callSiteCountByName = new Map<string, number>();
   for (const site of callSites) {
-    callSiteCountByName.set(site.objectClass, (callSiteCountByName.get(site.objectClass) ?? 0) + 1);
+    const name = matcher.attributeTo(site.objectClass);
+    if (name === undefined) continue;
+    callSiteCountByName.set(name, (callSiteCountByName.get(name) ?? 0) + 1);
   }
 
-  const presence: PresenceRow[] = matched.map((d) => ({
-    name: d.name,
-    kind: d.kind,
-    callSiteCount: callSiteCountByName.get(d.name) ?? 0,
+  const presence: PresenceRow[] = matcher.presence.map((p) => ({
+    ...p,
+    callSiteCount: callSiteCountByName.get(p.name) ?? 0,
   }));
 
   if (blast !== undefined) {
