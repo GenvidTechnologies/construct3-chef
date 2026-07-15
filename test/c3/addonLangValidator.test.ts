@@ -1,7 +1,9 @@
-import { describe, it } from "mocha";
+import { describe, it, afterEach } from "mocha";
 import { expect } from "chai";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
-import { discoverAddons } from "../../src/c3/addonDiscovery.js";
+import os from "node:os";
+import { discoverAddons, type DiscoveredAddon } from "../../src/c3/addonDiscovery.js";
 import { checkAddonLang } from "../../src/c3/addonLangValidator.js";
 import { formatAddonValidation, type AddonFinding } from "../../src/c3/addonValidator.js";
 
@@ -59,6 +61,57 @@ describe("addonLangValidator", () => {
 
     it("is inert (returns []) for an addon that ships no lang/ files", () => {
       const addon = findAddon(NO_LANG_FIXTURE_ROOT, "CleanControl");
+      expect(checkAddonLang(addon)).to.deep.equal([]);
+    });
+  });
+
+  describe("kind:'behavior' addons", () => {
+    let tmpDir: string;
+
+    afterEach(() => {
+      if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it("resolves lang entries under the 'behaviors' section, not 'effects'", () => {
+      tmpDir = mkdtempSync(path.join(os.tmpdir(), "addon-lang-behavior-"));
+      writeFileSync(path.join(tmpDir, "addon.json"), JSON.stringify({ type: "behavior", id: "MyBehavior" }));
+      writeFileSync(
+        path.join(tmpDir, "aces.json"),
+        JSON.stringify({
+          MyBehavior: {
+            conditions: [{ id: "is-moving", params: [] }],
+            actions: [],
+            expressions: [],
+          },
+        }),
+      );
+      mkdirSync(path.join(tmpDir, "lang"), { recursive: true });
+      writeFileSync(
+        path.join(tmpDir, "lang", "en-US.json"),
+        JSON.stringify({
+          text: {
+            behaviors: {
+              MyBehavior: {
+                conditions: {
+                  "is-moving": { "list-name": "Is moving", "display-text": "Is moving" },
+                },
+              },
+            },
+          },
+        }),
+      );
+
+      const addon: DiscoveredAddon = {
+        name: "MyBehavior",
+        kind: "behavior",
+        archivePath: "",
+        extractedDir: tmpDir,
+      };
+
+      // If the section key were still wrongly defaulted to "effects" for a
+      // "behavior" kind, the lang lookup would miss the well-formed entry
+      // under "behaviors" entirely and this would report a spurious
+      // lang-missing-ace finding for "is-moving".
       expect(checkAddonLang(addon)).to.deep.equal([]);
     });
   });

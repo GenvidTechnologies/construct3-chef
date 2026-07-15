@@ -17,7 +17,7 @@ describe("addonDiscovery", () => {
   // ── discoverAddons ──────────────────────────────────────────────────────
 
   describe("discoverAddons", () => {
-    it("returns [] when neither addons/plugin nor addons/effect exists", () => {
+    it("returns [] when none of addons/plugin, addons/effect, addons/behavior exists", () => {
       tmpDir = mkdtempSync(path.join(os.tmpdir(), "addon-disc-"));
       expect(discoverAddons(tmpDir)).to.deep.equal([]);
     });
@@ -78,6 +78,23 @@ describe("addonDiscovery", () => {
       expect(addons[0]).to.deep.equal({
         name: "Glow",
         kind: "effect",
+        archivePath,
+        extractedDir: null,
+      });
+    });
+
+    it("discovers a behavior addon with kind 'behavior'", () => {
+      tmpDir = mkdtempSync(path.join(os.tmpdir(), "addon-disc-"));
+      const behaviorDir = path.join(tmpDir, "addons", "behavior");
+      mkdirSync(behaviorDir, { recursive: true });
+      const archivePath = path.join(behaviorDir, "Jump.c3addon");
+      writeFileSync(archivePath, "");
+
+      const addons = discoverAddons(tmpDir);
+      expect(addons).to.have.length(1);
+      expect(addons[0]).to.deep.equal({
+        name: "Jump",
+        kind: "behavior",
         archivePath,
         extractedDir: null,
       });
@@ -197,6 +214,26 @@ describe("addonDiscovery", () => {
       const clean = resolveAddonTarget(LANG_FIXTURE_ROOT, "archive-sources/LangClean");
       expect(defects!.kind).to.equal("plugin");
       expect(clean!.kind).to.equal("plugin");
+    });
+
+    it("path-mode: classifies kind 'behavior' from addon.json's type field", () => {
+      tmpDir = mkdtempSync(path.join(os.tmpdir(), "addon-disc-"));
+      const srcDir = path.join(tmpDir, "MyBehaviorSrc");
+      mkdirSync(srcDir, { recursive: true });
+      writeFileSync(path.join(srcDir, "addon.json"), JSON.stringify({ type: "behavior" }));
+
+      const addon = resolveAddonTarget(tmpDir, "MyBehaviorSrc");
+      expect(addon).to.not.be.null;
+      expect(addon!.kind).to.equal("behavior");
+    });
+
+    it("id-mode: resolves a real behavior addon from the sample fixture", () => {
+      const sampleRoot = path.resolve("test/fixtures/construct3-chef-sample");
+      const addon = resolveAddonTarget(sampleRoot, "MyCompany_MyBehavior");
+      expect(addon).to.not.be.null;
+      expect(addon!.name).to.equal("MyCompany_MyBehavior");
+      expect(addon!.kind).to.equal("behavior");
+      expect(addon!.archivePath.endsWith(path.join("MyCompany_MyBehavior.c3addon"))).to.be.true;
     });
 
     it("returns null when the path argument escapes the project root", () => {

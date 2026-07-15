@@ -19,7 +19,7 @@ export interface AddonMetadata {
 
 export interface AddonInfo {
   name: string;
-  kind: "plugin" | "effect";
+  kind: "plugin" | "effect" | "behavior";
   source: "extracted" | "archive";
   metadata: AddonMetadata;
   aces: AceEntry[];

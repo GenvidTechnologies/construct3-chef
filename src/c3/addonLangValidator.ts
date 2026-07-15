@@ -7,6 +7,7 @@ import type { AddonFinding } from "./addonValidator.js";
 
 type AceKind = "condition" | "action" | "expression";
 type CategoryPlural = "conditions" | "actions" | "expressions";
+type SectionKey = "plugins" | "effects" | "behaviors";
 
 interface AceItem {
   kind: AceKind;
@@ -93,7 +94,7 @@ function parseAceItems(text: string | null): AceItem[] {
  */
 function resolveFallbackPluginKey(
   addon: DiscoveredAddon,
-  sectionKey: "plugins" | "effects",
+  sectionKey: SectionKey,
   langFiles: string[],
 ): string | undefined {
   for (const name of langFiles) {
@@ -125,8 +126,8 @@ function resolveFallbackPluginKey(
  * lang string. Inert (returns `[]`) when the addon ships no `lang/*.json`
  * files at all — independent of any caller-side gate.
  *
- * `pluginKey` (the key under `text.plugins`/`text.effects` a lang file
- * addresses this addon's strings by) is resolved from `addon.json`'s `id`,
+ * `pluginKey` (the key under `text.plugins`/`text.effects`/`text.behaviors`
+ * a lang file addresses this addon's strings by) is resolved from `addon.json`'s `id`,
  * falling back to the sole key under the lang root when `id` is absent; if
  * neither resolves, no findings are produced (nothing to key into). Each
  * locale is checked independently, so a defect in one lang file never masks
@@ -144,7 +145,8 @@ export function checkAddonLang(addon: DiscoveredAddon): AddonFinding[] {
     const pluginJsText = readAddonEntry(addon, "plugin.js");
     const properties = pluginJsText !== null ? extractPluginProperties(pluginJsText) : [];
 
-    const sectionKey: "plugins" | "effects" = addon.kind === "plugin" ? "plugins" : "effects";
+    const sectionKey: SectionKey =
+      addon.kind === "plugin" ? "plugins" : addon.kind === "effect" ? "effects" : "behaviors";
     const pluginKey = readAddonMetadata(addon)?.metadata.id ?? resolveFallbackPluginKey(addon, sectionKey, langFiles);
     if (pluginKey === undefined) return [];
 

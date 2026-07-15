@@ -2,11 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { resolveWithin } from "@genvidtech/mcp-utils";
 
-export const ADDON_DIRS = ["addons/plugin", "addons/effect"] as const;
+export const ADDON_DIRS = ["addons/plugin", "addons/effect", "addons/behavior"] as const;
 
 export interface DiscoveredAddon {
   name: string; // addon name (archive basename without .c3addon)
-  kind: "plugin" | "effect";
+  kind: "plugin" | "effect" | "behavior";
   archivePath: string; // absolute path to the .c3addon file
   extractedDir: string | null; // absolute path to extracted folder if it exists & is a dir, else null
 }
@@ -19,7 +19,8 @@ export interface DiscoveredAddon {
 export function discoverAddons(projectRoot: string): DiscoveredAddon[] {
   const results: DiscoveredAddon[] = [];
   for (const addonDir of ADDON_DIRS) {
-    const kind: "plugin" | "effect" = addonDir === "addons/plugin" ? "plugin" : "effect";
+    const kind: "plugin" | "effect" | "behavior" =
+      addonDir === "addons/plugin" ? "plugin" : addonDir === "addons/effect" ? "effect" : "behavior";
     const fullDir = path.join(projectRoot, addonDir);
     if (!fs.existsSync(fullDir)) continue;
     for (const entry of fs.readdirSync(fullDir, { withFileTypes: true })) {
@@ -53,16 +54,18 @@ export function findAddonExtractedDir(projectRoot: string, name: string): string
 
 /**
  * Best-effort read of `<dir>/addon.json`'s `type` field to classify a
- * path-mode addon source tree. Returns "effect" only when the field is
- * exactly "effect"; anything else (missing file, malformed JSON, absent or
- * other `type` value) defaults to "plugin". Never throws.
+ * path-mode addon source tree. Returns "effect" or "behavior" only when the
+ * field is exactly that value; anything else (missing file, malformed JSON,
+ * absent or other `type` value) defaults to "plugin". Never throws.
  */
-function readAddonKind(dir: string): "plugin" | "effect" {
+function readAddonKind(dir: string): "plugin" | "effect" | "behavior" {
   try {
     const raw = fs.readFileSync(path.join(dir, "addon.json"), "utf-8");
     const parsed: unknown = JSON.parse(raw);
-    if (parsed !== null && typeof parsed === "object" && (parsed as { type?: unknown }).type === "effect") {
-      return "effect";
+    if (parsed !== null && typeof parsed === "object") {
+      const type = (parsed as { type?: unknown }).type;
+      if (type === "effect") return "effect";
+      if (type === "behavior") return "behavior";
     }
   } catch {
     // fall through to the "plugin" default
