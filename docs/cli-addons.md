@@ -184,7 +184,7 @@ Output uses the shared `formatAceDiff` formatter, so the CLI and MCP `diff-addon
 
 Read-only scan of where a project actually uses an addon: which object types/families are instances of it (**presence**), and which event-sheet condition/action nodes call one of its ACEs (**call sites**). With `--from`, it additionally diffs the addon's current ACEs against an old version and reports the **blast radius** — how many call sites hit an ACE that changed or was removed between the two versions — so an addon upgrade's impact on the project can be assessed before touching anything.
 
-**Plugins-only v1**: this scans plugin condition/action call sites in event sheets only. Behavior usage, effect usage, and expression usage are out of scope here and tracked as separate follow-ups ([#124](https://github.com/GenvidTechnologies/construct3-chef/issues/124), [#125](https://github.com/GenvidTechnologies/construct3-chef/issues/125), [#123](https://github.com/GenvidTechnologies/construct3-chef/issues/123) respectively) — each matches on a different field than a condition/action node's `(objectClass, kind, id)`. See [ADR 0010](decisions/0010-scan-addon-usage-plugins-only-v1.md).
+Supports **plugin** and **behavior** addons. Effect usage and expression usage remain out of scope and are tracked as separate follow-ups ([#125](https://github.com/GenvidTechnologies/construct3-chef/issues/125), [#123](https://github.com/GenvidTechnologies/construct3-chef/issues/123) respectively) — each matches on a different field than a condition/action node's `(objectClass, kind, id)`. See [ADR 0010](decisions/0010-scan-addon-usage-plugins-only-v1.md) (the original plugins-only v1 scope) and [ADR 0011](decisions/0011-scan-addon-usage-behavior-support.md) (the behavior extension, [#124](https://github.com/GenvidTechnologies/construct3-chef/issues/124)).
 
 ```bash
 npx construct3-chef scan-addon-usage <addon> [--from <source>] [--project-dir <path>]
@@ -197,8 +197,8 @@ npx construct3-chef scan-addon-usage <addon> [--from <source>] [--project-dir <p
 
 The report has two sections:
 
-- **Presence** — every `objectTypes/*.json`/`families/*.json` entry whose `plugin-id` names the addon, grouped under "Object types" and "Families", each with its call-site count (`(instantiated, no ACE calls)` when zero).
-- **Call sites** — every condition/action node, grouped by event sheet, whose `objectClass` is in the presence set and whose `(kind, id)` matches one of the addon's current ACEs. Expression usage isn't a structured condition/action node and isn't scanned (see plugins-only v1, above).
+- **Presence** — for a **plugin** addon, every `objectTypes/*.json`/`families/*.json` entry whose `plugin-id` names the addon. For a **behavior** addon, every entry that carries its *own* instance of the behavior in `behaviorTypes[]` (an entry whose `behaviorId` names the addon) — a family **member** that only inherits the behavior through its family is never its own presence row; see the family-member attribution rule under "Behavior addons", below. Rows are grouped under "Object types" and "Families", each with its call-site count (`(instantiated, no ACE calls)` when zero); a behavior row additionally renders a trailing `[Name]` segment naming the instance(s) that host attached (`[NameA, NameB]` for two instances of the same behavior on one host).
+- **Call sites** — every condition/action node, grouped by event sheet, whose `(kind, id)` matches one of the addon's current ACEs and whose scope is in the presence set: for a plugin addon, its `objectClass` names a presence row directly; for a behavior addon, its `behaviorType` names one of the addon's attached instances **and** its `objectClass` resolves to a presence host (the host itself, or a member of a presence family). Expression usage isn't a structured condition/action node and isn't scanned (see [#123](https://github.com/GenvidTechnologies/construct3-chef/issues/123)).
 
 ```bash
 $ construct3-chef scan-addon-usage GCore --project-dir <project>
@@ -220,6 +220,35 @@ Call sites:
 ```
 
 The clean case prints `No usage of addon "<id>" found.` An unresolvable addon prints `addon source not found: <arg>` and exits 1.
+
+### Behavior addons
+
+A behavior addon's presence is keyed on `behaviorTypes[]` (each entry's `behaviorId`), not `plugin-id`. A presence row's `[Name]` suffix is the behavior instance name(s) that host attached — usually the same as the addon id, but an object can rename an instance or attach two instances under different names.
+
+```
+$ npx tsx src/cli.ts scan-addon-usage MyCompany_MyBehavior --project-dir test/fixtures/construct3-chef-sample
+scan-addon-usage: MyCompany_MyBehavior
+presence: 2 object type(s), 0 families  call sites: 1
+
+Object types:
+  9patch [MyCustomBehavior]   0 call site(s) (instantiated, no ACE calls)
+  Sprite2 [MyCustomBehavior]   1 call site(s)
+
+Call sites:
+  Event sheet 1
+    event #2  events[1].children[1]   [action] Sprite2.stop()
+```
+
+**Family-member attribution.** A behavior attached to a *family* (not to any individual member) still produces call sites on the members themselves: a member's own conditions/actions carry its real `objectClass` (e.g. `Text`) and the family's behavior instance name in `behaviorType` (e.g. `Timer`), because a member never gets its own `behaviorTypes` entry — it inherits the family's. `scan-addon-usage` attributes that call site's count to the **family's** presence row (the row that actually declares the behavior instance), while the call-site line itself keeps the member's real `objectClass` — only the aggregated count moves, never the recorded call. In the `construct3-chef-sample` fixture, `TextFamily` carries its own `Timer` instance and family member `Text` calls `stop-timer` (`Text.stop-timer()`, `behaviorType: "Timer"`) in `Event sheet 2`; that call site attributes to `TextFamily`'s row, not a separate `Text` row — once `Timer` is scannable at all (see the built-in limitation, next).
+
+**Built-in behaviors aren't scannable by id.** `Timer`, `Persist`, and other C3 built-in behaviors ship no bundled `.c3addon` package, so there's no ACE set to resolve and match against:
+
+```
+$ npx tsx src/cli.ts scan-addon-usage Timer --project-dir test/fixtures/construct3-chef-sample
+addon source not found: Timer
+```
+
+This is symmetric with not being able to scan a built-in plugin (e.g. `Sprite`) by id — both would need a built-in ACE reference index, which is the deferred [#22](https://github.com/GenvidTechnologies/construct3-chef/issues/22)/[#123](https://github.com/GenvidTechnologies/construct3-chef/issues/123) work, not something `scan-addon-usage` can do today. See [ADR 0011](decisions/0011-scan-addon-usage-behavior-support.md).
 
 ### Blast-radius mode (`--from`)
 
