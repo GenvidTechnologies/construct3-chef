@@ -32,6 +32,15 @@ export interface PresenceRow {
   name: string;
   kind: "objectType" | "family";
   callSiteCount: number;
+  /**
+   * Behavior instance name(s) this host attached the scanned addon under
+   * (from `behaviorTypes[].name`) — e.g. `["MyCustomBehavior"]`, or
+   * `["Timer", "Timer2"]` for two instances of the same behavior on one
+   * host. Present only on behavior-kind scans ({@link
+   * createBehaviorUsageMatcher}); plugin/effect presence rows never carry
+   * this field (a plugin instance has no comparable per-instance name).
+   */
+  instanceNames?: string[];
 }
 
 /**
@@ -163,6 +172,11 @@ function createPluginUsageMatcher(addonId: string, objects: ObjectDefn[], matchK
  * — and take precedence over — any self-mapping entry from a same-named
  * object type that also happens to carry its own instance of the behavior.
  *
+ * Each presence row also carries {@link PresenceRow.instanceNames} — the
+ * host's own `behaviorTypes[].name` entries matching `addonId` (so
+ * {@link formatAddonUsage} can render which instance(s) a host attached,
+ * distinct from the addon-wide instance-name UNION used for matching above).
+ *
  * Exported (this module is off the `src/index.ts` barrel, so this isn't
  * published API) so tests can drive the family-member attribution rule
  * directly against synthetic `ObjectDefn`s/nodes: the project's own
@@ -195,7 +209,11 @@ export function createBehaviorUsageMatcher(
   }
 
   return {
-    presence: matched.map((d) => ({ name: d.name, kind: d.kind })),
+    presence: matched.map((d) => ({
+      name: d.name,
+      kind: d.kind,
+      instanceNames: d.behaviors.filter((b) => b.behaviorId === addonId).map((b) => b.name),
+    })),
     matches: (node) =>
       node.behaviorType !== undefined &&
       instanceNameSet.has(node.behaviorType) &&
@@ -413,6 +431,12 @@ function formatCallSiteLine(
  * matched call sites); and a trailing ` ⚠ CHANGED` / ` ⚠ REMOVED` marker on
  * each affected call-site line. With no `blast`, output is byte-identical to
  * the plain (P3) scan.
+ *
+ * On a behavior scan, a presence row whose {@link PresenceRow.instanceNames}
+ * is non-empty renders a trailing `[instanceName]` segment right after the
+ * row's name (`[InstanceA, InstanceB]` when a host carries two instances of
+ * the scanned behavior) — plugin/effect presence rows never carry
+ * `instanceNames`, so their rendering is unchanged.
  */
 export function formatAddonUsage(result: ScanAddonUsageResult): string {
   if ("error" in result) {
@@ -449,7 +473,9 @@ export function formatAddonUsage(result: ScanAddonUsageResult): string {
       for (const row of rows) {
         const suffix = row.callSiteCount === 0 ? " (instantiated, no ACE calls)" : "";
         const exposedMarker = exposed ? " ⚠ exposed" : "";
-        lines.push(`  ${row.name}   ${row.callSiteCount} call site(s)${suffix}${exposedMarker}`);
+        const instanceSegment =
+          row.instanceNames !== undefined && row.instanceNames.length > 0 ? ` [${row.instanceNames.join(", ")}]` : "";
+        lines.push(`  ${row.name}${instanceSegment}   ${row.callSiteCount} call site(s)${suffix}${exposedMarker}`);
       }
     }
   }

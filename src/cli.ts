@@ -585,7 +585,7 @@ yargs(hideBin(process.argv))
   )
   .command(
     "scan-addon-usage <addon>",
-    "Scan a project's event sheets for call sites of an addon's ACEs (presence + call sites); --from diffs against an old addon version and reports blast radius, exiting non-zero when any call site is affected. Read-only.",
+    "Scan a project's event sheets for call sites of a plugin or behavior addon's ACEs (presence + call sites); --from diffs against an old addon version and reports blast radius, exiting non-zero when any call site is affected. Read-only.",
     (y) =>
       y
         .positional("addon", {

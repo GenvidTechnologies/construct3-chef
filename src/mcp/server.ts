@@ -1210,7 +1210,7 @@ reg(
   {
     title: "Scan Addon Usage",
     description:
-      "Scan the project's event sheets for call sites of an addon's ACEs: which object types/families are instantiated from the addon (presence), and which conditions/actions on them call one of its current ACEs (call sites), grouped by event sheet. With `from` (a .c3addon file path, or a discovered addon id/dir for a prior version), also reports blast radius — call sites whose ACE was changed or removed between `from` and the addon's current ACEs, surfacing dangling references a reimport may not have migrated. Read-only.",
+      "Scan the project's event sheets for call sites of a plugin or behavior addon's ACEs: which object types/families are instantiated from the addon (presence), and which conditions/actions on them call one of its current ACEs (call sites), grouped by event sheet. With `from` (a .c3addon file path, or a discovered addon id/dir for a prior version), also reports blast radius — call sites whose ACE was changed or removed between `from` and the addon's current ACEs, surfacing dangling references a reimport may not have migrated. Read-only.",
     annotations: READ_ONLY,
     inputSchema: {
       addon: z

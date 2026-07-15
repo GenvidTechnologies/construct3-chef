@@ -3,6 +3,7 @@ import { expect } from "chai";
 import path from "node:path";
 import {
   scanAddonUsage,
+  formatAddonUsage,
   createBehaviorUsageMatcher,
   type AddonUsageResult,
   type CallSite,
@@ -73,6 +74,47 @@ describe("scanAddonUsage — behavior addons (against construct3-chef-sample)", 
   });
 });
 
+// ── formatAddonUsage — instance-name segment (F4) ──────────────────────────
+//
+// A behavior presence row renders a trailing `[instanceName]` segment (or
+// `[A, B]` for two instances) right after the row's name; a plugin presence
+// row (no `instanceNames`) is unchanged — no segment, no stray brackets.
+
+describe("formatAddonUsage — behavior scan instance-name segment", () => {
+  it("renders '[MyCustomBehavior]' on both Sprite2 (called) and 9patch (uncalled) presence rows", () => {
+    const result = scanAddonUsage(SAMPLE_ROOT, "MyCompany_MyBehavior");
+    const output = formatAddonUsage(result);
+
+    expect(output).to.include("Sprite2 [MyCustomBehavior]   1 call site(s)");
+    expect(output).to.include("9patch [MyCustomBehavior]   0 call site(s) (instantiated, no ACE calls)");
+  });
+
+  it("a plugin presence row (no instanceNames) renders with no bracketed segment", () => {
+    const pluginResult: AddonUsageResult = {
+      addonId: "SomePlugin",
+      addonLabel: "SomePlugin",
+      presence: [{ name: "Hero", kind: "objectType", callSiteCount: 2 }],
+      callSites: [],
+      aces: [],
+    };
+    const output = formatAddonUsage(pluginResult);
+    expect(output).to.include("Hero   2 call site(s)");
+    expect(output).to.not.include("[");
+  });
+
+  it("two instances of the same behavior on one host render as a comma-joined segment", () => {
+    const twoInstanceResult: AddonUsageResult = {
+      addonId: "MyCompany_MyBehavior",
+      addonLabel: "MyCompany_MyBehavior",
+      presence: [{ name: "Boss", kind: "objectType", callSiteCount: 0, instanceNames: ["B1", "B2"] }],
+      callSites: [],
+      aces: [],
+    };
+    const output = formatAddonUsage(twoInstanceResult);
+    expect(output).to.include("Boss [B1, B2]   0 call site(s) (instantiated, no ACE calls)");
+  });
+});
+
 // ── Matcher-level unit tests ────────────────────────────────────────────────
 //
 // The family-member attribution rule (and the "two instances on one host"
@@ -101,7 +143,7 @@ describe("createBehaviorUsageMatcher (unit, synthetic ObjectDefns)", () => {
   it("family-direct + family-member call sites both attribute to the family presence row (count 2); member CallSite keeps its real objectClass", () => {
     const matcher = createBehaviorUsageMatcher("Timer", [textFamily()], timerMatchKeys);
 
-    expect(matcher.presence).to.deep.equal([{ name: "TextFamily", kind: "family" }]);
+    expect(matcher.presence).to.deep.equal([{ name: "TextFamily", kind: "family", instanceNames: ["Timer"] }]);
 
     // Mirrors scanAddonUsage's own walk + attribution: a CallSite always
     // records the node's REAL objectClass; only the count aggregation is
@@ -180,7 +222,7 @@ describe("createBehaviorUsageMatcher (unit, synthetic ObjectDefns)", () => {
     const matchKeys = new Set(["action:stop"]);
     const matcher = createBehaviorUsageMatcher("MyCompany_MyBehavior", [twoInstanceHost], matchKeys);
 
-    expect(matcher.presence).to.deep.equal([{ name: "Boss", kind: "objectType" }]);
+    expect(matcher.presence).to.deep.equal([{ name: "Boss", kind: "objectType", instanceNames: ["B1", "B2"] }]);
     expect(matcher.matches({ objectClass: "Boss", kind: "action", id: "stop", behaviorType: "B1" })).to.be.true;
     expect(matcher.matches({ objectClass: "Boss", kind: "action", id: "stop", behaviorType: "B2" })).to.be.true;
 
@@ -278,5 +320,55 @@ describe("behavior blast-radius widening (unit, no second .c3addon)", () => {
       (s) => changedSet.has(`${s.kind}:${s.id}`) || removedSet.has(`${s.kind}:${s.id}`),
     ).length;
     expect(affectedCount).to.equal(2);
+  });
+});
+
+// ── CLI exit-code decision on a behavior blast (unit-level) ────────────────
+//
+// There's no subprocess/CLI test harness in this repo (grepped: no
+// execFileSync/spawnSync usage under test/), so this exercises the exact
+// boolean the CLI's scan-addon-usage handler evaluates
+// (`result.blast !== undefined && result.blast.affectedCount > 0`, cli.ts
+// ~line 610) against a real behavior-scan AddonUsageResult shape, rather than
+// spawning the CLI process.
+
+describe("scan-addon-usage CLI exit-code decision on a behavior blast (unit)", () => {
+  function wouldExitNonZero(result: AddonUsageResult): boolean {
+    return result.blast !== undefined && result.blast.affectedCount > 0;
+  }
+
+  it("exits non-zero when a behavior blast has affected call sites", () => {
+    const affected: AddonUsageResult = {
+      addonId: "MyCompany_MyBehavior",
+      addonLabel: "MyCompany_MyBehavior",
+      presence: [{ name: "Boss", kind: "objectType", callSiteCount: 1, instanceNames: ["MyInstance"] }],
+      callSites: [],
+      aces: [],
+      blast: { fromLabel: "MyCompany_MyBehaviorOld", changedKeys: [], removedKeys: ["action:reset"], affectedCount: 1 },
+    };
+    expect(wouldExitNonZero(affected)).to.be.true;
+  });
+
+  it("stays exit-0 for a behavior blast scan with zero affected call sites", () => {
+    const unaffected: AddonUsageResult = {
+      addonId: "MyCompany_MyBehavior",
+      addonLabel: "MyCompany_MyBehavior",
+      presence: [{ name: "Boss", kind: "objectType", callSiteCount: 1, instanceNames: ["MyInstance"] }],
+      callSites: [],
+      aces: [],
+      blast: { fromLabel: "MyCompany_MyBehaviorOld", changedKeys: [], removedKeys: [], affectedCount: 0 },
+    };
+    expect(wouldExitNonZero(unaffected)).to.be.false;
+  });
+
+  it("stays exit-0 for a plain (non-blast) behavior scan — no `blast` key at all", () => {
+    const plain: AddonUsageResult = {
+      addonId: "MyCompany_MyBehavior",
+      addonLabel: "MyCompany_MyBehavior",
+      presence: [{ name: "Boss", kind: "objectType", callSiteCount: 1, instanceNames: ["MyInstance"] }],
+      callSites: [],
+      aces: [],
+    };
+    expect(wouldExitNonZero(plain)).to.be.false;
   });
 });
