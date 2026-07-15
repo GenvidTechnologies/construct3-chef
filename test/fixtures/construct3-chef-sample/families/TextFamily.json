@@ -3,7 +3,13 @@
 	"plugin-id": "Text",
 	"sid": 924333557996132,
 	"instanceVariables": [],
-	"behaviorTypes": [],
+	"behaviorTypes": [
+		{
+			"behaviorId": "Timer",
+			"name": "Timer",
+			"sid": 941140762763444
+		}
+	],
 	"effectTypes": [],
 	"members": [
 		"Text2",

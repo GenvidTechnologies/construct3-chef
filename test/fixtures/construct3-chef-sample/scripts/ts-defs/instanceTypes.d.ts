@@ -2,11 +2,24 @@
 declare namespace InstanceType {
 	class JSON extends IJSONInstance {
 	}
+	class ___9patchBehaviors<InstType> {
+		MyCustomBehavior: IBehaviorInstance<InstType>;
+	}
 	class _9patch extends I9PatchInstance {
+		behaviors: ___9patchBehaviors<this>;
 	}
 	class Sprite extends ISpriteInstance {
 	}
+	class __Sprite2Behaviors<InstType> {
+		MyCustomBehavior: IBehaviorInstance<InstType>;
+		Persist: IBehaviorInstance<InstType>;
+	}
+	class __Sprite2Effects extends Array<IEffectInstance> {
+		Burn: IEffectInstance;
+	}
 	class Sprite2 extends ISpriteInstance {
+		behaviors: __Sprite2Behaviors<this>;
+		effects: __Sprite2Effects;
 	}
 	class Sprite3 extends ISpriteInstance {
 	}
@@ -19,15 +32,27 @@ declare namespace InstanceType {
 			BossArenaEdge: string
 		};
 	}
+	class __TextBehaviors<InstType> {
+		Timer: ITimerBehaviorInstance<InstType>;
+	}
 	class Text extends ITextInstance {
+		behaviors: __TextBehaviors<this>;
 	}
 	class TextInput extends ITextInputInstance {
 	}
+	class __Text2Behaviors<InstType> {
+		Timer: ITimerBehaviorInstance<InstType>;
+	}
 	class Text2 extends ITextInstance {
+		behaviors: __Text2Behaviors<this>;
 	}
 	class NavButton extends IButtonInstance {
 	}
+	class __TextFamilyBehaviors<InstType> {
+		Timer: ITimerBehaviorInstance<InstType>;
+	}
 	class TextFamily extends ITextInstance {
+		behaviors: __TextFamilyBehaviors<this>;
 	}
 	class LevelMaps extends ITiledBackgroundInstance {
 		instVars: {

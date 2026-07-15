@@ -5,8 +5,24 @@
 	"isGlobal": false,
 	"editorNewInstanceIsReplica": true,
 	"instanceVariables": [],
-	"behaviorTypes": [],
-	"effectTypes": [],
+	"behaviorTypes": [
+		{
+			"behaviorId": "MyCompany_MyBehavior",
+			"name": "MyCustomBehavior",
+			"sid": 246339555325721
+		},
+		{
+			"behaviorId": "Persist",
+			"name": "Persist",
+			"sid": 202189106233516
+		}
+	],
+	"effectTypes": [
+		{
+			"effectId": "burn",
+			"name": "Burn"
+		}
+	],
 	"animations": {
 		"items": [
 			{

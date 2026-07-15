@@ -261,7 +261,11 @@
 					"sid": 499382329943495,
 					"tags": "",
 					"instanceVariables": {},
-					"behaviors": {},
+					"behaviors": {
+						"Timer": {
+							"properties": {}
+						}
+					},
 					"sceneGraphData": {
 						"parent-uid": 8,
 						"uid": 9,
