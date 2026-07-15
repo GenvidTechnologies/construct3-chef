@@ -28,11 +28,21 @@ export interface AddonInfo {
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 /**
+ * Strip a single leading UTF-8 BOM (U+FEFF), if present. Real C3-exported
+ * addon packages may ship `addon.json`/`aces.json` BOM-prefixed; a leading
+ * BOM makes `JSON.parse` throw, so every entry read is normalized through
+ * this before being returned.
+ */
+function stripBom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
+/**
  * Read a single entry (by exact name) from an addon, preferring the extracted
  * directory and falling through to the `.c3addon` zip archive when the entry
  * is absent from the extracted dir (which may be incomplete). Returns the
- * decoded UTF-8 text plus which branch served the read, or `null` if the
- * entry could not be read from either source. Never throws.
+ * decoded UTF-8 text (BOM-stripped) plus which branch served the read, or
+ * `null` if the entry could not be read from either source. Never throws.
  */
 function readAddonEntryWithSource(
   addon: DiscoveredAddon,
@@ -43,7 +53,7 @@ function readAddonEntryWithSource(
     try {
       const p = resolveWithin(addon.extractedDir, entryName);
       if (p !== null && fs.existsSync(p)) {
-        return { text: fs.readFileSync(p, "utf-8"), source: "extracted" };
+        return { text: stripBom(fs.readFileSync(p, "utf-8")), source: "extracted" };
       }
     } catch {
       // fall through to the zip
@@ -56,7 +66,7 @@ function readAddonEntryWithSource(
     const unzipped = unzipSync(new Uint8Array(buf), { filter: (f) => f.name === entryName });
     const bytes = unzipped[entryName];
     if (bytes === undefined) return null;
-    return { text: Buffer.from(bytes).toString("utf-8"), source: "archive" };
+    return { text: stripBom(Buffer.from(bytes).toString("utf-8")), source: "archive" };
   } catch {
     return null;
   }
