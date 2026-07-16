@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { openProject } from "@genvidtech/c3source";
-import { readProjectObjects, type ObjectDefn } from "../../src/c3/projectObjects.js";
+import { readProjectObjects, readLayoutEffects, type ObjectDefn } from "../../src/c3/projectObjects.js";
 
 const ACE_USAGE_ROOT = path.resolve("test/fixtures/addon-ace-usage");
 const SAMPLE_ROOT = path.resolve("test/fixtures/construct3-chef-sample");
@@ -256,6 +256,105 @@ describe("readProjectObjects", () => {
         behaviors: [],
         effectTypes: [{ effectId: "sepia", name: "Sepia" }],
       });
+    });
+  });
+
+  describe("readLayoutEffects", () => {
+    let tmpDir: string;
+
+    afterEach(() => {
+      if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    function writeLayout(root: string, fileName: string, json: unknown): void {
+      const layoutsDir = path.join(root, "layouts");
+      mkdirSync(layoutsDir, { recursive: true });
+      writeFileSync(path.join(layoutsDir, fileName), JSON.stringify(json, null, "\t") + "\n");
+    }
+
+    it("reads layout-level, layer-level, and deeply-nested sub-layer effects", () => {
+      tmpDir = mkdtempSync(path.join(os.tmpdir(), "project-objects-layout-fx-"));
+      writeLayout(tmpDir, "Effects.json", {
+        name: "Effects",
+        effectTypes: [{ effectId: "sepia", name: "Sepia", sid: 1 }],
+        layers: [
+          {
+            name: "layer 0",
+            effectTypes: [{ effectId: "burn", name: "Burn", sid: 2 }],
+            subLayers: [
+              {
+                name: "sublayer 0.1",
+                effectTypes: [],
+                subLayers: [
+                  {
+                    name: "sublayer 0.1.1",
+                    effectTypes: [{ effectId: "glow", name: "Glow", sid: 3 }],
+                    subLayers: [],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+
+      const sites = readLayoutEffects(openProject(tmpDir));
+      expect(sites).to.have.length(3);
+
+      expect(sites).to.deep.include({
+        effectId: "sepia",
+        name: "Sepia",
+        container: "layout",
+        layout: "Effects",
+      });
+      expect(sites).to.deep.include({
+        effectId: "burn",
+        name: "Burn",
+        container: "layer",
+        layout: "Effects",
+        layer: "layer 0",
+      });
+      // The deepest sub-layer, 3 levels down (layer 0 > sublayer 0.1 > sublayer 0.1.1),
+      // proves the recursion doesn't stop at the first level of subLayers.
+      expect(sites).to.deep.include({
+        effectId: "glow",
+        name: "Glow",
+        container: "layer",
+        layout: "Effects",
+        layer: "sublayer 0.1.1",
+      });
+    });
+
+    it("returns [] for a layout with no effects anywhere", () => {
+      tmpDir = mkdtempSync(path.join(os.tmpdir(), "project-objects-layout-fx-"));
+      writeLayout(tmpDir, "NoEffects.json", {
+        name: "NoEffects",
+        effectTypes: [],
+        layers: [{ name: "layer 0", effectTypes: [], subLayers: [] }],
+      });
+
+      const sites = readLayoutEffects(openProject(tmpDir));
+      expect(sites).to.deep.equal([]);
+    });
+
+    it("tolerates malformed effectTypes/layers/subLayers without throwing", () => {
+      tmpDir = mkdtempSync(path.join(os.tmpdir(), "project-objects-layout-fx-"));
+      writeLayout(tmpDir, "Malformed.json", {
+        name: "Malformed",
+        effectTypes: "not-an-array",
+        layers: [
+          {
+            name: "layer 0",
+            effectTypes: [{ effectId: "burn", sid: 1 }], // missing name -> dropped
+            subLayers: "not-an-array",
+          },
+          "not-a-layer-object",
+        ],
+      });
+
+      expect(() => readLayoutEffects(openProject(tmpDir))).to.not.throw();
+      const sites = readLayoutEffects(openProject(tmpDir));
+      expect(sites).to.deep.equal([]);
     });
   });
 });
