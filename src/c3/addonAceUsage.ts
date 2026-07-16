@@ -479,10 +479,9 @@ function byEffectSiteOrder(a: EffectSite, b: EffectSite): number {
  * Errors as values (mirrors `scanAddonUsage`): returns `{ error }` only when,
  * in blast mode, the `from` source can't be resolved. Never throws.
  *
- * NOT wired into the public {@link scanAddonUsage} dispatch yet (P3 of #125)
- * — that's a follow-up (F1): calling `scanAddonUsage(rootDir, effectAddonId)`
- * today still routes an effect target through the plugin matcher and returns
- * no `effectSites`.
+ * Reached from the public {@link scanAddonUsage} dispatch when the resolved
+ * target's `kind` is `effect` (short-circuited before any ACE read, since
+ * effects have none).
  */
 export function scanEffectUsage(rootDir: string, target: DiscoveredAddon, fromArg?: string): ScanAddonUsageResult {
   const addonId = resolveAddonId(target);
