@@ -101,7 +101,7 @@ describe("readProjectObjects", () => {
         pluginId: "Text",
         members: ["Text2", "Text"],
         behaviors: [{ behaviorId: "Timer", name: "Timer" }],
-        effectTypes: [],
+        effectTypes: [{ effectId: "MyCompany_MyEffect", name: "My custom effect" }],
       });
     });
 
@@ -128,7 +128,10 @@ describe("readProjectObjects", () => {
           { behaviorId: "MyCompany_MyBehavior", name: "MyCustomBehavior" },
           { behaviorId: "Persist", name: "Persist" },
         ],
-        effectTypes: [{ effectId: "burn", name: "Burn" }],
+        effectTypes: [
+          { effectId: "burn", name: "Burn" },
+          { effectId: "MyCompany_MyEffect", name: "My custom effect" },
+        ],
       });
     });
   });
@@ -203,16 +206,19 @@ describe("readProjectObjects", () => {
       writeFileSync(path.join(objectTypesDir, fileName), JSON.stringify(json, null, "\t") + "\n");
     }
 
-    it("reads Sprite2's real effectTypes (burn) from the construct3-chef-sample fixture", () => {
+    it("reads Sprite2's real effectTypes (built-in burn + MyCompany_MyEffect) from the construct3-chef-sample fixture", () => {
       const defns = readProjectObjects(openProject(SAMPLE_ROOT));
       const sprite2 = find(defns, "Sprite2");
-      expect(sprite2?.effectTypes).to.deep.equal([{ effectId: "burn", name: "Burn" }]);
+      expect(sprite2?.effectTypes).to.deep.equal([
+        { effectId: "burn", name: "Burn" },
+        { effectId: "MyCompany_MyEffect", name: "My custom effect" },
+      ]);
     });
 
-    it("reads TextFamily's empty effectTypes from the construct3-chef-sample fixture", () => {
+    it("reads TextFamily's effectTypes (MyCompany_MyEffect) from the construct3-chef-sample fixture", () => {
       const defns = readProjectObjects(openProject(SAMPLE_ROOT));
       const textFamily = find(defns, "TextFamily");
-      expect(textFamily?.effectTypes).to.deep.equal([]);
+      expect(textFamily?.effectTypes).to.deep.equal([{ effectId: "MyCompany_MyEffect", name: "My custom effect" }]);
     });
 
     it("defaults to [] when effectTypes is not an array", () => {

@@ -21,6 +21,10 @@
 		{
 			"effectId": "burn",
 			"name": "Burn"
+		},
+		{
+			"effectId": "MyCompany_MyEffect",
+			"name": "My custom effect"
 		}
 	],
 	"animations": {
