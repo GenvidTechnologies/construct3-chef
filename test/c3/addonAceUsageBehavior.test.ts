@@ -135,6 +135,7 @@ describe("createBehaviorUsageMatcher (unit, synthetic ObjectDefns)", () => {
       pluginId: "Text",
       members: ["Text2", "Text"],
       behaviors: [{ behaviorId: "Timer", name: "Timer" }],
+      effectTypes: [],
     };
   }
 
@@ -203,6 +204,7 @@ describe("createBehaviorUsageMatcher (unit, synthetic ObjectDefns)", () => {
       pluginId: "Timer", // deliberately reuses the addonId as a plugin-id — must NOT create presence
       members: [],
       behaviors: [],
+      effectTypes: [],
     };
     const matcher = createBehaviorUsageMatcher("Timer", [textFamily(), decoy], timerMatchKeys);
     expect(matcher.presence.map((p) => p.name)).to.deep.equal(["TextFamily"]);
@@ -218,6 +220,7 @@ describe("createBehaviorUsageMatcher (unit, synthetic ObjectDefns)", () => {
         { behaviorId: "MyCompany_MyBehavior", name: "B1" },
         { behaviorId: "MyCompany_MyBehavior", name: "B2" },
       ],
+      effectTypes: [],
     };
     const matchKeys = new Set(["action:stop"]);
     const matcher = createBehaviorUsageMatcher("MyCompany_MyBehavior", [twoInstanceHost], matchKeys);
@@ -295,6 +298,7 @@ describe("behavior blast-radius widening (unit, no second .c3addon)", () => {
       pluginId: "Sprite",
       members: [],
       behaviors: [{ behaviorId: "MyCompany_MyBehavior", name: "MyInstance" }],
+      effectTypes: [],
     };
     const matcher = createBehaviorUsageMatcher("MyCompany_MyBehavior", [host], matchKeySet);
 

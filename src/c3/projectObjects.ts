@@ -14,6 +14,15 @@ export interface BehaviorRef {
 }
 
 /**
+ * An effect instance attached to an objectType/family, from its `effectTypes`
+ * entry. `sid` is intentionally dropped — callers key on `(effectId, name)`.
+ */
+export interface EffectRef {
+  effectId: string;
+  name: string;
+}
+
+/**
  * A normalized `objectTypes/*.json` or `families/*.json` entry, addon-agnostic
  * (an object type's `plugin-id` names the C3 plugin/behavior it's an instance
  * of — a built-in like `Sprite` as readily as a third-party addon).
@@ -27,12 +36,19 @@ export interface ObjectDefn {
   members: string[];
   /** Behavior instances from `behaviorTypes`; malformed entries are dropped. */
   behaviors: BehaviorRef[];
+  /** Effect instances from `effectTypes`; malformed entries are dropped. */
+  effectTypes: EffectRef[];
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
 interface RawBehaviorType {
   behaviorId?: unknown;
+  name?: unknown;
+}
+
+interface RawEffectType {
+  effectId?: unknown;
   name?: unknown;
 }
 
@@ -47,6 +63,17 @@ function readBehaviors(behaviorTypes: unknown): BehaviorRef[] {
   return behaviors;
 }
 
+function readEffects(effectTypes: unknown): EffectRef[] {
+  if (!Array.isArray(effectTypes)) return [];
+  const effects: EffectRef[] = [];
+  for (const entry of effectTypes as RawEffectType[]) {
+    if (typeof entry?.effectId === "string" && typeof entry?.name === "string") {
+      effects.push({ effectId: entry.effectId, name: entry.name });
+    }
+  }
+  return effects;
+}
+
 function readObjectDefn(filePath: string, kind: "objectType" | "family"): ObjectDefn {
   const raw = fs.readFileSync(filePath, "utf-8");
   const json = JSON.parse(raw) as {
@@ -54,6 +81,7 @@ function readObjectDefn(filePath: string, kind: "objectType" | "family"): Object
     "plugin-id"?: string;
     members?: string[];
     behaviorTypes?: unknown;
+    effectTypes?: unknown;
   };
   const name = json.name ?? path.basename(filePath, path.extname(filePath));
   const defn: ObjectDefn = {
@@ -61,6 +89,7 @@ function readObjectDefn(filePath: string, kind: "objectType" | "family"): Object
     kind,
     members: kind === "family" ? (json.members ?? []) : [],
     behaviors: readBehaviors(json.behaviorTypes),
+    effectTypes: readEffects(json.effectTypes),
   };
   if (json["plugin-id"] !== undefined) defn.pluginId = json["plugin-id"];
   return defn;

@@ -25,6 +25,7 @@ describe("readProjectObjects", () => {
         pluginId: "GCore",
         members: [],
         behaviors: [],
+        effectTypes: [],
       });
     });
 
@@ -36,6 +37,7 @@ describe("readProjectObjects", () => {
         pluginId: "GCore",
         members: [],
         behaviors: [],
+        effectTypes: [],
       });
     });
 
@@ -47,6 +49,7 @@ describe("readProjectObjects", () => {
         pluginId: "Sprite",
         members: [],
         behaviors: [],
+        effectTypes: [],
       });
     });
 
@@ -58,6 +61,7 @@ describe("readProjectObjects", () => {
         pluginId: "GCore",
         members: ["Account", "Leaderboard"],
         behaviors: [],
+        effectTypes: [],
       });
     });
   });
@@ -73,6 +77,7 @@ describe("readProjectObjects", () => {
         pluginId: "Button",
         members: [],
         behaviors: [],
+        effectTypes: [],
       });
     });
 
@@ -84,6 +89,7 @@ describe("readProjectObjects", () => {
         pluginId: "TiledBg",
         members: [],
         behaviors: [],
+        effectTypes: [],
       });
     });
 
@@ -95,6 +101,7 @@ describe("readProjectObjects", () => {
         pluginId: "Text",
         members: ["Text2", "Text"],
         behaviors: [{ behaviorId: "Timer", name: "Timer" }],
+        effectTypes: [],
       });
     });
 
@@ -106,6 +113,7 @@ describe("readProjectObjects", () => {
         pluginId: "TiledBg",
         members: ["JPEGTileBackground"],
         behaviors: [],
+        effectTypes: [],
       });
     });
 
@@ -120,6 +128,7 @@ describe("readProjectObjects", () => {
           { behaviorId: "MyCompany_MyBehavior", name: "MyCustomBehavior" },
           { behaviorId: "Persist", name: "Persist" },
         ],
+        effectTypes: [{ effectId: "burn", name: "Burn" }],
       });
     });
   });
@@ -147,7 +156,14 @@ describe("readProjectObjects", () => {
 
       const defns = readProjectObjects(openProject(tmpDir));
       const bad = find(defns, "Bad");
-      expect(bad).to.deep.equal({ name: "Bad", kind: "objectType", pluginId: "Sprite", members: [], behaviors: [] });
+      expect(bad).to.deep.equal({
+        name: "Bad",
+        kind: "objectType",
+        pluginId: "Sprite",
+        members: [],
+        behaviors: [],
+        effectTypes: [],
+      });
     });
 
     it("filters out malformed entries (missing name) while keeping valid ones", () => {
@@ -169,6 +185,76 @@ describe("readProjectObjects", () => {
         pluginId: "Sprite",
         members: [],
         behaviors: [{ behaviorId: "Persist", name: "Persist" }],
+        effectTypes: [],
+      });
+    });
+  });
+
+  describe("effectTypes reading", () => {
+    let tmpDir: string;
+
+    afterEach(() => {
+      if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    function writeObjectType(root: string, fileName: string, json: unknown): void {
+      const objectTypesDir = path.join(root, "objectTypes");
+      mkdirSync(objectTypesDir, { recursive: true });
+      writeFileSync(path.join(objectTypesDir, fileName), JSON.stringify(json, null, "\t") + "\n");
+    }
+
+    it("reads Sprite2's real effectTypes (burn) from the construct3-chef-sample fixture", () => {
+      const defns = readProjectObjects(openProject(SAMPLE_ROOT));
+      const sprite2 = find(defns, "Sprite2");
+      expect(sprite2?.effectTypes).to.deep.equal([{ effectId: "burn", name: "Burn" }]);
+    });
+
+    it("reads TextFamily's empty effectTypes from the construct3-chef-sample fixture", () => {
+      const defns = readProjectObjects(openProject(SAMPLE_ROOT));
+      const textFamily = find(defns, "TextFamily");
+      expect(textFamily?.effectTypes).to.deep.equal([]);
+    });
+
+    it("defaults to [] when effectTypes is not an array", () => {
+      tmpDir = mkdtempSync(path.join(os.tmpdir(), "project-objects-"));
+      writeObjectType(tmpDir, "Bad.json", {
+        name: "Bad",
+        "plugin-id": "Sprite",
+        effectTypes: "not-an-array",
+      });
+
+      const defns = readProjectObjects(openProject(tmpDir));
+      const bad = find(defns, "Bad");
+      expect(bad).to.deep.equal({
+        name: "Bad",
+        kind: "objectType",
+        pluginId: "Sprite",
+        members: [],
+        behaviors: [],
+        effectTypes: [],
+      });
+    });
+
+    it("filters out malformed effectTypes entries (missing name) while keeping valid ones", () => {
+      tmpDir = mkdtempSync(path.join(os.tmpdir(), "project-objects-"));
+      writeObjectType(tmpDir, "Mixed.json", {
+        name: "Mixed",
+        "plugin-id": "Sprite",
+        effectTypes: [
+          { effectId: "burn", sid: 1 },
+          { effectId: "sepia", name: "Sepia", sid: 2 },
+        ],
+      });
+
+      const defns = readProjectObjects(openProject(tmpDir));
+      const mixed = find(defns, "Mixed");
+      expect(mixed).to.deep.equal({
+        name: "Mixed",
+        kind: "objectType",
+        pluginId: "Sprite",
+        members: [],
+        behaviors: [],
+        effectTypes: [{ effectId: "sepia", name: "Sepia" }],
       });
     });
   });
