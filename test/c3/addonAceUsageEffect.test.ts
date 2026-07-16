@@ -11,6 +11,8 @@ import {
   type EffectSite,
 } from "../../src/c3/addonAceUsage.js";
 import { resolveAddonTarget, type DiscoveredAddon } from "../../src/c3/addonDiscovery.js";
+import { readProjectObjects } from "../../src/c3/projectObjects.js";
+import { openProject } from "@genvidtech/c3source";
 
 // ── Synthetic project + path-mode effect addon ─────────────────────────────
 //
@@ -292,4 +294,147 @@ describe("scanAddonUsage — effect target (public dispatch)", () => {
     expect(output).to.contain("Object types:");
     expect(output).to.contain("MyGlow");
   });
+});
+
+// ── Real-fixture integration (construct3-chef-sample, discovered addon id) ─
+//
+// The describe blocks above already cover scanEffectUsage/formatAddonUsage
+// mechanics (incl. the R7 empty-usage case, see "formatAddonUsage — effect
+// scan" > "renders the standard empty-usage sentence...") against a temp-dir
+// project and a PATH-mode addon (`resolveAddonTarget(TMP_ROOT,
+// "addon-src/MyEffect")`). This block instead resolves the addon by its
+// DISCOVERED id ("MyCompany_MyEffect") against the real
+// `construct3-chef-sample` fixture — the end-to-end path a real
+// `scan-addon-usage --addon MyCompany_MyEffect` CLI/MCP call takes (through
+// `discoverAddons`), which the synthetic tests above don't exercise.
+//
+// Fixture sites (read-only — construct3-chef-sample is golden-diffed, never
+// mutated by this file):
+//   - objectTypes/images/Sprite2.json: effectTypes ["burn" (unrelated
+//     built-in, negative case), "MyCompany_MyEffect"]
+//   - families/TextFamily.json: effectTypes ["MyCompany_MyEffect"]
+//   - layouts/Second Layout.json: top-level effectTypes
+//     ["MyCompany_MyEffect"] AND, nested two levels deep (layer 1 ->
+//     sublayer 1.1 -> sublayer 1.1.1), a layer-level "MyCompany_MyEffect" —
+//     the real-fixture proof of the recursive subLayers walk.
+
+const SAMPLE_ROOT = path.resolve("test/fixtures/construct3-chef-sample");
+
+describe("scanAddonUsage — effect addon (against construct3-chef-sample, discovered id)", () => {
+  it("R1: objectType site — Sprite2 carries the effect", () => {
+    const result = ok(scanAddonUsage(SAMPLE_ROOT, "MyCompany_MyEffect"));
+    expect(result.effectSites ?? []).to.deep.include({
+      effectId: "MyCompany_MyEffect",
+      name: "My custom effect",
+      container: "objectType",
+      host: "Sprite2",
+    });
+  });
+
+  it("R2: family site — TextFamily carries the effect", () => {
+    const result = ok(scanAddonUsage(SAMPLE_ROOT, "MyCompany_MyEffect"));
+    expect(result.effectSites ?? []).to.deep.include({
+      effectId: "MyCompany_MyEffect",
+      name: "My custom effect",
+      container: "family",
+      host: "TextFamily",
+    });
+  });
+
+  it("R3: layout-level site — Second Layout's top-level effectTypes, no `layer` key", () => {
+    const result = ok(scanAddonUsage(SAMPLE_ROOT, "MyCompany_MyEffect"));
+    expect(result.effectSites ?? []).to.deep.include({
+      effectId: "MyCompany_MyEffect",
+      name: "My custom effect",
+      container: "layout",
+      host: "Second Layout",
+    });
+  });
+
+  it("R4/R5: layer site incl. nested recursion two levels deep — layer 1 -> sublayer 1.1 -> sublayer 1.1.1", () => {
+    const result = ok(scanAddonUsage(SAMPLE_ROOT, "MyCompany_MyEffect"));
+    expect(result.effectSites ?? []).to.deep.include({
+      effectId: "MyCompany_MyEffect",
+      name: "My custom effect",
+      container: "layer",
+      host: "Second Layout",
+      layer: "sublayer 1.1.1",
+    });
+  });
+
+  it("R6: the unrelated built-in 'burn' effect on Sprite2 is never matched by the MyCompany_MyEffect scan", () => {
+    const result = ok(scanAddonUsage(SAMPLE_ROOT, "MyCompany_MyEffect"));
+    const sites = result.effectSites ?? [];
+    expect(sites.some((s) => s.effectId === "burn" || s.name === "Burn")).to.be.false;
+
+    // readProjectObjects itself DOES see "burn" on Sprite2 — it's the effect
+    // scan's own effectId filter (scanEffectUsage's `if (e.effectId !==
+    // addonId) continue;`) that excludes it, not an upstream reader gap.
+    const objects = readProjectObjects(openProject(SAMPLE_ROOT));
+    const sprite2 = objects.find((d) => d.name === "Sprite2");
+    expect(sprite2?.effectTypes).to.deep.include({ effectId: "burn", name: "Burn" });
+  });
+
+  it("R8: 'burn' is a C3 built-in effect with no discoverable addon package — scan returns the standard error", () => {
+    expect(() => scanAddonUsage(SAMPLE_ROOT, "burn")).to.not.throw();
+    const result = scanAddonUsage(SAMPLE_ROOT, "burn");
+    expect(result).to.deep.equal({ error: "addon source not found: burn" });
+  });
+
+  describe("--from blast radius (real fixture, path-mode --from against the extracted addon source tree)", () => {
+    const FROM_SOURCE = path.join("archive-sources", "MyCompany_MyEffect");
+
+    it("R9: affectedCount equals effectSites.length; every rendered site line carries ' ⚠ exposed'", () => {
+      const result = ok(scanAddonUsage(SAMPLE_ROOT, "MyCompany_MyEffect", FROM_SOURCE));
+
+      expect(result.blast).to.not.be.undefined;
+      expect(result.blast?.changedKeys).to.deep.equal([]);
+      expect(result.blast?.removedKeys).to.deep.equal([]);
+      expect(result.blast?.affectedCount).to.equal((result.effectSites ?? []).length);
+      expect(result.blast?.affectedCount).to.equal(4);
+
+      const output = formatAddonUsage(result);
+      const siteLines = output.split("\n").filter((l) => l.includes("["));
+      expect(siteLines.length).to.equal(4);
+      for (const line of siteLines) {
+        expect(line).to.include("⚠ exposed");
+      }
+    });
+
+    it("R10: the CLI exit-code decision (result.blast !== undefined && affectedCount > 0) is true for this scan", () => {
+      const result = ok(scanAddonUsage(SAMPLE_ROOT, "MyCompany_MyEffect", FROM_SOURCE));
+      expect(result.blast !== undefined && result.blast.affectedCount > 0).to.be.true;
+    });
+  });
+
+  it("R11: formatAddonUsage renders deterministic, container-grouped sections naming every host + the applied effect", () => {
+    const first = formatAddonUsage(scanAddonUsage(SAMPLE_ROOT, "MyCompany_MyEffect"));
+    const second = formatAddonUsage(scanAddonUsage(SAMPLE_ROOT, "MyCompany_MyEffect"));
+    expect(first).to.equal(second);
+
+    expect(first).to.equal(
+      [
+        "scan-addon-usage: MyCompany_MyEffect (effect)",
+        "applied at 4 site(s)",
+        "",
+        "Object types:",
+        "  Sprite2   [My custom effect]",
+        "",
+        "Families:",
+        "  TextFamily   [My custom effect]",
+        "",
+        "Layouts:",
+        "  Second Layout (layout stack)   [My custom effect]",
+        "  Second Layout / sublayer 1.1.1   [My custom effect]",
+      ].join("\n"),
+    );
+  });
+
+  // R7 (the empty-usage case) stays covered SYNTHETICALLY — see
+  // "formatAddonUsage — effect scan" > "renders the standard empty-usage
+  // sentence when effectSites is empty" above. construct3-chef-sample bundles
+  // only ONE effect addon and it IS applied at all four sites, so there's no
+  // real resolvable-but-unapplied effect to drive an empty case against the
+  // real fixture without adding a second effect-addon package purely for
+  // this — not worth the fixture churn.
 });
