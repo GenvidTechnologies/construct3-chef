@@ -6,9 +6,9 @@
 ## Layers (3)
 
 layer 0 (4 instances)
+  Tilemap x1
   TextInput x1
   TiledBackground x1
-  Tilemap x1
   NavButton x1
 
 global layer (global)

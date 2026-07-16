@@ -5,7 +5,13 @@
 	"isGlobal": false,
 	"editorNewInstanceIsReplica": true,
 	"instanceVariables": [],
-	"behaviorTypes": [],
+	"behaviorTypes": [
+		{
+			"behaviorId": "MyCompany_MyBehavior",
+			"name": "MyCustomBehavior",
+			"sid": 554883334177942
+		}
+	],
 	"effectTypes": [],
 	"image": {
 		"width": 250,

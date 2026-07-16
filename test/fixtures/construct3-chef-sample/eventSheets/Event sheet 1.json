@@ -49,9 +49,26 @@
 					],
 					"actions": [
 						{
+							"id": "stop",
+							"objectClass": "Sprite2",
+							"sid": 444777231675422,
+							"behaviorType": "MyCustomBehavior"
+						},
+						{
+							"id": "start-timer",
+							"objectClass": "TextFamily",
+							"sid": 781413955177885,
+							"behaviorType": "Timer",
+							"parameters": {
+								"duration": "1.0",
+								"type": "once",
+								"tag": "\"test\""
+							}
+						},
+						{
 							"id": "go-to-layout",
 							"objectClass": "System",
-							"sid": 669765892024684,
+							"sid": 631897527420293,
 							"parameters": {
 								"layout": "Second Layout"
 							}

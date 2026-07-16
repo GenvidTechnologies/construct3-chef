@@ -25,7 +25,13 @@
 					"sid": 771342571715259,
 					"tags": "",
 					"instanceVariables": {},
-					"behaviors": {},
+					"behaviors": {
+						"MyCustomBehavior": {
+							"properties": {
+								"test-property": 0
+							}
+						}
+					},
 					"showing": true,
 					"locked": false,
 					"world": {
@@ -300,7 +306,11 @@
 					"sid": 149337451827964,
 					"tags": "",
 					"instanceVariables": {},
-					"behaviors": {},
+					"behaviors": {
+						"Timer": {
+							"properties": {}
+						}
+					},
 					"sceneGraphData": {
 						"parent-uid": 10,
 						"uid": 11,
@@ -369,8 +379,8 @@
 					"showing": true,
 					"locked": false,
 					"world": {
-						"x": 70,
-						"y": 55,
+						"x": 325,
+						"y": 203,
 						"width": 72,
 						"height": 24,
 						"originX": 0,

@@ -1,10 +1,10 @@
 {
 	"projectFormatVersion": 1,
-	"savedWithRelease": 48702,
+	"savedWithRelease": 48703,
 	"name": "construct3-chef-sample",
 	"runtime": "c3",
 	"useWorker": "auto",
-	"bundleAddons": false,
+	"bundleAddons": true,
 	"usedAddons": [
 		{
 			"type": "plugin",
@@ -59,6 +59,36 @@
 			"type": "plugin",
 			"id": "Tilemap",
 			"name": "Tilemap",
+			"author": "Scirra",
+			"bundled": false
+		},
+		{
+			"type": "behavior",
+			"id": "MyCompany_MyBehavior",
+			"name": "MyCustomBehavior",
+			"author": "Scirra",
+			"bundled": true,
+			"version": "1.0.0.0",
+			"sdkVersion": 2
+		},
+		{
+			"type": "behavior",
+			"id": "Persist",
+			"name": "Persist",
+			"author": "Scirra",
+			"bundled": false
+		},
+		{
+			"type": "behavior",
+			"id": "Timer",
+			"name": "Timer",
+			"author": "Scirra",
+			"bundled": false
+		},
+		{
+			"type": "effect",
+			"id": "burn",
+			"name": "Burn",
 			"author": "Scirra",
 			"bundled": false
 		}

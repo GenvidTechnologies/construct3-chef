@@ -329,4 +329,88 @@ describe("addonReader", () => {
       expect(listAddonEntries(addon, "lang/")).to.deep.equal([]);
     });
   });
+
+  // ── R10: leading UTF-8 BOM is stripped before JSON.parse ─────────────────
+  //
+  // A real C3-exported addon can ship addon.json/aces.json with a leading
+  // U+FEFF BOM; JSON.parse throws on that and the catch swallows it to an
+  // empty/null result. readAddonEntryWithSource must strip it first.
+
+  describe("BOM handling", () => {
+    const BOM = "﻿";
+    const acesJson = {
+      timing: {
+        conditions: [{ id: "is-elapsed", scriptName: "IsElapsed", params: [{ id: "duration", type: "number" }] }],
+        actions: [],
+        expressions: [],
+      },
+    };
+    const addonJson = { id: "BomAddon", version: "1.0.0.0", name: "Bom Addon" };
+
+    it("R10: extracted-dir addon.json/aces.json with a leading BOM parses correctly", () => {
+      const tmpDir = mkdtempSync(path.join(os.tmpdir(), "addon-reader-bom-extracted-"));
+      try {
+        const pluginDir = path.join(tmpDir, "addons", "plugin");
+        mkdirSync(pluginDir, { recursive: true });
+        writeFileSync(path.join(pluginDir, "BomAddon.c3addon"), "placeholder");
+
+        const extractedDir = path.join(pluginDir, "BomAddon");
+        mkdirSync(extractedDir, { recursive: true });
+        writeFileSync(path.join(extractedDir, "addon.json"), BOM + JSON.stringify(addonJson));
+        writeFileSync(path.join(extractedDir, "aces.json"), BOM + JSON.stringify(acesJson));
+
+        const addon: DiscoveredAddon = {
+          name: "BomAddon",
+          kind: "plugin",
+          archivePath: path.join(pluginDir, "BomAddon.c3addon"),
+          extractedDir,
+        };
+
+        const metaResult = readAddonMetadata(addon);
+        expect(metaResult).to.not.be.null;
+        expect(metaResult!.source).to.equal("extracted");
+        expect(metaResult!.metadata).to.deep.equal({ id: "BomAddon", version: "1.0.0.0", name: "Bom Addon" });
+
+        const aces = readAddonAces(addon);
+        expect(aces.length).to.equal(1);
+        expect(aces[0].id).to.equal("is-elapsed");
+        expect(aces[0].kind).to.equal("condition");
+      } finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("R10: zip-archive addon.json/aces.json with a leading BOM parses correctly", () => {
+      const tmpDir = mkdtempSync(path.join(os.tmpdir(), "addon-reader-bom-archive-"));
+      try {
+        const pluginDir = path.join(tmpDir, "addons", "plugin");
+        mkdirSync(pluginDir, { recursive: true });
+
+        const zipData = zipSync({
+          "addon.json": new TextEncoder().encode(BOM + JSON.stringify(addonJson)),
+          "aces.json": new TextEncoder().encode(BOM + JSON.stringify(acesJson)),
+        });
+        writeFileSync(path.join(pluginDir, "BomAddon.c3addon"), zipData);
+
+        const addon: DiscoveredAddon = {
+          name: "BomAddon",
+          kind: "plugin",
+          archivePath: path.join(pluginDir, "BomAddon.c3addon"),
+          extractedDir: null,
+        };
+
+        const metaResult = readAddonMetadata(addon);
+        expect(metaResult).to.not.be.null;
+        expect(metaResult!.source).to.equal("archive");
+        expect(metaResult!.metadata).to.deep.equal({ id: "BomAddon", version: "1.0.0.0", name: "Bom Addon" });
+
+        const aces = readAddonAces(addon);
+        expect(aces.length).to.equal(1);
+        expect(aces[0].id).to.equal("is-elapsed");
+        expect(aces[0].kind).to.equal("condition");
+      } finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
 });

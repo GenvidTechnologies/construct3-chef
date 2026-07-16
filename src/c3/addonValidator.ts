@@ -166,7 +166,7 @@ function checkMetadataMismatch(
 interface RawAddonArchive {
   archivePath: string; // absolute path to the .c3addon file
   name: string; // archive basename without .c3addon
-  kind: "plugin" | "effect";
+  kind: "plugin" | "effect" | "behavior";
 }
 
 /**
@@ -179,7 +179,8 @@ interface RawAddonArchive {
 function findAllAddonArchives(projectRoot: string): RawAddonArchive[] {
   const results: RawAddonArchive[] = [];
   for (const addonDir of ADDON_DIRS) {
-    const kind: "plugin" | "effect" = addonDir === "addons/plugin" ? "plugin" : "effect";
+    const kind: "plugin" | "effect" | "behavior" =
+      addonDir === "addons/plugin" ? "plugin" : addonDir === "addons/effect" ? "effect" : "behavior";
     const fullDir = path.join(projectRoot, addonDir);
     if (!fs.existsSync(fullDir)) continue;
     try {

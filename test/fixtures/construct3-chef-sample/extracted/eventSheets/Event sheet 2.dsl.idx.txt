@@ -4,4 +4,4 @@
 # Event | JSON Path             | SID              | DSL Line | Description
 #-------|-----------------------|------------------|----------|-----------
   1     | events[0]             | §544395983790907 | 4        | group "Second Layout Events"
-  2     | events[0].children[0] | §873125372253996 | 5        | block ⟪search⟫ NavButton.on-clicked() System.go-to-layout-by-name(layout="Main Layout")
+  2     | events[0].children[0] | §873125372253996 | 5        | block ⟪search⟫ NavButton.on-clicked() System.go-to-layout-by-name(layout="Main Layout") Text[Timer].stop-timer(tag="test")

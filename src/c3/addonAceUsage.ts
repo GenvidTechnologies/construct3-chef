@@ -32,6 +32,15 @@ export interface PresenceRow {
   name: string;
   kind: "objectType" | "family";
   callSiteCount: number;
+  /**
+   * Behavior instance name(s) this host attached the scanned addon under
+   * (from `behaviorTypes[].name`) — e.g. `["MyCustomBehavior"]`, or
+   * `["Timer", "Timer2"]` for two instances of the same behavior on one
+   * host. Present only on behavior-kind scans ({@link
+   * createBehaviorUsageMatcher}); plugin/effect presence rows never carry
+   * this field (a plugin instance has no comparable per-instance name).
+   */
+  instanceNames?: string[];
 }
 
 /**
@@ -81,6 +90,139 @@ function byPresenceOrder(a: ObjectDefn, b: ObjectDefn): number {
   return a.name.localeCompare(b.name);
 }
 
+/**
+ * A condition/action node as seen mid-walk, before it's known to be a call
+ * site. `behaviorType` is the node's own behavior-instance name (present on
+ * behavior-scoped conditions/actions only); the plugin matcher ignores it,
+ * the behavior matcher requires it.
+ */
+interface CallCandidate {
+  objectClass: string;
+  kind: "condition" | "action";
+  id: string;
+  behaviorType?: string;
+}
+
+/**
+ * Isolates the addon-kind-specific pieces of a usage scan (presence +
+ * per-node match rule + call-site attribution) behind a common seam, so the
+ * event-sheet-walk shell, blast-radius wiring, result assembly, and
+ * {@link formatAddonUsage} stay shared/kind-agnostic across addon kinds:
+ * {@link createPluginUsageMatcher} for plugins/effects, {@link
+ * createBehaviorUsageMatcher} for behaviors.
+ */
+interface UsageMatcher {
+  /** Presence rows (name + kind), before call-site counts are known. */
+  presence: Omit<PresenceRow, "callSiteCount">[];
+  /** Does this condition/action node call the addon? */
+  matches(node: CallCandidate): boolean;
+  /**
+   * Which presence-row name a call site's `objectClass` counts toward, or
+   * `undefined` if it shouldn't be attributed to any row.
+   */
+  attributeTo(objectClass: string): string | undefined;
+}
+
+/**
+ * Builds the plugin {@link UsageMatcher}: presence is every object
+ * type/family whose `plugin-id` names the addon, a node matches when its
+ * `objectClass` is one of those presence names AND its `(kind, id)` is in
+ * `matchKeySet`, and every matched call site attributes to its own
+ * `objectClass` (which is always a presence name, by construction of
+ * `matches`).
+ */
+function createPluginUsageMatcher(addonId: string, objects: ObjectDefn[], matchKeySet: Set<string>): UsageMatcher {
+  const matched = objects.filter((d) => d.pluginId === addonId).sort(byPresenceOrder);
+  const nameSet = new Set(matched.map((d) => d.name));
+
+  return {
+    presence: matched.map((d) => ({ name: d.name, kind: d.kind })),
+    matches: (node) => nameSet.has(node.objectClass) && matchKeySet.has(aceKey(node.kind, node.id)),
+    attributeTo: (objectClass) => (nameSet.has(objectClass) ? objectClass : undefined),
+  };
+}
+
+/**
+ * Builds the behavior {@link UsageMatcher}: presence is every object
+ * type/family whose `behaviors[]` contains an entry with
+ * `behaviorId === addonId` — i.e. it carries its OWN instance of the
+ * behavior, never a family member (a member inherits the family's behavior
+ * rather than attaching its own instance, so members are deliberately
+ * excluded from presence).
+ *
+ * A behavior-scoped condition/action node identifies which behavior
+ * *instance* it calls by name (`behaviorType`), not by addon id, and a host
+ * may rename its instance (or attach two instances of the same behavior
+ * under different names) — so the match rule widens to the UNION of
+ * instance names across every presence host, then narrows back down with an
+ * `objectClass` attribution check: a node matches only when its
+ * `behaviorType` is one of those instance names, its `objectClass` is
+ * attributable (a presence host itself, or a member of a presence family),
+ * and its `(kind, id)` is in `matchKeySet`. The `objectClass` check is what
+ * stops an unrelated object from matching just because it happens to reuse
+ * the same instance-name string for a different behavior.
+ *
+ * Attribution routes a family-member call site (real `objectClass`, e.g.
+ * `"Text"`) to its owning family's presence row (`"TextFamily"`) without
+ * altering the `CallSite`'s own `objectClass` — the call site itself still
+ * records which object actually made the call; only the aggregated
+ * `callSiteCount` is attributed to the family. Presence hosts map to
+ * themselves. `matched` is iterated in `byPresenceOrder` (object types
+ * before families), so a family's member-mapping entries are written after
+ * — and take precedence over — any self-mapping entry from a same-named
+ * object type that also happens to carry its own instance of the behavior.
+ *
+ * Each presence row also carries {@link PresenceRow.instanceNames} — the
+ * host's own `behaviorTypes[].name` entries matching `addonId` (so
+ * {@link formatAddonUsage} can render which instance(s) a host attached,
+ * distinct from the addon-wide instance-name UNION used for matching above).
+ *
+ * Exported (this module is off the `src/index.ts` barrel, so this isn't
+ * published API) so tests can drive the family-member attribution rule
+ * directly against synthetic `ObjectDefn`s/nodes: the project's own
+ * `TextFamily`/`Timer` fixture data exercises the real shape, but `Timer` is
+ * a C3 built-in with no addon package to scan end-to-end through {@link
+ * scanAddonUsage}.
+ */
+export function createBehaviorUsageMatcher(
+  addonId: string,
+  objects: ObjectDefn[],
+  matchKeySet: Set<string>,
+): UsageMatcher {
+  const matched = objects.filter((d) => d.behaviors.some((b) => b.behaviorId === addonId)).sort(byPresenceOrder);
+
+  const instanceNameSet = new Set<string>();
+  for (const d of matched) {
+    for (const b of d.behaviors) {
+      if (b.behaviorId === addonId) instanceNameSet.add(b.name);
+    }
+  }
+
+  const attributeMap = new Map<string, string>();
+  for (const d of matched) {
+    attributeMap.set(d.name, d.name);
+    if (d.kind === "family") {
+      for (const member of d.members) {
+        attributeMap.set(member, d.name);
+      }
+    }
+  }
+
+  return {
+    presence: matched.map((d) => ({
+      name: d.name,
+      kind: d.kind,
+      instanceNames: d.behaviors.filter((b) => b.behaviorId === addonId).map((b) => b.name),
+    })),
+    matches: (node) =>
+      node.behaviorType !== undefined &&
+      instanceNameSet.has(node.behaviorType) &&
+      attributeMap.has(node.objectClass) &&
+      matchKeySet.has(aceKey(node.kind, node.id)),
+    attributeTo: (objectClass) => attributeMap.get(objectClass),
+  };
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
@@ -90,13 +232,20 @@ function byPresenceOrder(a: ObjectDefn, b: ObjectDefn): number {
  *    ACEs ({@link readAddonAces}), keyed `(kind, id)` — deliberately NOT
  *    `objectClass`, which is a caller-supplied addon name, constant per addon
  *    and not a stable per-ACE identity (see `aceRegistry.ts`'s docstring).
- * 2. Finds every `objectTypes/*.json` / `families/*.json` entry whose
- *    `plugin-id` names the addon ({@link readProjectObjects}) — this is the
- *    presence set: object types/families instantiated FROM the addon.
+ * 2. Reads every `objectTypes/*.json` / `families/*.json` entry
+ *    ({@link readProjectObjects}) and routes on the resolved addon's `kind`
+ *    to build the presence set + per-node match rule: `plugin`/`effect`
+ *    addons use {@link createPluginUsageMatcher} (presence = entries whose
+ *    `plugin-id` names the addon); `behavior` addons use {@link
+ *    createBehaviorUsageMatcher} (presence = entries carrying their own
+ *    instance of the behavior in `behaviorTypes`; family members are
+ *    attributed to their family's presence row instead of getting their
+ *    own).
  * 3. Walks every event sheet's conditions/actions; a node counts as a call
- *    site when its `objectClass` is in the presence set AND its `(kind, id)`
- *    matches a current ACE. Conditions and actions only — expression usage
- *    isn't a structured node and is out of scope here (tracked separately).
+ *    site when the matcher's `matches` rule accepts it — which always
+ *    includes its `(kind, id)` matching a current ACE. Conditions and
+ *    actions only — expression usage isn't a structured node and is out of
+ *    scope here (tracked separately).
  *
  * Optional blast-radius mode: when `fromArg` is given, it's resolved via
  * `addonAceDiff.resolveAceSource` — deliberately NOT contained to `rootDir`,
@@ -157,8 +306,10 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
 
   const project = openProject(rootDir);
   const objects = readProjectObjects(project);
-  const matched = objects.filter((d) => d.pluginId === addonId).sort(byPresenceOrder);
-  const nameSet = new Set(matched.map((d) => d.name));
+  const matcher =
+    target.kind === "behavior"
+      ? createBehaviorUsageMatcher(addonId, objects, matchKeySet)
+      : createPluginUsageMatcher(addonId, objects, matchKeySet);
 
   const callSites: CallSite[] = [];
 
@@ -173,7 +324,14 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
     visitEvents(sheet.events, (event, ctx) => {
       if (hasConditions(event)) {
         for (const cond of event.conditions) {
-          if (nameSet.has(cond.objectClass) && matchKeySet.has(aceKey("condition", cond.id))) {
+          if (
+            matcher.matches({
+              objectClass: cond.objectClass,
+              kind: "condition",
+              id: cond.id,
+              behaviorType: cond.behaviorType,
+            })
+          ) {
             callSites.push({
               sheet: sheet.name,
               eventNumber: ctx.eventNumber,
@@ -190,7 +348,14 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
       if (hasActions(event)) {
         for (const action of event.actions as C3Action[]) {
           if (!isStandardAction(action)) continue;
-          if (nameSet.has(action.objectClass) && matchKeySet.has(aceKey("action", action.id))) {
+          if (
+            matcher.matches({
+              objectClass: action.objectClass,
+              kind: "action",
+              id: action.id,
+              behaviorType: action.behaviorType,
+            })
+          ) {
             callSites.push({
               sheet: sheet.name,
               eventNumber: ctx.eventNumber,
@@ -208,13 +373,14 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
 
   const callSiteCountByName = new Map<string, number>();
   for (const site of callSites) {
-    callSiteCountByName.set(site.objectClass, (callSiteCountByName.get(site.objectClass) ?? 0) + 1);
+    const name = matcher.attributeTo(site.objectClass);
+    if (name === undefined) continue;
+    callSiteCountByName.set(name, (callSiteCountByName.get(name) ?? 0) + 1);
   }
 
-  const presence: PresenceRow[] = matched.map((d) => ({
-    name: d.name,
-    kind: d.kind,
-    callSiteCount: callSiteCountByName.get(d.name) ?? 0,
+  const presence: PresenceRow[] = matcher.presence.map((p) => ({
+    ...p,
+    callSiteCount: callSiteCountByName.get(p.name) ?? 0,
   }));
 
   if (blast !== undefined) {
@@ -265,6 +431,12 @@ function formatCallSiteLine(
  * matched call sites); and a trailing ` ⚠ CHANGED` / ` ⚠ REMOVED` marker on
  * each affected call-site line. With no `blast`, output is byte-identical to
  * the plain (P3) scan.
+ *
+ * On a behavior scan, a presence row whose {@link PresenceRow.instanceNames}
+ * is non-empty renders a trailing `[instanceName]` segment right after the
+ * row's name (`[InstanceA, InstanceB]` when a host carries two instances of
+ * the scanned behavior) — plugin/effect presence rows never carry
+ * `instanceNames`, so their rendering is unchanged.
  */
 export function formatAddonUsage(result: ScanAddonUsageResult): string {
   if ("error" in result) {
@@ -301,7 +473,9 @@ export function formatAddonUsage(result: ScanAddonUsageResult): string {
       for (const row of rows) {
         const suffix = row.callSiteCount === 0 ? " (instantiated, no ACE calls)" : "";
         const exposedMarker = exposed ? " ⚠ exposed" : "";
-        lines.push(`  ${row.name}   ${row.callSiteCount} call site(s)${suffix}${exposedMarker}`);
+        const instanceSegment =
+          row.instanceNames !== undefined && row.instanceNames.length > 0 ? ` [${row.instanceNames.join(", ")}]` : "";
+        lines.push(`  ${row.name}${instanceSegment}   ${row.callSiteCount} call site(s)${suffix}${exposedMarker}`);
       }
     }
   }

@@ -5,3 +5,4 @@ group "Second Layout Events" (active)
   block
     when: NavButton.on-clicked()
     do: System.go-to-layout-by-name(layout="Main Layout")
+    do: Text[Timer].stop-timer(tag="test")

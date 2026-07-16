@@ -415,6 +415,30 @@ describe("MCP server handler response shaping", () => {
     });
   });
 
+  // ── 12. scan-addon-usage txId footer on a behavior scan ──────────────────
+  // Fixture carries the MyCompany_MyBehavior behavior addon
+  // (addons/behavior/MyCompany_MyBehavior), instantiated on Sprite2/9patch —
+  // a read-only tool, so no watcher.bump() and the response carries the
+  // CURRENT txId (5, from makeFakeWatcher(5) in beforeEach).
+
+  describe("scan-addon-usage (behavior addon)", () => {
+    it("behavior scan response carries the txId footer, no bump, single block", async () => {
+      const handler = __getHandler("scan-addon-usage")!;
+      expect(handler).to.exist;
+
+      const result = (await handler({ addon: "MyCompany_MyBehavior" }, makeExtra())) as any;
+
+      expect(result.isError).to.be.undefined;
+      expect(result.content).to.have.length(1);
+      expect(result.content[0].type).to.equal("text");
+      const text: string = result.content[0].text;
+      expect(text).to.match(/\ntxId: 5$/);
+      expect(text).to.include("Sprite2 [MyCustomBehavior]");
+      expect(text).to.include("9patch [MyCustomBehavior]");
+      expect(watcher.bumped).to.equal(0);
+    });
+  });
+
   it("apply-recipe with aborted signal: isError, Cancelled text, txId bumped, dirty=true", async () => {
     const handler = __getHandler("apply-recipe")!;
     expect(handler).to.exist;

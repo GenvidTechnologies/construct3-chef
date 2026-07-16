@@ -25,6 +25,15 @@
 							"parameters": {
 								"layout": "\"Main Layout\""
 							}
+						},
+						{
+							"id": "stop-timer",
+							"objectClass": "Text",
+							"sid": 157637955078786,
+							"behaviorType": "Timer",
+							"parameters": {
+								"tag": "\"test\""
+							}
 						}
 					],
 					"sid": 873125372253996
