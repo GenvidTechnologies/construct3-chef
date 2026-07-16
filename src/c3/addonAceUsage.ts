@@ -266,13 +266,15 @@ export function createBehaviorUsageMatcher(
  *    and not a stable per-ACE identity (see `aceRegistry.ts`'s docstring).
  * 2. Reads every `objectTypes/*.json` / `families/*.json` entry
  *    ({@link readProjectObjects}) and routes on the resolved addon's `kind`
- *    to build the presence set + per-node match rule: `plugin`/`effect`
- *    addons use {@link createPluginUsageMatcher} (presence = entries whose
- *    `plugin-id` names the addon); `behavior` addons use {@link
+ *    to build the presence set + per-node match rule: `plugin` addons use
+ *    {@link createPluginUsageMatcher} (presence = entries whose `plugin-id`
+ *    names the addon); `behavior` addons use {@link
  *    createBehaviorUsageMatcher} (presence = entries carrying their own
  *    instance of the behavior in `behaviorTypes`; family members are
  *    attributed to their family's presence row instead of getting their
- *    own).
+ *    own). `effect` addons never reach this step — they short-circuit to
+ *    {@link scanEffectUsage} above, since effects have no ACEs and presence
+ *    (application) is the whole story.
  * 3. Walks every event sheet's conditions/actions; a node counts as a call
  *    site when the matcher's `matches` rule accepts it — which always
  *    includes its `(kind, id)` matching a current ACE. Conditions and
@@ -302,6 +304,13 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
   const target = resolveAddonTarget(rootDir, addonArg);
   if (target === null) {
     return { error: `addon source not found: ${addonArg}` };
+  }
+
+  // Effects have no ACEs and no event-sheet call sites — presence IS usage,
+  // so they take a dedicated layout/objectType-side path that bypasses the
+  // ACE read + event walk entirely (see {@link scanEffectUsage}).
+  if (target.kind === "effect") {
+    return scanEffectUsage(rootDir, target, fromArg);
   }
 
   const addonId = resolveAddonId(target);

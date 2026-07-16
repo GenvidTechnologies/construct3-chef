@@ -264,39 +264,32 @@ describe("formatAddonUsage — effect scan", () => {
   });
 });
 
-// ── RED-STATE (documents the pre-F1 wiring gap, #125 P3) ───────────────────
+// ── Public dispatch (F1 wiring) ────────────────────────────────────────────
 //
-// scanEffectUsage is fully functional (above), but the PUBLIC scanAddonUsage
-// dispatch does not yet route an effect target to it — that's F1. Today,
-// calling scanAddonUsage with an effect addon still falls through to the
-// plugin UsageMatcher branch (target.kind !== "behavior"), which only
-// inspects `plugin-id`/ACE call sites, never `effectTypes`. This test
-// documents that gap so F1 flips it green: once wired, `result.effectSites`
-// should be populated and formatAddonUsage should render the real sites
-// instead of the empty sentence.
+// The PUBLIC scanAddonUsage dispatch routes an effect target straight to
+// scanEffectUsage (short-circuiting the ACE read + event walk before they
+// run, since effects have neither). So the public entry point yields the
+// same populated effectSites as calling scanEffectUsage directly.
 
-describe("scanAddonUsage — effect target (RED, pre-F1 wiring gap)", () => {
-  it("kind is 'effect' (derived from the resolved target) but effectSites is NOT populated yet", () => {
+describe("scanAddonUsage — effect target (public dispatch)", () => {
+  it("routes an effect addon to scanEffectUsage, returning the populated effectSites", () => {
     const result = scanAddonUsage(TMP_ROOT, "addon-src/MyEffect");
     expect("error" in result).to.be.false;
     const okResult = result as AddonUsageResult;
 
     expect(okResult.kind).to.equal("effect");
-    // The plugin matcher finds no `plugin-id === "MyEffect"` host (none of
-    // the fixture's objects declare one) and no `.c3addon`/aces.json to
-    // match call sites against — presence/callSites are empty and
-    // effectSites is simply absent, NOT the 5 real application sites
-    // scanEffectUsage finds directly (see the describe block above).
-    expect(okResult.effectSites).to.be.undefined;
+    expect(okResult.effectSites ?? []).to.have.length(5);
     expect(okResult.presence).to.deep.equal([]);
     expect(okResult.callSites).to.deep.equal([]);
+    // The unrelated OtherEffect on Foo is never surfaced for MyEffect.
+    expect((okResult.effectSites ?? []).some((s: EffectSite) => s.name === "Other")).to.be.false;
   });
 
-  it("formatAddonUsage renders the empty sentence via the effect branch, even though real application sites exist", () => {
+  it("formatAddonUsage renders the real application sites, not the empty sentence", () => {
     const result = scanAddonUsage(TMP_ROOT, "addon-src/MyEffect");
     const output = formatAddonUsage(result);
-    // F1 should flip this to the populated Object types/Families/Layouts
-    // rendering exercised in the "formatAddonUsage — effect scan" block.
-    expect(output).to.equal('No usage of addon "MyEffect" found.');
+    expect(output).to.not.equal('No usage of addon "MyEffect" found.');
+    expect(output).to.contain("Object types:");
+    expect(output).to.contain("MyGlow");
   });
 });
