@@ -497,7 +497,12 @@
 								}
 							],
 							"sid": 434309353023803,
-							"effectTypes": [],
+							"effectTypes": [
+								{
+									"effectId": "MyCompany_MyEffect",
+									"name": "My custom effect"
+								}
+							],
 							"isInitiallyVisible": true,
 							"isInitiallyInteractive": true,
 							"isHTMLElementsLayer": false,
@@ -593,7 +598,12 @@
 	],
 	"sid": 901279105542585,
 	"nonworld-instances": [],
-	"effectTypes": [],
+	"effectTypes": [
+		{
+			"effectId": "MyCompany_MyEffect",
+			"name": "My custom effect"
+		}
+	],
 	"width": 960,
 	"height": 1280,
 	"unboundedScrolling": false,

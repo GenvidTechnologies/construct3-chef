@@ -2,11 +2,11 @@ import * as fs from "node:fs";
 import type { EventSheet } from "@genvidtech/c3source";
 import { hasActions, hasConditions, openProject, visitEvents } from "@genvidtech/c3source";
 import { diffAddonAces, resolveAceSource } from "./addonAceDiff.js";
-import { resolveAddonTarget } from "./addonDiscovery.js";
+import { resolveAddonTarget, type DiscoveredAddon } from "./addonDiscovery.js";
 import { readAddonAces, resolveAddonId } from "./addonReader.js";
 import type { AceEntry } from "./c3Reference.js";
 import { isStandardAction, type C3Action } from "./eventSheetMutator.js";
-import { readProjectObjects, type ObjectDefn } from "./projectObjects.js";
+import { readLayoutEffects, readProjectObjects, type ObjectDefn } from "./projectObjects.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,6 +59,25 @@ export interface BlastInfo {
   affectedCount: number;
 }
 
+/**
+ * An effect **application site**: an `effectTypes` entry naming the scanned
+ * effect addon, on an object type/family ({@link ObjectDefn.effectTypes}) or
+ * on a layout/layer ({@link LayoutEffectSite}). Unlike a plugin/behavior
+ * `CallSite`, an effect has no event-sheet call — its "usage" IS the
+ * application site, so `EffectSite` is effect scanning's analogue of both
+ * `PresenceRow` and `CallSite` at once.
+ */
+export interface EffectSite {
+  effectId: string;
+  /** The `effectTypes` entry's own display name (e.g. "Burn", "Sepia"). */
+  name: string;
+  container: "objectType" | "family" | "layout" | "layer";
+  /** Object type/family name, or layout display name. */
+  host: string;
+  /** Layer display name; set only when `container === "layer"`. */
+  layer?: string;
+}
+
 export interface AddonUsageResult {
   addonId: string;
   addonLabel: string;
@@ -70,7 +89,20 @@ export interface AddonUsageResult {
    * names without re-reading the addon.
    */
   aces: AceEntry[];
-  /** Present only when `scanAddonUsage` was called with a `fromArg`. */
+  /**
+   * The resolved addon's kind, mirroring `DiscoveredAddon.kind`. Optional so
+   * the ~9 existing synthetic `AddonUsageResult` test literals (predating
+   * this field) don't need updating; set on every real `scanAddonUsage`/
+   * {@link scanEffectUsage} result.
+   */
+  kind?: "plugin" | "behavior" | "effect";
+  /**
+   * Effect application sites, present only on an effect scan
+   * ({@link scanEffectUsage}) — `presence`/`callSites` stay empty for an
+   * effect result, since effects have no event-sheet call sites.
+   */
+  effectSites?: EffectSite[];
+  /** Present only when `scanAddonUsage`/`scanEffectUsage` was called with a `fromArg`. */
   blast?: BlastInfo;
 }
 
@@ -234,13 +266,15 @@ export function createBehaviorUsageMatcher(
  *    and not a stable per-ACE identity (see `aceRegistry.ts`'s docstring).
  * 2. Reads every `objectTypes/*.json` / `families/*.json` entry
  *    ({@link readProjectObjects}) and routes on the resolved addon's `kind`
- *    to build the presence set + per-node match rule: `plugin`/`effect`
- *    addons use {@link createPluginUsageMatcher} (presence = entries whose
- *    `plugin-id` names the addon); `behavior` addons use {@link
+ *    to build the presence set + per-node match rule: `plugin` addons use
+ *    {@link createPluginUsageMatcher} (presence = entries whose `plugin-id`
+ *    names the addon); `behavior` addons use {@link
  *    createBehaviorUsageMatcher} (presence = entries carrying their own
  *    instance of the behavior in `behaviorTypes`; family members are
  *    attributed to their family's presence row instead of getting their
- *    own).
+ *    own). `effect` addons never reach this step — they short-circuit to
+ *    {@link scanEffectUsage} above, since effects have no ACEs and presence
+ *    (application) is the whole story.
  * 3. Walks every event sheet's conditions/actions; a node counts as a call
  *    site when the matcher's `matches` rule accepts it — which always
  *    includes its `(kind, id)` matching a current ACE. Conditions and
@@ -270,6 +304,13 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
   const target = resolveAddonTarget(rootDir, addonArg);
   if (target === null) {
     return { error: `addon source not found: ${addonArg}` };
+  }
+
+  // Effects have no ACEs and no event-sheet call sites — presence IS usage,
+  // so they take a dedicated layout/objectType-side path that bypasses the
+  // ACE read + event walk entirely (see {@link scanEffectUsage}).
+  if (target.kind === "effect") {
+    return scanEffectUsage(rootDir, target, fromArg);
   }
 
   const addonId = resolveAddonId(target);
@@ -392,7 +433,108 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
     }).length;
   }
 
-  return { addonId, addonLabel: target.name, presence, callSites, aces, ...(blast !== undefined ? { blast } : {}) };
+  return {
+    addonId,
+    addonLabel: target.name,
+    presence,
+    callSites,
+    aces,
+    kind: target.kind,
+    ...(blast !== undefined ? { blast } : {}),
+  };
+}
+
+// ── Effect scanning ──────────────────────────────────────────────────────────
+
+const EFFECT_SITE_CONTAINER_ORDER: Record<EffectSite["container"], number> = {
+  objectType: 0,
+  family: 1,
+  layout: 2,
+  layer: 3,
+};
+
+function byEffectSiteOrder(a: EffectSite, b: EffectSite): number {
+  const containerDiff = EFFECT_SITE_CONTAINER_ORDER[a.container] - EFFECT_SITE_CONTAINER_ORDER[b.container];
+  if (containerDiff !== 0) return containerDiff;
+  const hostDiff = a.host.localeCompare(b.host);
+  if (hostDiff !== 0) return hostDiff;
+  return a.name.localeCompare(b.name);
+}
+
+/**
+ * Scan a project for **application sites** of `target` (an already-resolved
+ * effect addon — callers get one from {@link resolveAddonTarget}) rather than
+ * event-sheet call sites: effects have no ACEs to call, they're *applied* to
+ * an object type/family ({@link readProjectObjects}'s `effectTypes`) or a
+ * layout/layer ({@link readLayoutEffects}). Sites are sorted objectType →
+ * family → layout → layer, then by host name, then by effect-instance name.
+ *
+ * Optional blast-radius mode mirrors `scanAddonUsage`'s `fromArg`, resolved
+ * the same way ({@link resolveAceSource}, not contained to `rootDir`) — but
+ * since effects have no ACEs to diff, `changedKeys`/`removedKeys` are always
+ * empty and `affectedCount` is simply every application site (a version bump
+ * touches every instance of an applied effect, there's no per-site diff to
+ * narrow it).
+ *
+ * Errors as values (mirrors `scanAddonUsage`): returns `{ error }` only when,
+ * in blast mode, the `from` source can't be resolved. Never throws.
+ *
+ * Reached from the public {@link scanAddonUsage} dispatch when the resolved
+ * target's `kind` is `effect` (short-circuited before any ACE read, since
+ * effects have none).
+ */
+export function scanEffectUsage(rootDir: string, target: DiscoveredAddon, fromArg?: string): ScanAddonUsageResult {
+  const addonId = resolveAddonId(target);
+
+  const project = openProject(rootDir);
+  const objects = readProjectObjects(project);
+
+  const effectSites: EffectSite[] = [];
+
+  for (const d of objects) {
+    for (const e of d.effectTypes) {
+      if (e.effectId !== addonId) continue;
+      effectSites.push({
+        effectId: addonId,
+        name: e.name,
+        container: d.kind === "family" ? "family" : "objectType",
+        host: d.name,
+      });
+    }
+  }
+
+  for (const s of readLayoutEffects(project)) {
+    if (s.effectId !== addonId) continue;
+    effectSites.push({
+      effectId: addonId,
+      name: s.name,
+      container: s.container,
+      host: s.layout,
+      ...(s.layer !== undefined ? { layer: s.layer } : {}),
+    });
+  }
+
+  effectSites.sort(byEffectSiteOrder);
+
+  let blast: BlastInfo | undefined;
+  if (fromArg !== undefined) {
+    const fromSource = resolveAceSource(rootDir, fromArg);
+    if ("error" in fromSource) {
+      return { error: fromSource.error };
+    }
+    blast = { fromLabel: fromSource.label, changedKeys: [], removedKeys: [], affectedCount: effectSites.length };
+  }
+
+  return {
+    addonId,
+    addonLabel: target.name,
+    presence: [],
+    callSites: [],
+    aces: [],
+    kind: "effect",
+    effectSites,
+    ...(blast !== undefined ? { blast } : {}),
+  };
 }
 
 // ── Formatter ────────────────────────────────────────────────────────────────
@@ -413,6 +555,75 @@ function formatCallSiteLine(
   const key = aceKey(site.kind, site.id);
   const marker = removedKeySet?.has(key) ? " ⚠ REMOVED" : changedKeySet?.has(key) ? " ⚠ CHANGED" : "";
   return `    event #${site.eventNumber ?? "?"}  ${site.jsonPath}   [${site.kind}] ${site.objectClass}.${site.id}(${paramNames})${marker}`;
+}
+
+function formatEffectSiteLine(site: EffectSite, exposed: boolean): string {
+  const marker = exposed ? " ⚠ exposed" : "";
+  const hostSegment =
+    site.container === "layout"
+      ? `${site.host} (layout stack)`
+      : site.container === "layer"
+        ? `${site.host} / ${site.layer}`
+        : site.host;
+  return `  ${hostSegment}   [${site.name}]${marker}`;
+}
+
+/**
+ * Render an effect-scan `AddonUsageResult` ({@link scanEffectUsage}). Owns
+ * the same empty-case sentence as the plugin/behavior path (an effect with
+ * zero application sites), so the caller never special-cases it — this is
+ * why {@link formatAddonUsage} dispatches here BEFORE its own
+ * `presence`/`callSites` empty check, which would otherwise misfire (an
+ * effect result always carries empty `presence`/`callSites`).
+ *
+ * Sites are grouped into three headed sections in the same
+ * objectType → family → layout/layer order {@link scanEffectUsage} sorts
+ * them in: `Object types:` / `Families:` (rendered `<host>   [<name>]`) and
+ * `Layouts:` (a `layout`-container site renders `<host> (layout stack)`, a
+ * `layer`-container site renders `<host> / <layer>`). When `result.blast` is
+ * present, EVERY site line gets a trailing ` ⚠ exposed` marker — effects have
+ * no per-site ACE diff, so (unlike the plugin/behavior CHANGED/REMOVED
+ * markers) a version bump exposes every application site uniformly.
+ */
+function formatEffectUsage(result: AddonUsageResult): string {
+  const { addonId, blast } = result;
+  const effectSites = result.effectSites ?? [];
+
+  if (effectSites.length === 0) {
+    return `No usage of addon "${addonId}" found.`;
+  }
+
+  const lines: string[] = [`scan-addon-usage: ${addonId} (effect)`, `applied at ${effectSites.length} site(s)`];
+
+  if (blast !== undefined) {
+    lines.push(`blast radius (vs ${blast.fromLabel}): ${blast.affectedCount} site(s) affected by version bump`);
+  }
+
+  const exposed = blast !== undefined;
+
+  const objectTypeSites = effectSites.filter((s) => s.container === "objectType");
+  const familySites = effectSites.filter((s) => s.container === "family");
+  const layoutSites = effectSites.filter((s) => s.container === "layout" || s.container === "layer");
+
+  if (objectTypeSites.length > 0) {
+    lines.push("");
+    lines.push("Object types:");
+    for (const site of objectTypeSites) lines.push(formatEffectSiteLine(site, exposed));
+  }
+
+  if (familySites.length > 0) {
+    lines.push("");
+    lines.push("Families:");
+    for (const site of familySites) lines.push(formatEffectSiteLine(site, exposed));
+  }
+
+  if (layoutSites.length > 0) {
+    lines.push("");
+    lines.push("Layouts:");
+    for (const site of layoutSites) lines.push(formatEffectSiteLine(site, exposed));
+  }
+
+  return lines.join("\n");
 }
 
 /**
@@ -441,6 +652,10 @@ function formatCallSiteLine(
 export function formatAddonUsage(result: ScanAddonUsageResult): string {
   if ("error" in result) {
     return `scan-addon-usage: ${result.error}`;
+  }
+
+  if (result.kind === "effect") {
+    return formatEffectUsage(result);
   }
 
   const { addonId, presence, callSites, aces, blast } = result;

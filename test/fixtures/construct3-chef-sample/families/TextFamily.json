@@ -10,7 +10,12 @@
 			"sid": 941140762763444
 		}
 	],
-	"effectTypes": [],
+	"effectTypes": [
+		{
+			"effectId": "MyCompany_MyEffect",
+			"name": "My custom effect"
+		}
+	],
 	"members": [
 		"Text2",
 		"Text"
