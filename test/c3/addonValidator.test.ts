@@ -15,9 +15,9 @@ function findingsFor(findings: AddonFinding[], pkg: string): AddonFinding[] {
 }
 
 describe("addonValidator", () => {
-  it("checks all 9 fixture packages", () => {
+  it("checks all 10 fixture packages", () => {
     const result = validateAddons(FIXTURE_ROOT);
-    expect(result.checked).to.equal(9);
+    expect(result.checked).to.equal(10);
   });
 
   it("Complete.c3addon: exactly one version metadata-mismatch against project.c3proj", () => {
@@ -120,6 +120,13 @@ describe("addonValidator", () => {
     expect(findings).to.have.lengthOf(0);
   });
 
+  it("NameMismatchBehavior.c3addon: no findings (instance name vs display name are allowed to differ, #132)", () => {
+    const result = validateAddons(FIXTURE_ROOT);
+    const findings = findingsFor(result.findings, "addons/behavior/NameMismatchBehavior.c3addon");
+    expect(findings).to.have.lengthOf(0);
+    expect(result.findings.some((f) => f.kind === "metadata-mismatch" && f.field === "name")).to.equal(false);
+  });
+
   it("full fixture findings set is exactly the expected 8", () => {
     const result = validateAddons(FIXTURE_ROOT);
     expect(result.findings).to.have.lengthOf(8);
@@ -157,7 +164,7 @@ describe("addonValidator", () => {
     const output = formatAddonValidation(result);
     const lines = output.split("\n");
 
-    expect(lines[0]).to.equal(`Checked 9 bundled addon(s), ${result.findings.length} issue(s):`);
+    expect(lines[0]).to.equal(`Checked 10 bundled addon(s), ${result.findings.length} issue(s):`);
     expect(lines).to.include(
       "  addons/plugin/Complete.c3addon: version mismatch — package '1.0.0.0' vs project.c3proj '1.0.0.9'",
     );
@@ -170,7 +177,7 @@ describe("addonValidator", () => {
     // byte-identical to before the aces/lang cross-check was wired in.
     it("still reports exactly the pre-existing 8 findings", () => {
       const result = validateAddons(FIXTURE_ROOT);
-      expect(result.checked).to.equal(9);
+      expect(result.checked).to.equal(10);
       expect(result.findings).to.have.lengthOf(8);
       expect(result.findings.some((f) => f.kind.startsWith("lang-"))).to.equal(false);
     });

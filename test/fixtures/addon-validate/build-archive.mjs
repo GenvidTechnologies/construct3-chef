@@ -19,10 +19,14 @@
 // `addons/plugin/nested/Dup.c3addon` (identical bytes, to exercise the
 // recursive duplicate-id walk), one real zip archive deliberately missing
 // its `aces.json` entry, one corrupt (non-zip) archive, one
-// un-materialized git-lfs pointer file, and one clean **effect** addon
+// un-materialized git-lfs pointer file, one clean **effect** addon
 // (routed into `addons/effect/`) that legitimately ships no `aces.json` at
-// all — proving effects are exempt from the aces.json requirement. Run
-// with: `node test/fixtures/addon-validate/build-archive.mjs`.
+// all — proving effects are exempt from the aces.json requirement, and one
+// clean **behavior** addon (routed into `addons/behavior/`) whose
+// `addon.json` display `name` deliberately differs from its
+// `project.c3proj` `usedAddons` instance `name` — proving the two are
+// allowed to diverge and the `name` field is not cross-checked. Run with:
+// `node test/fixtures/addon-validate/build-archive.mjs`.
 //
 // Zip entries are written with a fixed mtime (DOS zip timestamps only cover
 // 1980-2099, so the Unix epoch isn't valid) so re-running this script on
@@ -178,10 +182,11 @@ buildFullAddon("Misnamed", "Misnamed");
 buildFullAddon("Orphan", "Orphan");
 buildFullAddon("MissingAces", "MissingAces");
 buildFullAddon("NoAcesEffect", "NoAcesEffect");
+buildFullAddon("NameMismatchBehavior", "NameMismatchBehavior");
 buildCorruptZip();
 buildLfsPointer();
 buildDup();
 
 console.log(
-  "Rebuilt Complete/CleanControl/Misnamed/Orphan/MissingAces/NoAcesEffect/CorruptZip/LfsPointer/Dup(+nested/Dup) .c3addon fixtures",
+  "Rebuilt Complete/CleanControl/Misnamed/Orphan/MissingAces/NoAcesEffect/NameMismatchBehavior/CorruptZip/LfsPointer/Dup(+nested/Dup) .c3addon fixtures",
 );
