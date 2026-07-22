@@ -28,6 +28,7 @@ describe("addonInventory", () => {
       "LfsPointer",
       "MissingAces",
       "MissingPkg",
+      "NoAcesEffect",
       "NotMisnamed",
       "Orphan",
     ]);
@@ -36,7 +37,7 @@ describe("addonInventory", () => {
   });
 
   it("classifies bundled = declared in usedAddons AND on disk", () => {
-    expect(idsWithStatus(FIXTURE_ROOT, "bundled")).to.deep.equal(["CleanControl", "Complete", "Dup"]);
+    expect(idsWithStatus(FIXTURE_ROOT, "bundled")).to.deep.equal(["CleanControl", "Complete", "Dup", "NoAcesEffect"]);
   });
 
   it("classifies orphan = on disk, absent from usedAddons", () => {
@@ -89,8 +90,9 @@ describe("addonInventory", () => {
     it("renders per-status line shapes", () => {
       const text = formatAddonInventory(listAddons(FIXTURE_ROOT));
       const lines = text.split("\n");
-      expect(lines[0]).to.equal("10 addon(s):");
+      expect(lines[0]).to.equal("11 addon(s):");
       expect(lines).to.include("  CleanControl  bundled  2.3.4.5  addons/plugin/CleanControl.c3addon");
+      expect(lines).to.include("  NoAcesEffect  bundled  1.0.0.0  addons/effect/NoAcesEffect.c3addon");
       expect(lines).to.include("  EditorOnly  editor-only  —");
       expect(lines).to.include("  MissingPkg  missing  3.2.1.0  (declared bundled, no package on disk)");
       expect(lines).to.include("  Orphan  orphan  1.0.0.0  addons/plugin/Orphan.c3addon (not in project.c3proj)");

@@ -87,10 +87,13 @@ function checkIntegrity(addon: DiscoveredAddon, pkg: string): { findings: AddonF
   // ── Required entries ───────────────────────────────────────────────────
   // c3runtime is deliberately NOT required here: plugin/effect layouts vary
   // enough (some ship no runtime script at all) that requiring it would
-  // cause false positives.
-  for (const required of ["addon.json", "aces.json"]) {
-    if (entries[required] === undefined) {
-      findings.push({ package: pkg, kind: "integrity", problem: `missing required entry: ${required}` });
+  // cause false positives. aces.json is required for plugin/behavior
+  // addons only — effect addons have no ACEs and legitimately ship no
+  // aces.json at all, so requiring it there would be a false positive too.
+  const required = addon.kind === "effect" ? ["addon.json"] : ["addon.json", "aces.json"];
+  for (const entry of required) {
+    if (entries[entry] === undefined) {
+      findings.push({ package: pkg, kind: "integrity", problem: `missing required entry: ${entry}` });
     }
   }
 

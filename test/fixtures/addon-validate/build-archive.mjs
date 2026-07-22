@@ -10,16 +10,19 @@
 // `effect.fx` and no `aces.json`, or a behavior source with
 // `c3runtime/behavior.js`, work without touching this script.
 //
-// Archives produced today (all plugins, so all land in `addons/plugin/`):
-// four real zip addons built from `archive-sources/` (a clean one, one whose
-// manifest version drifts from project.c3proj, one whose addon.json id
-// doesn't match its package filename, one clean-but-orphaned package with no
-// matching `usedAddons` entry), one clean package duplicated at both
-// `addons/plugin/Dup.c3addon` and `addons/plugin/nested/Dup.c3addon`
-// (identical bytes, to exercise the recursive duplicate-id walk), one real
-// zip archive deliberately missing its `aces.json` entry, one corrupt
-// (non-zip) archive, and one un-materialized git-lfs pointer file. Run with:
-// `node test/fixtures/addon-validate/build-archive.mjs`.
+// Archives produced today (all plugins unless noted, so most land in
+// `addons/plugin/`): four real zip addons built from `archive-sources/` (a
+// clean one, one whose manifest version drifts from project.c3proj, one
+// whose addon.json id doesn't match its package filename, one
+// clean-but-orphaned package with no matching `usedAddons` entry), one
+// clean package duplicated at both `addons/plugin/Dup.c3addon` and
+// `addons/plugin/nested/Dup.c3addon` (identical bytes, to exercise the
+// recursive duplicate-id walk), one real zip archive deliberately missing
+// its `aces.json` entry, one corrupt (non-zip) archive, one
+// un-materialized git-lfs pointer file, and one clean **effect** addon
+// (routed into `addons/effect/`) that legitimately ships no `aces.json` at
+// all — proving effects are exempt from the aces.json requirement. Run
+// with: `node test/fixtures/addon-validate/build-archive.mjs`.
 //
 // Zip entries are written with a fixed mtime (DOS zip timestamps only cover
 // 1980-2099, so the Unix epoch isn't valid) so re-running this script on
@@ -174,10 +177,11 @@ buildFullAddon("CleanControl", "CleanControl");
 buildFullAddon("Misnamed", "Misnamed");
 buildFullAddon("Orphan", "Orphan");
 buildFullAddon("MissingAces", "MissingAces");
+buildFullAddon("NoAcesEffect", "NoAcesEffect");
 buildCorruptZip();
 buildLfsPointer();
 buildDup();
 
 console.log(
-  "Rebuilt Complete/CleanControl/Misnamed/Orphan/MissingAces/CorruptZip/LfsPointer/Dup(+nested/Dup) .c3addon fixtures",
+  "Rebuilt Complete/CleanControl/Misnamed/Orphan/MissingAces/NoAcesEffect/CorruptZip/LfsPointer/Dup(+nested/Dup) .c3addon fixtures",
 );
