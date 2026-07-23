@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { aceIdentity } from "@genvidtech/c3source";
 import { readAddonAces, resolveAddonId } from "./addonReader.js";
 import { resolveAddonTarget, type DiscoveredAddon } from "./addonDiscovery.js";
 import type { AceEntry } from "./c3Reference.js";
@@ -14,10 +15,6 @@ export interface AceDiff {
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
-
-function aceKey(ace: AceEntry): string {
-  return `${ace.kind}:${ace.id}`;
-}
 
 function paramsEqual(a: AceEntry, b: AceEntry): boolean {
   if (a.params.length !== b.params.length) return false;
@@ -51,9 +48,9 @@ function byKey(a: { key: string }, b: { key: string }): number {
  */
 export function diffAddonAces(acesA: AceEntry[], acesB: AceEntry[]): AceDiff {
   const mapA = new Map<string, AceEntry>();
-  for (const ace of acesA) mapA.set(aceKey(ace), ace);
+  for (const ace of acesA) mapA.set(aceIdentity(ace.kind, ace.id), ace);
   const mapB = new Map<string, AceEntry>();
-  for (const ace of acesB) mapB.set(aceKey(ace), ace);
+  for (const ace of acesB) mapB.set(aceIdentity(ace.kind, ace.id), ace);
 
   const added: { key: string; ace: AceEntry }[] = [];
   const removed: { key: string; ace: AceEntry }[] = [];
