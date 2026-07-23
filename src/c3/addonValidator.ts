@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { C3ADDON_EXTENSION } from "@genvidtech/c3source";
 import { toPosixPath } from "@genvidtech/mcp-utils";
 import { unzipSync } from "fflate";
 import { ADDON_DIRS, discoverAddons, type DiscoveredAddon } from "./addonDiscovery.js";
@@ -193,11 +194,11 @@ function findAllAddonArchives(projectRoot: string): RawAddonArchive[] {
     try {
       const entries = fs.readdirSync(fullDir, { recursive: true, withFileTypes: true });
       for (const entry of entries) {
-        if (!entry.isFile() || !entry.name.endsWith(".c3addon")) continue;
+        if (!entry.isFile() || !entry.name.endsWith(C3ADDON_EXTENSION)) continue;
         const parentDir = entry.parentPath ?? entry.path;
         results.push({
           archivePath: path.join(parentDir, entry.name),
-          name: entry.name.replace(/\.c3addon$/, ""),
+          name: entry.name.slice(0, -C3ADDON_EXTENSION.length),
           kind,
         });
       }

@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { C3ADDON_EXTENSION } from "@genvidtech/c3source";
 import { resolveWithin } from "@genvidtech/mcp-utils";
 
 export const ADDON_DIRS = ["addons/plugin", "addons/effect", "addons/behavior"] as const;
@@ -24,8 +25,8 @@ export function discoverAddons(projectRoot: string): DiscoveredAddon[] {
     const fullDir = path.join(projectRoot, addonDir);
     if (!fs.existsSync(fullDir)) continue;
     for (const entry of fs.readdirSync(fullDir, { withFileTypes: true })) {
-      if (entry.name.endsWith(".c3addon") && entry.isFile()) {
-        const name = entry.name.replace(/\.c3addon$/, "");
+      if (entry.name.endsWith(C3ADDON_EXTENSION) && entry.isFile()) {
+        const name = entry.name.slice(0, -C3ADDON_EXTENSION.length);
         const archivePath = path.join(fullDir, entry.name);
         const candidateDir = path.join(fullDir, name);
         const extractedDir =
