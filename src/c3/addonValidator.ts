@@ -22,7 +22,7 @@ export interface AddonFinding {
     | "lang-missing-ace"
     | "lang-missing-param"
     | "lang-missing-property";
-  field?: "id" | "name" | "author" | "version"; // metadata-mismatch only
+  field?: "id" | "author" | "version"; // metadata-mismatch only
   packageValue?: string; // metadata-mismatch: addon.json value
   manifestValue?: string; // metadata-mismatch / missing: usedAddons value
   problem?: string; // human-readable problem string (all kinds but metadata-mismatch)
@@ -87,10 +87,13 @@ function checkIntegrity(addon: DiscoveredAddon, pkg: string): { findings: AddonF
   // ── Required entries ───────────────────────────────────────────────────
   // c3runtime is deliberately NOT required here: plugin/effect layouts vary
   // enough (some ship no runtime script at all) that requiring it would
-  // cause false positives.
-  for (const required of ["addon.json", "aces.json"]) {
-    if (entries[required] === undefined) {
-      findings.push({ package: pkg, kind: "integrity", problem: `missing required entry: ${required}` });
+  // cause false positives. aces.json is required for plugin/behavior
+  // addons only — effect addons have no ACEs and legitimately ship no
+  // aces.json at all, so requiring it there would be a false positive too.
+  const required = addon.kind === "effect" ? ["addon.json"] : ["addon.json", "aces.json"];
+  for (const entry of required) {
+    if (entries[entry] === undefined) {
+      findings.push({ package: pkg, kind: "integrity", problem: `missing required entry: ${entry}` });
     }
   }
 
@@ -121,10 +124,15 @@ function checkIntegrity(addon: DiscoveredAddon, pkg: string): { findings: AddonF
 
 /**
  * Compare a discovered addon's `addon.json` metadata against its matching
- * `usedAddons` entry (matched by id), flagging any of `id`/`name`/`author`/
- * `version` that are present on both sides but differ. Orphan addons (no
- * matching `usedAddons` entry) are out of scope here — see #108. Never
- * throws.
+ * `usedAddons` entry (matched by id), flagging any of `id`/`author`/
+ * `version` that are present on both sides but differ. `name` is
+ * deliberately NOT cross-checked: `addon.json` `name` is the addon's
+ * DISPLAY name, while `usedAddons[].name` is the user-assigned INSTANCE
+ * name C3 writes when the addon is applied — the two are legitimately
+ * independent, and flagging a mismatch between them is a false positive
+ * (see #132 item 3). `id` remains the identity anchor both sides must
+ * agree on. Orphan addons (no matching `usedAddons` entry) are out of
+ * scope here — see #108. Never throws.
  */
 function checkMetadataMismatch(
   addon: DiscoveredAddon,
@@ -143,12 +151,11 @@ function checkMetadataMismatch(
   const addonId = metadata.id;
 
   const fieldChecks: Array<{
-    field: "id" | "name" | "author" | "version";
+    field: "id" | "author" | "version";
     packageValue?: string;
     manifestValue?: string;
   }> = [
     { field: "id", packageValue: metadata.id, manifestValue: used.id },
-    { field: "name", packageValue: metadata.name, manifestValue: used.name },
     { field: "author", packageValue: metadata.author, manifestValue: used.author },
     { field: "version", packageValue: metadata.version, manifestValue: used.version },
   ];
