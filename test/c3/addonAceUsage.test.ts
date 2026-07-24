@@ -191,9 +191,13 @@ describe("addonAceUsage", () => {
       expect(result.blast?.fromLabel).to.equal("GCoreOld");
     });
 
-    it("B3: blast.affectedCount counts the changed login call site + the removed logout call site (2)", () => {
+    it("B3: blast.affectedCount counts affected call sites AND expression references (2 + 3 = 5)", () => {
       const result = ok(scanAddonUsage(FIXTURE_ROOT, "GCore", GCORE_OLD_SOURCE));
-      expect(result.blast?.affectedCount).to.equal(2);
+      // 2 affected call sites (Account.login CHANGED, Account.logout REMOVED)
+      // + 3 affected expression references (Account.SessionLength CHANGED ×2,
+      // Account.Rank REMOVED ×1). Expression sites participate in blast because
+      // expression ACEs carry a param signature (unlike effects). See #123.
+      expect(result.blast?.affectedCount).to.equal(5);
     });
 
     it("B4: self-diff (from === current) yields an empty diff — zero affected, no changed/removed keys", () => {
@@ -234,7 +238,7 @@ describe("addonAceUsage", () => {
     it("FB1: renders the blast radius header line", () => {
       const result = scanAddonUsage(FIXTURE_ROOT, "GCore", GCORE_OLD_SOURCE);
       const output = formatAddonUsage(result);
-      expect(output).to.include("blast radius (vs GCoreOld): 2 affected call site(s)");
+      expect(output).to.include("blast radius (vs GCoreOld): 5 affected call site(s)");
     });
 
     it("FB2: marks a changed-signature call site (Account.login, region dropped) with ⚠ CHANGED", () => {
@@ -254,8 +258,10 @@ describe("addonAceUsage", () => {
       const output = formatAddonUsage(result);
       // Account's total call-site count grows from 3 (plain scan, U10) to 4
       // in blast mode — the widened match set also picks up the dangling
-      // logout action as a genuine call site, not just an "affected" one.
-      expect(output).to.include("Account   4 call site(s) ⚠ exposed");
+      // logout action as a genuine call site, not just an "affected" one. The
+      // row also carries its 3 expression references (SessionLength ×2 + the
+      // widened-in dangling Rank), so the exposed marker follows that segment.
+      expect(output).to.include("Account   4 call site(s), 3 expression ref(s) ⚠ exposed");
       expect(output).to.include("Leaderboard   0 call site(s) (instantiated, no ACE calls) ⚠ exposed");
       expect(output).to.include("GCoreFamily   1 call site(s) ⚠ exposed");
     });

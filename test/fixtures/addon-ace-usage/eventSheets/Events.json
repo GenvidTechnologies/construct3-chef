@@ -94,6 +94,60 @@
 				}
 			],
 			"sid": 820000000000013
+		},
+		{
+			"eventType": "block",
+			"conditions": [],
+			"actions": [
+				{
+					"id": "wait",
+					"objectClass": "System",
+					"sid": 820000000000014,
+					"parameters": {
+						"seconds": "Account.SessionLength()"
+					}
+				},
+				{
+					"id": "wait",
+					"objectClass": "System",
+					"sid": 820000000000015,
+					"parameters": {
+						"seconds": "\"Account.SessionLength()\""
+					}
+				},
+				{
+					"id": "wait",
+					"objectClass": "System",
+					"sid": 820000000000016,
+					"parameters": {
+						"seconds": "max(Account.SessionLength(), 10)"
+					}
+				},
+				{
+					"id": "wait",
+					"objectClass": "System",
+					"sid": 820000000000017,
+					"parameters": {
+						"seconds": "Account.Rank()"
+					}
+				}
+			],
+			"sid": 820000000000018
+		},
+		{
+			"eventType": "block",
+			"conditions": [],
+			"actions": [
+				{
+					"id": "wait",
+					"objectClass": "System",
+					"sid": 820000000000019,
+					"parameters": {
+						"seconds": "Leaderboard.Track.TrackedTime()"
+					}
+				}
+			],
+			"sid": 820000000000020
 		}
 	],
 	"sid": 820000000000000

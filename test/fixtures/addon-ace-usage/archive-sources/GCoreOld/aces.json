@@ -33,6 +33,19 @@
 				"params": []
 			}
 		],
-		"expressions": []
+		"expressions": [
+			{
+				"id": "session-length",
+				"expressionName": "SessionLength",
+				"returnType": "number",
+				"params": [{ "id": "format", "type": "string" }]
+			},
+			{
+				"id": "rank",
+				"expressionName": "Rank",
+				"returnType": "number",
+				"params": []
+			}
+		]
 	}
 }

@@ -1,0 +1,15 @@
+{
+	"$schema": "../aces.schema.json",
+	"track": {
+		"conditions": [],
+		"actions": [],
+		"expressions": [
+			{
+				"id": "tracked-time",
+				"expressionName": "TrackedTime",
+				"returnType": "number",
+				"params": []
+			}
+		]
+	}
+}
