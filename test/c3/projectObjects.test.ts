@@ -53,14 +53,16 @@ describe("readProjectObjects", () => {
       });
     });
 
-    it("reads GCoreFamily as a family with pluginId GCore and its members", () => {
+    it("reads GCoreFamily as a family with pluginId GCore, its members, and its GTrack behavior instance", () => {
       const family = find(defns, "GCoreFamily");
       expect(family).to.deep.equal({
         name: "GCoreFamily",
         kind: "family",
         pluginId: "GCore",
         members: ["Account", "Leaderboard"],
-        behaviors: [],
+        // The family carries a GTrack behavior instance named "Track" (#123
+        // fixture: exercises family-member behavior-expression attribution).
+        behaviors: [{ behaviorId: "GTrack", name: "Track" }],
         effectTypes: [],
       });
     });

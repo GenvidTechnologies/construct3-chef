@@ -184,7 +184,7 @@ Output uses the shared `formatAceDiff` formatter, so the CLI and MCP `diff-addon
 
 Read-only scan of where a project actually uses an addon: which object types/families are instances of it (**presence**), and which event-sheet condition/action nodes call one of its ACEs (**call sites**). With `--from`, it additionally diffs the addon's current ACEs against an old version and reports the **blast radius** — how many call sites hit an ACE that changed or was removed between the two versions — so an addon upgrade's impact on the project can be assessed before touching anything.
 
-Supports **plugin**, **behavior**, and **effect** addons. Expression usage remains out of scope, tracked as a separate follow-up ([#123](https://github.com/GenvidTechnologies/construct3-chef/issues/123)) — an expression isn't a structured condition/action node the way plugin/behavior ACEs are. See [ADR 0010](decisions/0010-scan-addon-usage-plugins-only-v1.md) (the original plugins-only v1 scope), [ADR 0011](decisions/0011-scan-addon-usage-behavior-support.md) (the behavior extension, [#124](https://github.com/GenvidTechnologies/construct3-chef/issues/124)), and [ADR 0012](decisions/0012-scan-addon-usage-effect-support.md) (the effect extension, [#125](https://github.com/GenvidTechnologies/construct3-chef/issues/125)).
+Supports **plugin**, **behavior**, and **effect** addons. For plugin/behavior addons it also reports **expression references** — `Object.expr` / `Object.Behavior.expr` embedded in condition/action parameter strings that resolve to one of the addon's expressions ([#123](https://github.com/GenvidTechnologies/construct3-chef/issues/123)). See [ADR 0010](decisions/0010-scan-addon-usage-plugins-only-v1.md) (the original plugins-only v1 scope), [ADR 0011](decisions/0011-scan-addon-usage-behavior-support.md) (the behavior extension, [#124](https://github.com/GenvidTechnologies/construct3-chef/issues/124)), [ADR 0012](decisions/0012-scan-addon-usage-effect-support.md) (the effect extension, [#125](https://github.com/GenvidTechnologies/construct3-chef/issues/125)), and [ADR 0015](decisions/0015-scan-addon-usage-expression-support.md) (the expression extension, [#123](https://github.com/GenvidTechnologies/construct3-chef/issues/123)).
 
 ```bash
 npx construct3-chef scan-addon-usage <addon> [--from <source>] [--project-dir <path>]
@@ -198,7 +198,8 @@ npx construct3-chef scan-addon-usage <addon> [--from <source>] [--project-dir <p
 The report has two sections for a **plugin**/**behavior** scan (an **effect** scan renders differently — see "Effect addons", below):
 
 - **Presence** — for a **plugin** addon, every `objectTypes/*.json`/`families/*.json` entry whose `plugin-id` names the addon. For a **behavior** addon, every entry that carries its *own* instance of the behavior in `behaviorTypes[]` (an entry whose `behaviorId` names the addon) — a family **member** that only inherits the behavior through its family is never its own presence row; see the family-member attribution rule under "Behavior addons", below. Rows are grouped under "Object types" and "Families", each with its call-site count (`(instantiated, no ACE calls)` when zero); a behavior row additionally renders a trailing `[Name]` segment naming the instance(s) that host attached (`[NameA, NameB]` for two instances of the same behavior on one host).
-- **Call sites** — every condition/action node, grouped by event sheet, whose `(kind, id)` matches one of the addon's current ACEs and whose scope is in the presence set: for a plugin addon, its `objectClass` names a presence row directly; for a behavior addon, its `behaviorType` names one of the addon's attached instances **and** its `objectClass` resolves to a presence host (the host itself, or a member of a presence family). Expression usage isn't a structured condition/action node and isn't scanned (see [#123](https://github.com/GenvidTechnologies/construct3-chef/issues/123)).
+- **Call sites** — every condition/action node, grouped by event sheet, whose `(kind, id)` matches one of the addon's current ACEs and whose scope is in the presence set: for a plugin addon, its `objectClass` names a presence row directly; for a behavior addon, its `behaviorType` names one of the addon's attached instances **and** its `objectClass` resolves to a presence host (the host itself, or a member of a presence family).
+- **Expression references** — every `Object.expr` / `Object.Behavior.expr` reference embedded in a condition/action **parameter string** that resolves to one of the addon's expressions, grouped by event sheet. Expressions aren't structured nodes, so they're tokenized out of parameter text (via c3source's `extractExpressionReferences`) and resolved by the same object/family/behavior scoping the call-site match uses. A host with expression references but no ACE calls reads `N call site(s), M expression ref(s)` (never `(instantiated, no ACE calls)`). See "Expression references", below.
 
 An **effect** addon has no ACEs, so it has neither a presence tier nor a call-site tier in this sense — an effect's application (on an object type, family, layer, or layout) IS its usage. See "Effect addons", below.
 
@@ -250,7 +251,7 @@ $ npx tsx src/cli.ts scan-addon-usage Timer --project-dir test/fixtures/construc
 addon source not found: Timer
 ```
 
-This is symmetric with not being able to scan a built-in plugin (e.g. `Sprite`) by id — both would need a built-in ACE reference index, which is the deferred [#22](https://github.com/GenvidTechnologies/construct3-chef/issues/22)/[#123](https://github.com/GenvidTechnologies/construct3-chef/issues/123) work, not something `scan-addon-usage` can do today. See [ADR 0011](decisions/0011-scan-addon-usage-behavior-support.md).
+This is symmetric with not being able to scan a built-in plugin (e.g. `Sprite`) by id — both would need a built-in ACE reference index, which is the deferred [#22](https://github.com/GenvidTechnologies/construct3-chef/issues/22) work, not something `scan-addon-usage` can do today. See [ADR 0011](decisions/0011-scan-addon-usage-behavior-support.md).
 
 ### Effect addons
 
@@ -292,6 +293,25 @@ Layouts:
 ```
 
 Built-in effects (e.g. `burn`) remain unscannable by id, same as built-in plugins/behaviors — no bundled package, no application-site source to resolve against. See [ADR 0012](decisions/0012-scan-addon-usage-effect-support.md).
+
+### Expression references
+
+C3 expressions live as text inside condition/action **parameter** values (e.g. a `Wait` action's `seconds` param `Account.SessionLength()`), not as structured `(kind, id)` nodes. For plugin/behavior scans, `scan-addon-usage` tokenizes every string parameter (via c3source's `extractExpressionReferences`) and resolves each `Object.expr` / `Object.Behavior.expr` reference to one of the scanned addon's expression ACEs — an **exact** match (each object/family carries exactly one `plugin-id`, and a behavior expression resolves through its attached instance), never a text search. A plugin expression resolves on a presence object; a behavior expression on a family **member** attributes to the family's presence row while the reference line keeps the member's own name. References inside a quoted string literal (`"Account.SessionLength()"`) are ignored, and nested calls (`max(Account.SessionLength(), 10)`) are resolved.
+
+```bash
+$ npx tsx src/cli.ts scan-addon-usage GTrack --project-dir test/fixtures/addon-ace-usage
+scan-addon-usage: GTrack
+presence: 0 object type(s), 1 family  call sites: 0
+
+Families:
+  GCoreFamily [Track]   0 call site(s), 1 expression ref(s)
+
+Expression references:
+  Events
+    event #7  events[6]  {seconds} Leaderboard.Track.TrackedTime   [expression] tracked-time
+```
+
+In `--from` blast mode, expression references participate exactly like call sites: a reference whose expression ACE was changed or removed is marked ` ⚠ CHANGED` / ` ⚠ REMOVED`, a dangling reference to a *removed* expression is still surfaced (the resolution model is widened with the removed expressions, the expression analogue of the removed-ACE match-set widening), and `affectedCount` counts affected expression references alongside call sites. See [ADR 0015](decisions/0015-scan-addon-usage-expression-support.md).
 
 ### Blast-radius mode (`--from`)
 

@@ -25,6 +25,13 @@
 				"params": []
 			}
 		],
-		"expressions": []
+		"expressions": [
+			{
+				"id": "session-length",
+				"expressionName": "SessionLength",
+				"returnType": "number",
+				"params": []
+			}
+		]
 	}
 }

@@ -585,7 +585,7 @@ yargs(hideBin(process.argv))
   )
   .command(
     "scan-addon-usage <addon>",
-    "Scan a project for usage of a plugin, behavior, or effect addon: object/family presence plus event-sheet ACE call sites (effects have no ACEs — their application sites on objects/families/layers/layouts are the whole report); --from reports blast radius, exiting non-zero when any affected call/application site exists. Read-only.",
+    "Scan a project for usage of a plugin, behavior, or effect addon: object/family presence plus event-sheet ACE call sites and expression references (Object.expr / Object.Behavior.expr in parameters) (effects have no ACEs — their application sites on objects/families/layers/layouts are the whole report); --from reports blast radius, exiting non-zero when any affected call/expression/application site exists. Read-only.",
     (y) =>
       y
         .positional("addon", {

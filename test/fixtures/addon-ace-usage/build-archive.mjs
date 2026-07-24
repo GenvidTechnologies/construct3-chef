@@ -1,20 +1,24 @@
 #!/usr/bin/env node
-// Deterministically (re)generates the `GCore.c3addon` fixture under
-// `addons/plugin/` used by the scan-addon-usage test suite (#110).  The
-// archive is built from `archive-sources/GCoreNew/` — the "current"/bundled
-// side.  `archive-sources/GCoreOld/` deliberately stays an unzipped source
-// tree: the diff-addon-aces `--from` side accepts a bare directory via
+// Deterministically (re)generates the bundled `.c3addon` fixtures under
+// `addons/{plugin,behavior}/` used by the scan-addon-usage test suite
+// (#110/#123). Each archive is built from an `archive-sources/<name>/` tree by
+// zipping that source's ACTUAL file set (recursively), so a plugin source with
+// a `c3runtime/plugin.js` and a behavior source with just `addon.json`/
+// `aces.json` both build correctly.
+//
+// `archive-sources/GCoreOld/` deliberately stays an unzipped source tree: the
+// diff-addon-aces `--from` side accepts a bare directory via
 // `resolveAddonTarget`'s path-mode, so no archive is needed for it.
 //
-// GCoreOld -> GCoreNew exercises the exact diff buckets the usage-scan tests
-// rely on:
-//   - "is-logged-in" condition: present in both, UNCHANGED
-//   - "login" condition: present in both, UNCHANGED (shares an `id` with the
-//     "login" ACTION below — proves (kind, id) identity keeps them distinct)
-//   - "login" action: present in both, CHANGED (New drops the `region` param)
-//   - "logout" action: present ONLY in Old (REMOVED in New) — the dangling
-//     call-site case a usage scan must surface via `diff.removed`
-//   - "sync" action: present in both, UNCHANGED
+// GCoreOld -> GCoreNew exercises the diff buckets the usage-scan tests rely on:
+//   - "is-logged-in" / "login" conditions: UNCHANGED
+//   - "login" action: CHANGED (New drops the `region` param)
+//   - "logout" action: REMOVED in New (the dangling call-site case)
+//   - "sync" action: UNCHANGED
+//   - "SessionLength" expression: CHANGED (New drops the `format` param)  [#123]
+//   - "Rank" expression: REMOVED in New (dangling expression reference)   [#123]
+// GTrack is a behavior addon declaring a single "TrackedTime" expression,
+// referenced from a family member in the event sheet (#123 behavior-expr case).
 //
 // Run with: `node test/fixtures/addon-ace-usage/build-archive.mjs`.
 //
@@ -29,39 +33,42 @@ import { zipSync } from "fflate";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sourcesDir = path.join(here, "archive-sources");
-const pluginDir = path.join(here, "addons", "plugin");
+const addonsDir = path.join(here, "addons");
 
 const FIXED_MTIME = new Date("2020-01-01T00:00:00Z");
 
-function readEntry(dir, entryName) {
-  return fs.readFileSync(path.join(dir, entryName));
+/** Recursively collect every file under `dir` as POSIX-relative entry names. */
+function collectEntries(dir, prefix = "") {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) {
+      out.push(...collectEntries(path.join(dir, entry.name), rel));
+    } else if (entry.isFile()) {
+      out.push(rel);
+    }
+  }
+  return out.sort();
 }
 
-/**
- * Zips `archive-sources/<sourceName>/`'s `addon.json`, `aces.json`, and
- * `c3runtime/plugin.js` into a single deterministic buffer.
- */
+/** Zip `archive-sources/<sourceName>/`'s entire file tree into one deterministic buffer. */
 function buildZipData(sourceName) {
   const srcDir = path.join(sourcesDir, sourceName);
-  return zipSync(
-    {
-      "addon.json": [readEntry(srcDir, "addon.json"), { mtime: FIXED_MTIME }],
-      "aces.json": [readEntry(srcDir, "aces.json"), { mtime: FIXED_MTIME }],
-      "c3runtime/plugin.js": [readEntry(srcDir, path.join("c3runtime", "plugin.js")), { mtime: FIXED_MTIME }],
-    },
-    { mtime: FIXED_MTIME },
-  );
+  const files = {};
+  for (const rel of collectEntries(srcDir)) {
+    files[rel] = [fs.readFileSync(path.join(srcDir, ...rel.split("/"))), { mtime: FIXED_MTIME }];
+  }
+  return zipSync(files, { mtime: FIXED_MTIME });
 }
 
-/**
- * Builds a `<name>.c3addon` zip from `archive-sources/<sourceName>/`,
- * including `addon.json`, `aces.json`, and `c3runtime/plugin.js`.
- */
-function buildFullAddon(sourceName, outName) {
-  fs.writeFileSync(path.join(pluginDir, `${outName}.c3addon`), buildZipData(sourceName));
+/** Build `addons/<kind>/<outName>.c3addon` from `archive-sources/<sourceName>/`. */
+function buildFullAddon(sourceName, outName, kind) {
+  const outDir = path.join(addonsDir, kind);
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(path.join(outDir, `${outName}.c3addon`), buildZipData(sourceName));
 }
 
-fs.mkdirSync(pluginDir, { recursive: true });
-buildFullAddon("GCoreNew", "GCore");
+buildFullAddon("GCoreNew", "GCore", "plugin");
+buildFullAddon("GTrack", "GTrack", "behavior");
 
-console.log("Rebuilt GCore.c3addon fixture (from archive-sources/GCoreNew)");
+console.log("Rebuilt GCore.c3addon (plugin) + GTrack.c3addon (behavior) fixtures");

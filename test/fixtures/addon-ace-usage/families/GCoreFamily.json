@@ -3,7 +3,13 @@
 	"plugin-id": "GCore",
 	"sid": 810000000000010,
 	"instanceVariables": [],
-	"behaviorTypes": [],
+	"behaviorTypes": [
+		{
+			"behaviorId": "GTrack",
+			"name": "Track",
+			"sid": 810000000000011
+		}
+	],
 	"effectTypes": [],
 	"members": [
 		"Account",
