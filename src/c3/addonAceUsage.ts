@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
-import type { EventSheet } from "@genvidtech/c3source";
-import { aceIdentity, hasActions, hasConditions, openProject, visitEvents } from "@genvidtech/c3source";
+import type { AcesModel, EventSheet, ExpressionReferenceToken } from "@genvidtech/c3source";
+import { aceIdentity, findExpression, hasActions, hasConditions, openProject, visitEvents } from "@genvidtech/c3source";
 import { diffAddonAces, resolveAceSource } from "./addonAceDiff.js";
 import { resolveAddonTarget, type DiscoveredAddon } from "./addonDiscovery.js";
 import { readAddonAces, resolveAddonId } from "./addonReader.js";
@@ -155,6 +155,9 @@ export type ScanAddonUsageResult = AddonUsageResult | { error: string };
 
 const PRESENCE_KIND_ORDER: Record<ObjectDefn["kind"], number> = { objectType: 0, family: 1 };
 
+/** An empty {@link AcesModel} — the never-throw default when an addon's aces.json is unavailable. */
+const EMPTY_ACES_MODEL: AcesModel = { actions: [], conditions: [], expressions: [] };
+
 function byPresenceOrder(a: ObjectDefn, b: ObjectDefn): number {
   const kindDiff = PRESENCE_KIND_ORDER[a.kind] - PRESENCE_KIND_ORDER[b.kind];
   if (kindDiff !== 0) return kindDiff;
@@ -188,6 +191,15 @@ interface UsageMatcher {
   /** Does this condition/action node call the addon? */
   matches(node: CallCandidate): boolean;
   /**
+   * Resolve an expression reference token to one of the addon's expression
+   * ACE `id`s, or `undefined` if the token doesn't reference this addon (wrong
+   * object/behavior) or names no expression the addon declares. The
+   * plugin/behavior kinds apply the same object/family/behavior scoping their
+   * {@link matches} rule does, then look the `memberName` up in the addon's
+   * `AcesModel` via `findExpression`.
+   */
+  matchExpression(token: ExpressionReferenceToken): string | undefined;
+  /**
    * Which presence-row name a call site's `objectClass` counts toward, or
    * `undefined` if it shouldn't be attributed to any row.
    */
@@ -201,14 +213,32 @@ interface UsageMatcher {
  * `matchKeySet`, and every matched call site attributes to its own
  * `objectClass` (which is always a presence name, by construction of
  * `matches`).
+ *
+ * `model` is the addon's {@link AcesModel} (its `aces.json`), used only by
+ * {@link UsageMatcher.matchExpression} to resolve an expression's PascalCase
+ * `memberName` to an expression ACE id; it defaults to an empty model so
+ * call sites that don't scan expressions (and the existing tests) need not
+ * pass it. Exported (this module is off the `src/index.ts` barrel, so not
+ * published API) so tests can drive the resolver directly.
  */
-function createPluginUsageMatcher(addonId: string, objects: ObjectDefn[], matchKeySet: Set<string>): UsageMatcher {
+export function createPluginUsageMatcher(
+  addonId: string,
+  objects: ObjectDefn[],
+  matchKeySet: Set<string>,
+  model: AcesModel = EMPTY_ACES_MODEL,
+): UsageMatcher {
   const matched = objects.filter((d) => d.pluginId === addonId).sort(byPresenceOrder);
   const nameSet = new Set(matched.map((d) => d.name));
 
   return {
     presence: matched.map((d) => ({ name: d.name, kind: d.kind })),
     matches: (node) => nameSet.has(node.objectClass) && matchKeySet.has(aceIdentity(node.kind, node.id)),
+    // A plugin expression is `Object.expr` (never `Object.Behavior.expr`) on a
+    // presence object; resolve its PascalCase memberName to an expression ACE id.
+    matchExpression: (token) =>
+      token.behaviorName === undefined && nameSet.has(token.objectName)
+        ? findExpression(model, token.memberName)?.id
+        : undefined,
     attributeTo: (objectClass) => (nameSet.has(objectClass) ? objectClass : undefined),
   };
 }
@@ -259,6 +289,7 @@ export function createBehaviorUsageMatcher(
   addonId: string,
   objects: ObjectDefn[],
   matchKeySet: Set<string>,
+  model: AcesModel = EMPTY_ACES_MODEL,
 ): UsageMatcher {
   const matched = objects.filter((d) => d.behaviors.some((b) => b.behaviorId === addonId)).sort(byPresenceOrder);
 
@@ -290,6 +321,13 @@ export function createBehaviorUsageMatcher(
       instanceNameSet.has(node.behaviorType) &&
       attributeMap.has(node.objectClass) &&
       matchKeySet.has(aceIdentity(node.kind, node.id)),
+    // A behavior expression is `Object.Behavior.expr`: the same union-then-
+    // attribution rule as `matches` (instance name in the addon-wide set AND
+    // the referenced object attributable), then resolve memberName in the model.
+    matchExpression: (token) =>
+      token.behaviorName !== undefined && instanceNameSet.has(token.behaviorName) && attributeMap.has(token.objectName)
+        ? findExpression(model, token.memberName)?.id
+        : undefined,
     attributeTo: (objectClass) => attributeMap.get(objectClass),
   };
 }
