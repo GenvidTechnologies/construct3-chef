@@ -33,6 +33,13 @@ export interface PresenceRow {
   kind: "objectType" | "family";
   callSiteCount: number;
   /**
+   * Count of expression references (`Object.expr`/`Object.Behavior.expr`)
+   * attributed to this host, distinct from `callSiteCount` (condition/action
+   * calls). Optional/absent-treated-as-0 so pre-existing synthetic
+   * `PresenceRow` test literals compile unchanged; set on every real scan.
+   */
+  expressionSiteCount?: number;
+  /**
    * Behavior instance name(s) this host attached the scanned addon under
    * (from `behaviorTypes[].name`) — e.g. `["MyCustomBehavior"]`, or
    * `["Timer", "Timer2"]` for two instances of the same behavior on one
@@ -78,6 +85,34 @@ export interface EffectSite {
   layer?: string;
 }
 
+/**
+ * An expression **reference site**: an `Object.expr(...)` or
+ * `Object.Behavior.expr(...)` reference embedded in a condition/action
+ * parameter string that resolves to one of the scanned addon's expression
+ * ACEs. Unlike a {@link CallSite} it has no own `sid` (it's text inside a
+ * parameter, not a structured node), so it's located by its enclosing node's
+ * `jsonPath` + the parameter key + the character span within that string.
+ */
+export interface ExpressionSite {
+  sheet: string;
+  eventNumber: number | null;
+  /** The enclosing condition/action node's jsonPath. */
+  jsonPath: string;
+  /** Which parameter string the reference was found in. */
+  paramKey: string;
+  /** The referenced object/family name, kept as written (a family member keeps its own name). */
+  objectName: string;
+  /** Set for `Object.Behavior.expr` behavior expressions (the instance name). */
+  behaviorName?: string;
+  /** The resolved expression ACE `id` (aces.json `id`). */
+  id: string;
+  /** The PascalCase `expressionName` as written in the expression. */
+  memberName: string;
+  /** Character span `[start, end)` of the reference within the parameter string. */
+  start: number;
+  end: number;
+}
+
 export interface AddonUsageResult {
   addonId: string;
   addonLabel: string;
@@ -102,6 +137,14 @@ export interface AddonUsageResult {
    * effect result, since effects have no event-sheet call sites.
    */
   effectSites?: EffectSite[];
+  /**
+   * Expression reference sites (`Object.expr`/`Object.Behavior.expr` in
+   * event-sheet parameter strings) resolving to the scanned addon's
+   * expression ACEs. Present on plugin/behavior scans; absent on effect scans
+   * (effects have no ACEs). Optional so pre-existing synthetic result literals
+   * compile unchanged.
+   */
+  expressionSites?: ExpressionSite[];
   /** Present only when `scanAddonUsage`/`scanEffectUsage` was called with a `fromArg`. */
   blast?: BlastInfo;
 }
