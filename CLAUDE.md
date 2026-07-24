@@ -33,6 +33,8 @@ npm run build                           # tsc → dist/, then prepends a node sh
 
 There is no dev script for the CLI. Run it in-place with `npx tsx src/cli.ts <subcommand> --project-dir <path>` — tsx compiles the `.ts` on the fly, so no build is needed. The package's `main`/`types`/`exports` point at the built `dist/` (what published consumers import); the `construct3-chef` bin also only exists after `npm run build` (it points at `dist/cli.js`).
 
+> **Probing an internal `src/c3/` function ad-hoc** (not the CLI): write a temp `.mts` file at the repo root and run `npx tsx that-file.mts` (delete it after). Do **not** use `npx tsx -e "<import … from './src/…'; …>"` — the inline-eval form with multi-line ESM imports silently yields no output in this repo's `NodeNext`/`"type":"module"` setup, so it's not usable for quick probes.
+
 ### Releasing
 
 Cutting a release is a tag push, not a manual `npm publish`:
