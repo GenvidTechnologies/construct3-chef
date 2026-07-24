@@ -58,7 +58,8 @@
 		"typecheck": "tsc --noEmit",
 		"test:file": "mocha --timeout 5000 --import=tsx --require ./test/setup.ts --exit",
 		"format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-		"format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\""
+		"format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
+		"fixture:prep": "node scripts/prep-fixture.mjs"
 	},
 	"engines": {
 		"node": ">=22"
