@@ -1,9 +1,17 @@
 import * as fs from "node:fs";
 import type { AcesModel, EventSheet, ExpressionReferenceToken } from "@genvidtech/c3source";
-import { aceIdentity, findExpression, hasActions, hasConditions, openProject, visitEvents } from "@genvidtech/c3source";
+import {
+  aceIdentity,
+  extractExpressionReferences,
+  findExpression,
+  hasActions,
+  hasConditions,
+  openProject,
+  visitEvents,
+} from "@genvidtech/c3source";
 import { diffAddonAces, resolveAceSource } from "./addonAceDiff.js";
 import { resolveAddonTarget, type DiscoveredAddon } from "./addonDiscovery.js";
-import { readAddonAces, resolveAddonId } from "./addonReader.js";
+import { readAddonAces, readAddonAcesModel, resolveAddonId } from "./addonReader.js";
 import type { AceEntry } from "./c3Reference.js";
 import { isStandardAction, type C3Action } from "./eventSheetMutator.js";
 import { readLayoutEffects, readProjectObjects, type ObjectDefn } from "./projectObjects.js";
@@ -162,6 +170,45 @@ function byPresenceOrder(a: ObjectDefn, b: ObjectDefn): number {
   const kindDiff = PRESENCE_KIND_ORDER[a.kind] - PRESENCE_KIND_ORDER[b.kind];
   if (kindDiff !== 0) return kindDiff;
   return a.name.localeCompare(b.name);
+}
+
+/**
+ * Tokenize every string parameter of one condition/action node and push an
+ * {@link ExpressionSite} for each expression reference that resolves to the
+ * scanned addon (via `matcher.matchExpression`). Non-string params (e.g. a
+ * numeric `comparison`) are skipped without tokenizing. Runs for EVERY node,
+ * independent of whether the node itself is a call site — an expression can
+ * reference the addon inside an unrelated node's parameter (e.g.
+ * `System.wait(Account.SessionLength)`).
+ */
+function collectExpressionSites(
+  parameters: Record<string, unknown> | undefined,
+  loc: { sheet: string; eventNumber: number | null; jsonPath: string },
+  matcher: UsageMatcher,
+  out: ExpressionSite[],
+): void {
+  if (parameters === undefined) return;
+  for (const [paramKey, value] of Object.entries(parameters)) {
+    if (typeof value !== "string") continue;
+    for (const token of extractExpressionReferences(value)) {
+      if (token.kind !== "reference") continue;
+      const id = matcher.matchExpression(token);
+      if (id === undefined) continue;
+      const site: ExpressionSite = {
+        sheet: loc.sheet,
+        eventNumber: loc.eventNumber,
+        jsonPath: loc.jsonPath,
+        paramKey,
+        objectName: token.objectName,
+        id,
+        memberName: token.memberName,
+        start: token.start,
+        end: token.end,
+      };
+      if (token.behaviorName !== undefined) site.behaviorName = token.behaviorName;
+      out.push(site);
+    }
+  }
 }
 
 /**
@@ -354,9 +401,13 @@ export function createBehaviorUsageMatcher(
  *    (application) is the whole story.
  * 3. Walks every event sheet's conditions/actions; a node counts as a call
  *    site when the matcher's `matches` rule accepts it — which always
- *    includes its `(kind, id)` matching a current ACE. Conditions and
- *    actions only — expression usage isn't a structured node and is out of
- *    scope here (tracked separately).
+ *    includes its `(kind, id)` matching a current ACE. In the same walk, every
+ *    condition/action's string parameters are tokenized
+ *    ({@link collectExpressionSites}) and each `Object.expr`/
+ *    `Object.Behavior.expr` reference resolving to one of the addon's
+ *    expression ACEs is recorded as an {@link ExpressionSite} — expression
+ *    usage lives inside parameter text, not as a structured node, so it flows
+ *    through `matcher.matchExpression` rather than the `(kind, id)` match set.
  *
  * Optional blast-radius mode: when `fromArg` is given, it's resolved via
  * `addonAceDiff.resolveAceSource` — deliberately NOT contained to `rootDir`,
@@ -392,8 +443,13 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
 
   const addonId = resolveAddonId(target);
   const aces: AceEntry[] = readAddonAces(target);
-  // Expressions aren't structured condition/action nodes (see the module
-  // doc), so only condition/action ACEs participate in the match key.
+  // The kind-grouped model backs expression resolution (matchExpression →
+  // findExpression). readAddonAcesModel is never-throw (empty model on any
+  // failure), preserving scanAddonUsage's own never-throw contract.
+  const model = readAddonAcesModel(target);
+  // Expressions don't participate in the condition/action match KEY (they're
+  // not structured nodes); they flow through the separate matchExpression path
+  // below. So the match set stays condition/action-only.
   const aceKeySet = new Set(
     aces
       .filter((a): a is AceEntry & { kind: "condition" | "action" } => a.kind !== "expression")
@@ -426,10 +482,11 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
   const objects = readProjectObjects(project);
   const matcher =
     target.kind === "behavior"
-      ? createBehaviorUsageMatcher(addonId, objects, matchKeySet)
-      : createPluginUsageMatcher(addonId, objects, matchKeySet);
+      ? createBehaviorUsageMatcher(addonId, objects, matchKeySet, model)
+      : createPluginUsageMatcher(addonId, objects, matchKeySet, model);
 
   const callSites: CallSite[] = [];
+  const expressionSites: ExpressionSite[] = [];
 
   for (const absPath of project.findAllEventSheets()) {
     let sheet: EventSheet;
@@ -438,6 +495,12 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
     } catch {
       continue; // skip unreadable/unparseable sheets rather than crashing the scan
     }
+
+    const loc = (ctx: { eventNumber: number | null; jsonPath: string }) => ({
+      sheet: sheet.name,
+      eventNumber: ctx.eventNumber,
+      jsonPath: ctx.jsonPath,
+    });
 
     visitEvents(sheet.events, (event, ctx) => {
       if (hasConditions(event)) {
@@ -460,6 +523,7 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
               sid: cond.sid,
             });
           }
+          collectExpressionSites(cond.parameters, loc(ctx), matcher, expressionSites);
         }
       }
 
@@ -484,6 +548,7 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
               sid: action.sid,
             });
           }
+          collectExpressionSites(action.parameters, loc(ctx), matcher, expressionSites);
         }
       }
     });
@@ -496,9 +561,17 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
     callSiteCountByName.set(name, (callSiteCountByName.get(name) ?? 0) + 1);
   }
 
+  const expressionSiteCountByName = new Map<string, number>();
+  for (const site of expressionSites) {
+    const name = matcher.attributeTo(site.objectName);
+    if (name === undefined) continue;
+    expressionSiteCountByName.set(name, (expressionSiteCountByName.get(name) ?? 0) + 1);
+  }
+
   const presence: PresenceRow[] = matcher.presence.map((p) => ({
     ...p,
     callSiteCount: callSiteCountByName.get(p.name) ?? 0,
+    expressionSiteCount: expressionSiteCountByName.get(p.name) ?? 0,
   }));
 
   if (blast !== undefined) {
@@ -515,6 +588,7 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
     addonLabel: target.name,
     presence,
     callSites,
+    expressionSites,
     aces,
     kind: target.kind,
     ...(blast !== undefined ? { blast } : {}),
