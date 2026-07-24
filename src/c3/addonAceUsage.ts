@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import type { AcesModel, EventSheet, ExpressionReferenceToken } from "@genvidtech/c3source";
+import type { AcesModel, AceExpression, EventSheet, ExpressionReferenceToken } from "@genvidtech/c3source";
 import {
   aceIdentity,
   extractExpressionReferences,
@@ -445,8 +445,9 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
   const aces: AceEntry[] = readAddonAces(target);
   // The kind-grouped model backs expression resolution (matchExpression →
   // findExpression). readAddonAcesModel is never-throw (empty model on any
-  // failure), preserving scanAddonUsage's own never-throw contract.
-  const model = readAddonAcesModel(target);
+  // failure), preserving scanAddonUsage's own never-throw contract. In blast
+  // mode it's widened below with the removed expressions.
+  let model = readAddonAcesModel(target);
   // Expressions don't participate in the condition/action match KEY (they're
   // not structured nodes); they flow through the separate matchExpression path
   // below. So the match set stays condition/action-only.
@@ -474,6 +475,27 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
     // different param signature), but removed keys are by definition gone
     // from `aceKeySet` and would otherwise never surface a call site.
     matchKeySet = new Set([...aceKeySet, ...removedKeys]);
+
+    // The expression analogue of that widening: a dangling reference to a
+    // removed expression won't resolve against the current model, so add the
+    // removed expressions back (reconstructed by their expressionName =
+    // `scriptName`) — otherwise the stale reference the tool exists to catch
+    // would never surface as an ExpressionSite.
+    const removedExpressions: AceExpression[] = diff.removed
+      .filter(
+        (r): r is AceEntry & { scriptName: string } => r.kind === "expression" && typeof r.scriptName === "string",
+      )
+      .map((r) => ({
+        kind: "expression",
+        category: "",
+        id: r.id,
+        expressionName: r.scriptName,
+        returnType: "",
+        params: [],
+      }));
+    if (removedExpressions.length > 0) {
+      model = { ...model, expressions: [...model.expressions, ...removedExpressions] };
+    }
 
     blast = { fromLabel: fromSource.label, changedKeys, removedKeys, affectedCount: 0 };
   }
@@ -577,10 +599,10 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
   if (blast !== undefined) {
     const changedSet = new Set(blast.changedKeys);
     const removedSet = new Set(blast.removedKeys);
-    blast.affectedCount = callSites.filter((s) => {
-      const key = aceIdentity(s.kind, s.id);
-      return changedSet.has(key) || removedSet.has(key);
-    }).length;
+    const isAffected = (key: string) => changedSet.has(key) || removedSet.has(key);
+    blast.affectedCount =
+      callSites.filter((s) => isAffected(aceIdentity(s.kind, s.id))).length +
+      expressionSites.filter((s) => isAffected(aceIdentity("expression", s.id))).length;
   }
 
   return {
@@ -708,6 +730,20 @@ function formatCallSiteLine(
   return `    event #${site.eventNumber ?? "?"}  ${site.jsonPath}   [${site.kind}] ${site.objectClass}.${site.id}(${paramNames})${marker}`;
 }
 
+function formatExpressionSiteLine(
+  site: ExpressionSite,
+  changedKeySet: Set<string> | undefined,
+  removedKeySet: Set<string> | undefined,
+): string {
+  const key = aceIdentity("expression", site.id);
+  const marker = removedKeySet?.has(key) ? " ⚠ REMOVED" : changedKeySet?.has(key) ? " ⚠ CHANGED" : "";
+  const ref =
+    site.behaviorName !== undefined
+      ? `${site.objectName}.${site.behaviorName}.${site.memberName}`
+      : `${site.objectName}.${site.memberName}`;
+  return `    event #${site.eventNumber ?? "?"}  ${site.jsonPath}  {${site.paramKey}} ${ref}   [expression] ${site.id}${marker}`;
+}
+
 function formatEffectSiteLine(site: EffectSite, exposed: boolean): string {
   const marker = exposed ? " ⚠ exposed" : "";
   const hostSegment =
@@ -779,11 +815,15 @@ function formatEffectUsage(result: AddonUsageResult): string {
 
 /**
  * Render a `ScanAddonUsageResult` to plain text: a header + summary, a
- * presence section grouped by kind (Object types / Families), then a call
- * sites section grouped by event sheet. Shared by the CLI and MCP surfaces so
- * output stays byte-identical. Owns both the empty case (`No usage of addon
- * "<id>" found.`) and the error-value case so neither call site special-cases
- * them.
+ * presence section grouped by kind (Object types / Families), a call sites
+ * section grouped by event sheet, and — when the scan found any — an
+ * `Expression references:` section (grouped by sheet) listing each resolved
+ * `Object.expr`/`Object.Behavior.expr` reference. A presence row with
+ * expression references appends `, N expression ref(s)`, and only a host with
+ * neither a call site nor an expression ref reads `(instantiated, no ACE
+ * calls)`. Shared by the CLI and MCP surfaces so output stays byte-identical.
+ * Owns both the empty case (`No usage of addon "<id>" found.`) and the
+ * error-value case so neither call site special-cases them.
  *
  * When `result.blast` is present (a `--from`/blast-radius scan), the output
  * gains: a `blast radius (vs <fromLabel>): N affected call site(s)` line
@@ -837,14 +877,23 @@ export function formatAddonUsage(result: ScanAddonUsageResult): string {
       lines.push("");
       lines.push(`${PRESENCE_SECTION_TITLE[kind]}:`);
       for (const row of rows) {
-        const suffix = row.callSiteCount === 0 ? " (instantiated, no ACE calls)" : "";
+        const exprCount = row.expressionSiteCount ?? 0;
+        const exprSegment = exprCount > 0 ? `, ${exprCount} expression ref(s)` : "";
+        // "(instantiated, no ACE calls)" only when the host has neither a call
+        // site NOR an expression reference — an expression-only host is used.
+        const suffix = row.callSiteCount === 0 && exprCount === 0 ? " (instantiated, no ACE calls)" : "";
         const exposedMarker = exposed ? " ⚠ exposed" : "";
         const instanceSegment =
           row.instanceNames !== undefined && row.instanceNames.length > 0 ? ` [${row.instanceNames.join(", ")}]` : "";
-        lines.push(`  ${row.name}${instanceSegment}   ${row.callSiteCount} call site(s)${suffix}${exposedMarker}`);
+        lines.push(
+          `  ${row.name}${instanceSegment}   ${row.callSiteCount} call site(s)${exprSegment}${suffix}${exposedMarker}`,
+        );
       }
     }
   }
+
+  const changedKeySet = blast !== undefined ? new Set(blast.changedKeys) : undefined;
+  const removedKeySet = blast !== undefined ? new Set(blast.removedKeys) : undefined;
 
   if (callSites.length > 0) {
     const aceByKey = new Map<string, AceEntry>();
@@ -852,9 +901,6 @@ export function formatAddonUsage(result: ScanAddonUsageResult): string {
       if (ace.kind === "expression") continue;
       aceByKey.set(aceIdentity(ace.kind, ace.id), ace);
     }
-
-    const changedKeySet = blast !== undefined ? new Set(blast.changedKeys) : undefined;
-    const removedKeySet = blast !== undefined ? new Set(blast.removedKeys) : undefined;
 
     const bySheet = new Map<string, CallSite[]>();
     for (const site of callSites) {
@@ -872,6 +918,28 @@ export function formatAddonUsage(result: ScanAddonUsageResult): string {
       lines.push(`  ${sheet}`);
       for (const site of sites) {
         lines.push(formatCallSiteLine(site, aceByKey, changedKeySet, removedKeySet));
+      }
+    }
+  }
+
+  const expressionSites = result.expressionSites ?? [];
+  if (expressionSites.length > 0) {
+    const bySheet = new Map<string, ExpressionSite[]>();
+    for (const site of expressionSites) {
+      let list = bySheet.get(site.sheet);
+      if (!list) {
+        list = [];
+        bySheet.set(site.sheet, list);
+      }
+      list.push(site);
+    }
+
+    lines.push("");
+    lines.push("Expression references:");
+    for (const [sheet, sites] of bySheet) {
+      lines.push(`  ${sheet}`);
+      for (const site of sites) {
+        lines.push(formatExpressionSiteLine(site, changedKeySet, removedKeySet));
       }
     }
   }
