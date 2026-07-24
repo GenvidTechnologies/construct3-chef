@@ -9,6 +9,7 @@ import {
   readAddonEntry,
   readAddonMetadata,
   readAddonAces,
+  readAddonAcesModel,
   listAddonEntries,
   formatAddonInfo,
   formatAddonList,
@@ -408,6 +409,78 @@ describe("addonReader", () => {
         expect(aces.length).to.equal(1);
         expect(aces[0].id).to.equal("is-elapsed");
         expect(aces[0].kind).to.equal("condition");
+      } finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  // ── R11: readAddonAcesModel — the DiscoveredAddon → AcesModel seam (#123) ──
+
+  describe("readAddonAcesModel", () => {
+    it("R11: parses a real addon's aces.json into c3source's kind-grouped AcesModel", () => {
+      const addon = discoverAddons(FIXTURE_ROOT).find((a) => a.name === "FixtureClock")!;
+
+      const model = readAddonAcesModel(addon);
+
+      // FixtureClock ships one of each kind.
+      expect(model.actions.length).to.equal(1);
+      expect(model.conditions.length).to.equal(1);
+      expect(model.expressions.length).to.equal(1);
+
+      // Cross-check the two readers agree on total ACE count for a well-formed addon.
+      const total = model.actions.length + model.conditions.length + model.expressions.length;
+      expect(total).to.equal(readAddonAces(addon).length);
+
+      // The expression is addressable by its PascalCase expressionName (what #123's
+      // findExpression resolves against) — distinct from the dash-cased id.
+      expect(model.expressions.map((e) => e.expressionName)).to.include("Elapsed");
+    });
+
+    it("R11: returns an empty model (never throws) when aces.json is absent", () => {
+      const tmpDir = mkdtempSync(path.join(os.tmpdir(), "addon-reader-model-noaces-"));
+      try {
+        const pluginDir = path.join(tmpDir, "addons", "plugin");
+        mkdirSync(pluginDir, { recursive: true });
+        writeFileSync(path.join(pluginDir, "NoAces.c3addon"), "placeholder");
+        const extractedDir = path.join(pluginDir, "NoAces");
+        mkdirSync(extractedDir, { recursive: true });
+        writeFileSync(path.join(extractedDir, "addon.json"), JSON.stringify({ id: "NoAces" }));
+
+        const addon: DiscoveredAddon = {
+          name: "NoAces",
+          kind: "plugin",
+          archivePath: path.join(pluginDir, "NoAces.c3addon"),
+          extractedDir,
+        };
+
+        expect(() => readAddonAcesModel(addon)).to.not.throw();
+        expect(readAddonAcesModel(addon)).to.deep.equal({ actions: [], conditions: [], expressions: [] });
+      } finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("R11: returns an empty model (never throws) when aces.json is malformed", () => {
+      const tmpDir = mkdtempSync(path.join(os.tmpdir(), "addon-reader-model-badaces-"));
+      try {
+        const pluginDir = path.join(tmpDir, "addons", "plugin");
+        mkdirSync(pluginDir, { recursive: true });
+        writeFileSync(path.join(pluginDir, "BadAces.c3addon"), "placeholder");
+        const extractedDir = path.join(pluginDir, "BadAces");
+        mkdirSync(extractedDir, { recursive: true });
+        writeFileSync(path.join(extractedDir, "addon.json"), JSON.stringify({ id: "BadAces" }));
+        writeFileSync(path.join(extractedDir, "aces.json"), "{ not valid json");
+
+        const addon: DiscoveredAddon = {
+          name: "BadAces",
+          kind: "plugin",
+          archivePath: path.join(pluginDir, "BadAces.c3addon"),
+          extractedDir,
+        };
+
+        expect(() => readAddonAcesModel(addon)).to.not.throw();
+        expect(readAddonAcesModel(addon)).to.deep.equal({ actions: [], conditions: [], expressions: [] });
       } finally {
         rmSync(tmpDir, { recursive: true, force: true });
       }

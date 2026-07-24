@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import type { EventSheet } from "@genvidtech/c3source";
-import { hasActions, hasConditions, openProject, visitEvents } from "@genvidtech/c3source";
+import { aceIdentity, hasActions, hasConditions, openProject, visitEvents } from "@genvidtech/c3source";
 import { diffAddonAces, resolveAceSource } from "./addonAceDiff.js";
 import { resolveAddonTarget, type DiscoveredAddon } from "./addonDiscovery.js";
 import { readAddonAces, resolveAddonId } from "./addonReader.js";
@@ -46,7 +46,7 @@ export interface PresenceRow {
 /**
  * Blast-radius data attached to `AddonUsageResult` when `scanAddonUsage` was
  * called with a `fromArg` (a `--from` old-version source). `changedKeys` /
- * `removedKeys` are `<kind>:<id>` identity keys ({@link aceKey}) drawn from
+ * `removedKeys` are `<kind>:<id>` identity keys (c3source `aceIdentity`) drawn from
  * `diffAddonAces(fromAces, currentAces)`'s `changed`/`removed` buckets —
  * added ACEs are deliberately excluded, since no pre-existing call site can
  * reference an ACE that didn't exist yet. `affectedCount` is the number of
@@ -110,10 +110,6 @@ export type ScanAddonUsageResult = AddonUsageResult | { error: string };
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
-function aceKey(kind: AceEntry["kind"], id: string): string {
-  return `${kind}:${id}`;
-}
-
 const PRESENCE_KIND_ORDER: Record<ObjectDefn["kind"], number> = { objectType: 0, family: 1 };
 
 function byPresenceOrder(a: ObjectDefn, b: ObjectDefn): number {
@@ -169,7 +165,7 @@ function createPluginUsageMatcher(addonId: string, objects: ObjectDefn[], matchK
 
   return {
     presence: matched.map((d) => ({ name: d.name, kind: d.kind })),
-    matches: (node) => nameSet.has(node.objectClass) && matchKeySet.has(aceKey(node.kind, node.id)),
+    matches: (node) => nameSet.has(node.objectClass) && matchKeySet.has(aceIdentity(node.kind, node.id)),
     attributeTo: (objectClass) => (nameSet.has(objectClass) ? objectClass : undefined),
   };
 }
@@ -250,7 +246,7 @@ export function createBehaviorUsageMatcher(
       node.behaviorType !== undefined &&
       instanceNameSet.has(node.behaviorType) &&
       attributeMap.has(node.objectClass) &&
-      matchKeySet.has(aceKey(node.kind, node.id)),
+      matchKeySet.has(aceIdentity(node.kind, node.id)),
     attributeTo: (objectClass) => attributeMap.get(objectClass),
   };
 }
@@ -320,7 +316,7 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
   const aceKeySet = new Set(
     aces
       .filter((a): a is AceEntry & { kind: "condition" | "action" } => a.kind !== "expression")
-      .map((a) => aceKey(a.kind, a.id)),
+      .map((a) => aceIdentity(a.kind, a.id)),
   );
 
   let matchKeySet = aceKeySet;
@@ -333,8 +329,8 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
     }
 
     const diff = diffAddonAces(fromSource.aces, aces);
-    const changedKeys = diff.changed.map((c) => aceKey(c.after.kind, c.after.id));
-    const removedKeys = diff.removed.map((r) => aceKey(r.kind, r.id));
+    const changedKeys = diff.changed.map((c) => aceIdentity(c.after.kind, c.after.id));
+    const removedKeys = diff.removed.map((r) => aceIdentity(r.kind, r.id));
 
     // Widen the match set with the removed keys only — changed keys are
     // still present in `aceKeySet` (the ACE still exists, just with a
@@ -428,7 +424,7 @@ export function scanAddonUsage(rootDir: string, addonArg: string, fromArg?: stri
     const changedSet = new Set(blast.changedKeys);
     const removedSet = new Set(blast.removedKeys);
     blast.affectedCount = callSites.filter((s) => {
-      const key = aceKey(s.kind, s.id);
+      const key = aceIdentity(s.kind, s.id);
       return changedSet.has(key) || removedSet.has(key);
     }).length;
   }
@@ -550,9 +546,9 @@ function formatCallSiteLine(
   changedKeySet: Set<string> | undefined,
   removedKeySet: Set<string> | undefined,
 ): string {
-  const ace = aceByKey.get(aceKey(site.kind, site.id));
+  const ace = aceByKey.get(aceIdentity(site.kind, site.id));
   const paramNames = ace ? ace.params.map((p) => p.name).join(", ") : "";
-  const key = aceKey(site.kind, site.id);
+  const key = aceIdentity(site.kind, site.id);
   const marker = removedKeySet?.has(key) ? " ⚠ REMOVED" : changedKeySet?.has(key) ? " ⚠ CHANGED" : "";
   return `    event #${site.eventNumber ?? "?"}  ${site.jsonPath}   [${site.kind}] ${site.objectClass}.${site.id}(${paramNames})${marker}`;
 }
@@ -699,7 +695,7 @@ export function formatAddonUsage(result: ScanAddonUsageResult): string {
     const aceByKey = new Map<string, AceEntry>();
     for (const ace of aces) {
       if (ace.kind === "expression") continue;
-      aceByKey.set(aceKey(ace.kind, ace.id), ace);
+      aceByKey.set(aceIdentity(ace.kind, ace.id), ace);
     }
 
     const changedKeySet = blast !== undefined ? new Set(blast.changedKeys) : undefined;

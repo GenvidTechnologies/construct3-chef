@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parseAcesModel, stripBom, type AcesModel } from "@genvidtech/c3source";
 import { resolveWithin, toPosixPath } from "@genvidtech/mcp-utils";
 import { unzipSync } from "fflate";
 import { discoverAddons, type DiscoveredAddon } from "./addonDiscovery.js";
@@ -27,15 +28,9 @@ export interface AddonInfo {
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-/**
- * Strip a single leading UTF-8 BOM (U+FEFF), if present. Real C3-exported
- * addon packages may ship `addon.json`/`aces.json` BOM-prefixed; a leading
- * BOM makes `JSON.parse` throw, so every entry read is normalized through
- * this before being returned.
- */
-function stripBom(text: string): string {
-  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
-}
+// Real C3-exported addon packages may ship `addon.json`/`aces.json` BOM-prefixed;
+// a leading BOM makes `JSON.parse` throw, so every entry read is normalized through
+// c3source's `stripBom` (the r487-pinned domain fact) before being returned.
 
 /**
  * Read a single entry (by exact name) from an addon, preferring the extracted
@@ -151,6 +146,29 @@ export function readAddonAces(addon: DiscoveredAddon): AceEntry[] {
     return mapAcesJsonToEntries(parsed, addon.name);
   } catch {
     return [];
+  }
+}
+
+/**
+ * Read and parse an addon's `aces.json` into c3source's `AcesModel` (the
+ * kind-grouped `{ actions, conditions, expressions }` domain model), via the
+ * upstream `parseAcesModel`. Any failure (unreadable, malformed JSON, shape
+ * violation) yields an empty model. Never throws.
+ *
+ * This is the `DiscoveredAddon → AcesModel` seam for expression resolution
+ * (#123: `findExpression` over the returned model). Note the tolerance differs
+ * from `readAddonAces`: `parseAcesModel` is all-or-nothing (it throws on the
+ * first shape violation), so a single malformed ACE yields an empty model here,
+ * whereas `mapAcesJsonToEntries` is per-entry tolerant.
+ */
+export function readAddonAcesModel(addon: DiscoveredAddon): AcesModel {
+  const text = readAddonEntry(addon, "aces.json");
+  if (text === null) return { actions: [], conditions: [], expressions: [] };
+
+  try {
+    return parseAcesModel(JSON.parse(text));
+  } catch {
+    return { actions: [], conditions: [], expressions: [] };
   }
 }
 
