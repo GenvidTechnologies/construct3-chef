@@ -103,7 +103,7 @@ describe("readProjectObjects", () => {
         pluginId: "Text",
         members: ["Text2", "Text"],
         behaviors: [{ behaviorId: "Timer", name: "Timer" }],
-        effectTypes: [{ effectId: "MyCompany_MyEffect", name: "My custom effect" }],
+        effectTypes: [{ effectId: "MyCompany_MyEffect", name: "MyCustomEffect" }],
       });
     });
 
@@ -132,7 +132,7 @@ describe("readProjectObjects", () => {
         ],
         effectTypes: [
           { effectId: "burn", name: "Burn" },
-          { effectId: "MyCompany_MyEffect", name: "My custom effect" },
+          { effectId: "MyCompany_MyEffect", name: "MyCustomEffect" },
         ],
       });
     });
@@ -213,14 +213,14 @@ describe("readProjectObjects", () => {
       const sprite2 = find(defns, "Sprite2");
       expect(sprite2?.effectTypes).to.deep.equal([
         { effectId: "burn", name: "Burn" },
-        { effectId: "MyCompany_MyEffect", name: "My custom effect" },
+        { effectId: "MyCompany_MyEffect", name: "MyCustomEffect" },
       ]);
     });
 
     it("reads TextFamily's effectTypes (MyCompany_MyEffect) from the construct3-chef-sample fixture", () => {
       const defns = readProjectObjects(openProject(SAMPLE_ROOT));
       const textFamily = find(defns, "TextFamily");
-      expect(textFamily?.effectTypes).to.deep.equal([{ effectId: "MyCompany_MyEffect", name: "My custom effect" }]);
+      expect(textFamily?.effectTypes).to.deep.equal([{ effectId: "MyCompany_MyEffect", name: "MyCustomEffect" }]);
     });
 
     it("defaults to [] when effectTypes is not an array", () => {
