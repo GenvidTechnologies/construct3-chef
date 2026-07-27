@@ -52,7 +52,9 @@ consumer-side stance:
   - an Option-A in-place `.gitignore` negation stanza (`/test/fixtures/construct3-chef-sample/*`
     plus `!`-reincludes) keeping a 17-file chef-local overlay tracked: the
     12-file `extracted/` golden read-surface, `archive-sources/MyCompany_MyEffect/*`
-    (4), and `build-archive.mjs` (1).
+    (4), and `build-archive.mjs` (1). **Since
+    [#139](https://github.com/GenvidTechnologies/construct3-chef/issues/139) the
+    overlay is the 12-file `extracted/` golden only** — see Consequences.
 
 ## Consequences
 
@@ -81,11 +83,31 @@ consumer-side stance:
   covered a layout-stack site and a nested sublayer 1.1.1); the effect-scanner
   tests were re-baselined to the real values, with recursive `subLayers`-walk
   coverage preserved via a synthetic temp-dir test.
-- A known, tracked deferral: `archive-sources/` and `build-archive.mjs` stay a
-  chef-local overlay for now, even though canonical also ships the built
-  `.c3addon` — a copy that can drift from the overlay's own rebuild. A
-  follow-up issue to move the addon builder upstream into `construct3-sample`
-  will be filed.
+- ~~A known, tracked deferral: `archive-sources/` and `build-archive.mjs` stay a
+  chef-local overlay for now~~ — **resolved by
+  [#139](https://github.com/GenvidTechnologies/construct3-chef/issues/139)**
+  (pin `v0.3.0`). Both bundled addons turned out to be verbatim Construct SDK
+  samples, so their sources and the script that zips them moved into
+  `construct3-sample`, whose ADR 0001 was narrowed from a file-type exclusion
+  ("never fixture-build tooling") to the **provenance** rule it always meant:
+  the canonical repo owns what comes from the C3 editor or the official SDK,
+  never hand-authored data and never a *consumer's* rendering. Chef's overlay is
+  now the 12-file `extracted/` golden only.
+
+  The resolution went further than "move the copy": canonical now **gates** every
+  shipped `.c3addon` against its `archive-sources/` tree, a guarantee neither
+  repo previously made. The comparison is **content**-equivalence (entry-name set
+  + per-entry bytes), not archive bytes — a `.c3addon` is just a zip with no
+  official builder, so the container is not normative (the two shipped packages
+  were made by different zip tools and differ in entry order, directory entries
+  and timestamps).
+
+  Chef still needs `archive-sources/` **on disk inside the fixture root**, since
+  the `scan-addon-usage` blast-radius tests pass it as an extracted-addon-dir
+  `--from` and `resolveAddonTarget` containment-guards that with
+  `resolveWithin(projectRoot, …)`. `prep-fixture.mjs` therefore materializes it
+  from the submodule beside `project/`, which kept the test path unchanged — the
+  adoption needed no test edits at all.
 - A known limitation of the copy-only prep script: it never deletes, so a
   future canonical pin that *removes* a file leaves the stale copy on disk
   (gitignored, invisible to `git status`). Reset with
