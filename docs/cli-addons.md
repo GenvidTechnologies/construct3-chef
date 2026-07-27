@@ -260,20 +260,19 @@ An effect addon has no ACEs, so it has no call-site tier — an application site
 ```bash
 $ npx tsx src/cli.ts scan-addon-usage MyCompany_MyEffect --project-dir test/fixtures/construct3-chef-sample
 scan-addon-usage: MyCompany_MyEffect (effect)
-applied at 4 site(s)
+applied at 3 site(s)
 
 Object types:
-  Sprite2   [My custom effect]
+  Sprite2   [MyCustomEffect]
 
 Families:
-  TextFamily   [My custom effect]
+  TextFamily   [MyCustomEffect]
 
 Layouts:
-  Second Layout (layout stack)   [My custom effect]
-  Second Layout / sublayer 1.1.1   [My custom effect]
+  Second Layout / layer 1   [MyCustomEffect]
 ```
 
-**Blast radius marks every site.** Effects have no ACE param signature to diff, so `--from` doesn't narrow the radius to a changed/removed subset the way it does for plugins/behaviors — every application site is exposed by a version bump (any effect parameter could change, and there's no per-site signature to compare), so `blast.affectedCount` always equals the site count and every site line gets the trailing ` ⚠ exposed` marker. The CLI's exit-non-zero-in-blast-mode gate is therefore unconditional for an applied effect: `scan-addon-usage <effect> --from <old>` exits 1 whenever the effect is applied anywhere in the project.
+**Blast radius marks every site.** Effects have no ACE param signature to diff, so `--from` doesn't narrow the radius to a changed/removed subset the way it does for plugins/behaviors — every application site is exposed by a version bump (any effect parameter could change, and there's no per-site signature to compare), so `blast.affectedCount` always equals the site count and every site line gets the trailing ` ⚠ exposed` marker. The CLI's exit-non-zero-in-blast-mode gate is therefore unconditional for an applied effect: `scan-addon-usage <effect> --from <old>` exits 1 whenever the effect is applied anywhere in the project. (The example below is an illustrative project — not the `construct3-chef-sample` fixture, which applies the effect at three sites — chosen to show the `(layout stack)` layout-level and nested-layer renderings as well.)
 
 ```bash
 $ construct3-chef scan-addon-usage MyCompany_MyEffect --from MyCompany_MyEffectOld.c3addon --project-dir <project>
