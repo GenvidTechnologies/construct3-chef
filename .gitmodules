@@ -3,4 +3,4 @@
 	url = https://github.com/Scirra/Construct-Addon-SDK.git
 [submodule "test/fixtures/construct3-sample"]
 	path = test/fixtures/construct3-sample
-	url = https://github.com/GenvidTechnologies/construct3-sample.git
+	url = git@github.com:GenvidTechnologies/construct3-sample.git
