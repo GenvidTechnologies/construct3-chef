@@ -33,30 +33,64 @@ consumer-side stance:
   editor; the bug is the project's incomplete application, not the effect.) Re-applying
   it in the editor and re-saving authored the complete data. No hand-curation remains
   in the seed.
-- Chef's **own** adoption — replacing its in-tree fixture with the submodule,
-  writing the prep script (recipes + additive overlay + strip-list), and
-  migrating golden regeneration to the materialized fixture — is deliberately
-  **not** done as part of this decision and remains tracked in #130, which
-  stays open.
+- Chef's **own** adoption — replacing its in-tree fixture with the submodule
+  and migrating golden regeneration to the materialized fixture — has since
+  shipped (branch `feat/adopt-canonical-fixture-submodule`; #130). The shipped
+  shape is **overlay-only**, not the "recipes + additive overlay + strip-list"
+  the original #130 issue body anticipated — there was no drift needing a
+  recipe layer or a strip-list, so both are absent (empty strip-list, in
+  effect):
+  - a submodule at `test/fixtures/construct3-sample`, pinned to tag `v0.2.0`;
+  - `scripts/prep-fixture.mjs`, a pure `fs.cpSync` of the submodule's
+    `project/` tree over `test/fixtures/construct3-chef-sample/`, self-initing
+    the submodule first (`git submodule update --init`) — **load-bearing**,
+    since the shared `public-github-actions/node-gate.yml` gate checks out no
+    submodules by default;
+  - wired as the `pretest`/`pretest:file` npm hook, so `npm test` and
+    `npm run test:file` materialize the fixture automatically, locally and in
+    CI;
+  - an Option-A in-place `.gitignore` negation stanza (`/test/fixtures/construct3-chef-sample/*`
+    plus `!`-reincludes) keeping a 17-file chef-local overlay tracked: the
+    12-file `extracted/` golden read-surface, `archive-sources/MyCompany_MyEffect/*`
+    (4), and `build-archive.mjs` (1).
 
 ## Consequences
 
-- The fixture temporarily exists in two places — chef's untouched in-tree
-  `test/fixtures/construct3-chef-sample/` and the canonical
-  `construct3-sample` repo — until #130 migrates chef onto the submodule. A
-  manual sync discipline applies in the meantime: don't hand-edit one copy
-  without checking the other.
-- No chef fixture bytes, generators, or tests changed as part of this
-  decision; the golden test and its fixture are untouched.
-- chef's own in-tree `test/fixtures/construct3-chef-sample/` still applies
-  `MyCompany_MyEffect` incompletely (the project-file bug above — not an addon
-  bug), so importing it into C3 null-pointers — its `fixtureLoadValidity` guard
-  only runs `validateForEditor` on event sheets, not a real editor load, so it
-  never caught it. Tracked as
-  [#132](https://github.com/GenvidTechnologies/construct3-chef/issues/132) (which
-  also flags two `validate-addons` false positives the real export exposed:
-  effects legitimately ship no `aces.json`, and `usedAddons` carries the
-  user-assigned instance name, not the addon's display name).
+- The two-copy interim state this ADR originally flagged is over: chef's
+  in-tree fixture is now materialized from the submodule rather than
+  hand-maintained alongside it, so the "don't hand-edit one copy without
+  checking the other" discipline no longer applies — there's one canonical
+  copy (the submodule) and one generated materialization (gitignored, rebuilt
+  by `fixture:prep`).
+- The golden test and its fixture bytes are unchanged in kind (still
+  `extracted/` diffed byte-for-byte against a committed golden), but the
+  golden was regenerated against the `v0.2.0` pin and the golden-regen flow
+  now requires `npm run fixture:prep` before `generate` if the fixture hasn't
+  just been materialized by the test suite.
+- [#132](https://github.com/GenvidTechnologies/construct3-chef/issues/132)
+  item 1 (the incomplete `MyCompany_MyEffect` application that null-pointered
+  the project on import) is **fixed** by adopting the `v0.2.0` canonical
+  fixture — the editor-authored application now round-trips cleanly. Items 2–3
+  (two `validate-addons` false positives the real export exposed: effects
+  legitimately ship no `aces.json`, and `usedAddons` carries the user-assigned
+  instance name, not the addon's display name) are separate and remain open.
+  Note the effect application **changed**, not merely completed: the
+  editor-authored version applies at three sites named `"MyCustomEffect"`
+  (Sprite2 objectType, TextFamily family, Second Layout's layer 1), versus the
+  retired hand-authored four sites named `"My custom effect"` (which also
+  covered a layout-stack site and a nested sublayer 1.1.1); the effect-scanner
+  tests were re-baselined to the real values, with recursive `subLayers`-walk
+  coverage preserved via a synthetic temp-dir test.
+- A known, tracked deferral: `archive-sources/` and `build-archive.mjs` stay a
+  chef-local overlay for now, even though canonical also ships the built
+  `.c3addon` — a copy that can drift from the overlay's own rebuild. A
+  follow-up issue to move the addon builder upstream into `construct3-sample`
+  will be filed.
+- A known limitation of the copy-only prep script: it never deletes, so a
+  future canonical pin that *removes* a file leaves the stale copy on disk
+  (gitignored, invisible to `git status`). Reset with
+  `git clean -fdX -- test/fixtures/construct3-chef-sample/` before re-running
+  `fixture:prep` after such a pin bump.
 - Full consumption-mechanism rationale (rejected alternatives, the prep-script
   shape, why `c3source` is validator-not-owner) lives in
   [`construct3-sample` ADR 0001](https://github.com/GenvidTechnologies/construct3-sample/blob/main/docs/decisions/0001-consumption-mechanism.md) —

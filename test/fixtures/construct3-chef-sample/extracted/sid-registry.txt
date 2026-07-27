@@ -25,11 +25,13 @@
 384578958143912	objectTypes/images/Sprite.json	animations.subfolders[0].items[0]
 410046522280435	layouts/Second Layout.json	layers[0].instances[3]
 434309353023803	layouts/Second Layout.json	layers[2].subLayers[0].subLayers[0]
-444777231675422	eventSheets/Event sheet 1.json	events[1].children[1].actions[0]
+444777231675422	eventSheets/Event sheet 1.json	events[1].children[1].actions[1]
 448528259594971	objectTypes/images/Sprite.json	objectType
+450713348459828	eventSheets/Event sheet 1.json	events[1].children[1].conditions[2]
 470569810702409	objectTypes/images/Sprite.json	animations.items[0]
 499382329943495	layouts/Templates Layout.json	layers[0].instances[1]
 500990541894257	layouts/Second Layout.json	layers[1].subLayers[0].subLayers[0].instances[0]
+503974656149130	eventSheets/Event sheet 1.json	events[1].children[1].actions[0]
 516087577917987	layouts/Second Layout.json	layers[2].subLayers[0]
 531694882492218	layouts/Second Layout.json	layers[0]
 544037156847608	layouts/Second Layout.json	layers[1].subLayers[1]
@@ -43,7 +45,7 @@
 604751578828694	objectTypes/images/9patch.json	objectType
 612798495723368	objectTypes/images/Sprite3.json	objectType
 624180597436215	eventSheets/Event sheet 1.json	events[1].children[1].conditions[1]
-631897527420293	eventSheets/Event sheet 1.json	events[1].children[1].actions[2]
+631897527420293	eventSheets/Event sheet 1.json	events[1].children[1].actions[3]
 635424354242082	eventSheets/Event sheet 2.json	events[0].children[0].actions[0]
 635959236260852	eventSheets/Event sheet 1.json	sheet
 659718123724261	objectTypes/NavButton.json	objectType
@@ -55,7 +57,7 @@
 756193165191724	objectTypes/TextInput.json	objectType
 764611743373655	layouts/Second Layout.json	layers[1].subLayers[1].instances[0]
 771342571715259	layouts/Main Layout.json	layers[0].instances[0]
-781413955177885	eventSheets/Event sheet 1.json	events[1].children[1].actions[1]
+781413955177885	eventSheets/Event sheet 1.json	events[1].children[1].actions[2]
 801980899728233	objectTypes/tiles/Tilemap.json	objectType
 805026402058515	objectTypes/images/Sprite2.json	animations.items[0]
 813030058561989	layouts/Main Layout.json	nonworld-instances[0]

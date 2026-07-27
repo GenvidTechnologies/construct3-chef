@@ -308,15 +308,15 @@ describe("scanAddonUsage — effect target (public dispatch)", () => {
 // `scan-addon-usage --addon MyCompany_MyEffect` CLI/MCP call takes (through
 // `discoverAddons`), which the synthetic tests above don't exercise.
 //
-// Fixture sites (read-only — construct3-chef-sample is golden-diffed, never
-// mutated by this file):
+// Fixture sites (read-only — construct3-chef-sample is materialized from the
+// canonical construct3-sample submodule, never mutated by this file):
 //   - objectTypes/images/Sprite2.json: effectTypes ["burn" (unrelated
 //     built-in, negative case), "MyCompany_MyEffect"]
 //   - families/TextFamily.json: effectTypes ["MyCompany_MyEffect"]
-//   - layouts/Second Layout.json: top-level effectTypes
-//     ["MyCompany_MyEffect"] AND, nested two levels deep (layer 1 ->
-//     sublayer 1.1 -> sublayer 1.1.1), a layer-level "MyCompany_MyEffect" —
-//     the real-fixture proof of the recursive subLayers walk.
+//   - layouts/Second Layout.json: "MyCompany_MyEffect" applied to "layer 1".
+// The canonical editor export applies the effect at three sites (objectType,
+// family, layer); the recursive nested-subLayers walk is covered SYNTHETICALLY
+// above (see "finds all four application sites ... plus the nested sub-layer").
 
 const SAMPLE_ROOT = path.resolve("test/fixtures/construct3-chef-sample");
 
@@ -325,7 +325,7 @@ describe("scanAddonUsage — effect addon (against construct3-chef-sample, disco
     const result = ok(scanAddonUsage(SAMPLE_ROOT, "MyCompany_MyEffect"));
     expect(result.effectSites ?? []).to.deep.include({
       effectId: "MyCompany_MyEffect",
-      name: "My custom effect",
+      name: "MyCustomEffect",
       container: "objectType",
       host: "Sprite2",
     });
@@ -335,32 +335,29 @@ describe("scanAddonUsage — effect addon (against construct3-chef-sample, disco
     const result = ok(scanAddonUsage(SAMPLE_ROOT, "MyCompany_MyEffect"));
     expect(result.effectSites ?? []).to.deep.include({
       effectId: "MyCompany_MyEffect",
-      name: "My custom effect",
+      name: "MyCustomEffect",
       container: "family",
       host: "TextFamily",
     });
   });
 
-  it("R3: layout-level site — Second Layout's top-level effectTypes, no `layer` key", () => {
+  it("R3: layer site — Second Layout's `layer 1` carries the effect", () => {
     const result = ok(scanAddonUsage(SAMPLE_ROOT, "MyCompany_MyEffect"));
     expect(result.effectSites ?? []).to.deep.include({
       effectId: "MyCompany_MyEffect",
-      name: "My custom effect",
-      container: "layout",
+      name: "MyCustomEffect",
+      container: "layer",
       host: "Second Layout",
+      layer: "layer 1",
     });
   });
 
-  it("R4/R5: layer site incl. nested recursion two levels deep — layer 1 -> sublayer 1.1 -> sublayer 1.1.1", () => {
-    const result = ok(scanAddonUsage(SAMPLE_ROOT, "MyCompany_MyEffect"));
-    expect(result.effectSites ?? []).to.deep.include({
-      effectId: "MyCompany_MyEffect",
-      name: "My custom effect",
-      container: "layer",
-      host: "Second Layout",
-      layer: "sublayer 1.1.1",
-    });
-  });
+  // R4/R5 (the real-fixture nested-subLayers recursion case) was retired when
+  // the fixture moved to the canonical construct3-sample export: the real
+  // editor applies the effect to "layer 1", not to a nested sublayer, so there
+  // is no real-fixture nested application to assert. The recursive subLayers
+  // walk stays covered SYNTHETICALLY — see "finds all four application sites
+  // (objectType, family, layout, layer) plus the nested sub-layer" above.
 
   it("R6: the unrelated built-in 'burn' effect on Sprite2 is never matched by the MyCompany_MyEffect scan", () => {
     const result = ok(scanAddonUsage(SAMPLE_ROOT, "MyCompany_MyEffect"));
@@ -391,11 +388,11 @@ describe("scanAddonUsage — effect addon (against construct3-chef-sample, disco
       expect(result.blast?.changedKeys).to.deep.equal([]);
       expect(result.blast?.removedKeys).to.deep.equal([]);
       expect(result.blast?.affectedCount).to.equal((result.effectSites ?? []).length);
-      expect(result.blast?.affectedCount).to.equal(4);
+      expect(result.blast?.affectedCount).to.equal(3);
 
       const output = formatAddonUsage(result);
       const siteLines = output.split("\n").filter((l) => l.includes("["));
-      expect(siteLines.length).to.equal(4);
+      expect(siteLines.length).to.equal(3);
       for (const line of siteLines) {
         expect(line).to.include("⚠ exposed");
       }
@@ -415,17 +412,16 @@ describe("scanAddonUsage — effect addon (against construct3-chef-sample, disco
     expect(first).to.equal(
       [
         "scan-addon-usage: MyCompany_MyEffect (effect)",
-        "applied at 4 site(s)",
+        "applied at 3 site(s)",
         "",
         "Object types:",
-        "  Sprite2   [My custom effect]",
+        "  Sprite2   [MyCustomEffect]",
         "",
         "Families:",
-        "  TextFamily   [My custom effect]",
+        "  TextFamily   [MyCustomEffect]",
         "",
         "Layouts:",
-        "  Second Layout (layout stack)   [My custom effect]",
-        "  Second Layout / sublayer 1.1.1   [My custom effect]",
+        "  Second Layout / layer 1   [MyCustomEffect]",
       ].join("\n"),
     );
   });
@@ -433,7 +429,7 @@ describe("scanAddonUsage — effect addon (against construct3-chef-sample, disco
   // R7 (the empty-usage case) stays covered SYNTHETICALLY — see
   // "formatAddonUsage — effect scan" > "renders the standard empty-usage
   // sentence when effectSites is empty" above. construct3-chef-sample bundles
-  // only ONE effect addon and it IS applied at all four sites, so there's no
+  // only ONE effect addon and it IS applied at all three sites, so there's no
   // real resolvable-but-unapplied effect to drive an empty case against the
   // real fixture without adding a second effect-addon package purely for
   // this — not worth the fixture churn.
