@@ -211,6 +211,14 @@ describe("buildCustomAceIndex", () => {
     assert.isTrue(text2Families.has("TextFamily"), "Text2 should belong to TextFamily");
   });
 
+  it("indexes the custom-ace definition from the fixture's NavButton.OnClickAction block", () => {
+    const index = buildCustomAceIndex(fixtureDir);
+    // Event sheet 1 carries a `custom-ace-block` defining NavButton.OnClickAction.
+    assert.isTrue(index.hasAce("NavButton", "OnClickAction"));
+    // Negative half: a hasAce that answered `true` unconditionally would pass the positive alone.
+    assert.isFalse(index.hasAce("NavButton", "NoSuchAction"));
+  });
+
   it("returns empty family sets for an unknown object", () => {
     const index = buildCustomAceIndex(fixtureDir);
     const families = index.familiesOf("NoSuchObject");
