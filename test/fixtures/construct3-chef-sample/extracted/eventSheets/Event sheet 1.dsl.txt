@@ -4,13 +4,29 @@
 global var score: number = 0
 
 group "GameLoop" (active)
+  block
+    when: System.on-start-of-layout()
+    do: Functions.map-function-default(name="mymap", function=MyFunction)
+    do: Functions.map-function-default(name="normal", function=MyFunction)
+
   var temp: number = 0
 
   block
     when: NavButton.on-clicked()
     when: System.compare-two-values(first-value=score, comparison=4 (>), second-value=0)
     when: System.compare-eventvar(variable=temp, comparison=0 (=), value=0)
-    do: System.add-to-eventvar(variable=temp, value=1)
+    do: ace NavButton.OnClickAction()
+
+  function MyFunction() -> number [category: sample]
+    do: Functions.set-function-return-value(value=1)
+
+  async function MyAsyncFunction(timer: string = test, duration: number = 1) -> none [copy-picked] [category: async sample] -- A sample async function
     do: Sprite2[MyCustomBehavior].stop()
-    do: TextFamily[Timer].start-timer(duration=1.0, type=once, tag="test")
+    do: TextFamily[Timer].start-timer(duration=duration, type=once, tag=timer)
+    do: System.wait-for-previous-actions()
+
+  ace NavButton.OnClickAction() -> none [copy-picked] [category: custom] -- Action to be call on clicked
+    do: System.add-to-eventvar(variable=temp, value=Functions.CallMapped("mymap", "MyFunction") + Functions.MyFunction)
+    do: call MyAsyncFunction("test", 1)
+    do: System.wait-for-previous-actions()
     do: System.go-to-layout(layout=Second Layout)

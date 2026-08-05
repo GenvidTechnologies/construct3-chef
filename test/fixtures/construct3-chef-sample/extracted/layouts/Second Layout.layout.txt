@@ -3,7 +3,7 @@
 # EventSheet: Event sheet 2
 # Size: 960 x 1280
 
-## Layers (3)
+## Layers (4)
 
 layer 0 (4 instances)
   Tilemap x1
@@ -11,14 +11,14 @@ layer 0 (4 instances)
   TiledBackground x1
   NavButton x1
 
-global layer (global)
+global layer (global, 1 instance)
+  Sprite x1
   global layer > sublayer g.1
     global layer > sublayer g.1 > subsublayer g.1.1 (1 instance)
       Sprite2 x1 (container: {Sprite2, ~Text2})
 
 
-  global layer > sublayer g.2 (1 instance)
-    Sprite x1
+  global layer > sublayer g.2
 
 
 layer 1
@@ -27,4 +27,6 @@ layer 1
       Text x1
 
 
+
+previously local (overriden) [→ Main Layout]
 

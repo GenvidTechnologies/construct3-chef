@@ -4,4 +4,5 @@
 # Event | JSON Path             | SID              | DSL Line | Description
 #-------|-----------------------|------------------|----------|-----------
   1     | events[0]             | §544395983790907 | 4        | group "Second Layout Events"
-  2     | events[0].children[0] | §873125372253996 | 5        | block ⟪search⟫ NavButton.on-clicked() System.go-to-layout-by-name(layout="Main Layout") Text[Timer].stop-timer(tag="test")
+  -     | events[0].children[0] | §274712856729018 | 5        | static isActive: boolean = true
+  2     | events[0].children[1] | §873125372253996 | 7        | block ⟪search⟫ NavButton.on-clicked() System.compare-boolean-eventvar(variable=isActive) System.go-to-layout-by-name(layout="Main Layout") Text[Timer].stop-timer(tag="test")

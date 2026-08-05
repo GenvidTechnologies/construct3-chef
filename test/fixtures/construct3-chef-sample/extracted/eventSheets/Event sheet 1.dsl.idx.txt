@@ -5,5 +5,9 @@
 #-------|-----------------------|------------------|----------|-----------
   -     | events[0]             | §100000000000020 | 4        | global var score: number = 0
   1     | events[1]             | §100000000000022 | 6        | group "GameLoop"
-  -     | events[1].children[0] | §100000000000021 | 7        | var temp: number = 0
-  2     | events[1].children[1] | §573288374737163 | 9        | block ⟪search⟫ NavButton.on-clicked() System.compare-two-values(first-value=score, comparison=4 (>), second-value=0) System.compare-eventvar(variable=temp, comparison=0 (=), value=0) System.add-to-eventvar(variable=temp, value=1) Sprite2[MyCustomBehavior].stop() TextFamily[Timer].start-timer(duration=1.0, type=once, tag="test") System.go-to-layout(layout=Second Layout)
+  2     | events[1].children[0] | §804371239000122 | 7        | block ⟪search⟫ System.on-start-of-layout() Functions.map-function-default(name="mymap", function=MyFunction) Functions.map-function-default(name="normal", function=MyFunction)
+  -     | events[1].children[1] | §100000000000021 | 12       | var temp: number = 0
+  3     | events[1].children[2] | §573288374737163 | 14       | block ⟪search⟫ NavButton.on-clicked() System.compare-two-values(first-value=score, comparison=4 (>), second-value=0) System.compare-eventvar(variable=temp, comparison=0 (=), value=0) ace NavButton.OnClickAction()
+  4     | events[1].children[3] | §709436016193761 | 20       | function MyFunction() ⟪search⟫ Functions.set-function-return-value(value=1)
+  5     | events[1].children[4] | §149644071357242 | 23       | function MyAsyncFunction() ⟪search⟫ Sprite2[MyCustomBehavior].stop() TextFamily[Timer].start-timer(duration=duration, type=once, tag=timer) System.wait-for-previous-actions()
+  6     | events[1].children[5] | §757019400607615 | 28       | ace NavButton.OnClickAction() ⟪search⟫ System.add-to-eventvar(variable=temp, value=Functions.CallMapped("mymap", "MyFunction") + Functions.MyFunction) call MyAsyncFunction("test", 1) System.wait-for-previous-actions() System.go-to-layout(layout=Second Layout)

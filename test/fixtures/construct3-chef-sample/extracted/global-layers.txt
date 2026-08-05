@@ -3,3 +3,4 @@
 # Global layers are shared across layouts; one layout defines instances, others override.
 
 global layer: source="Second Layout", overridingLayouts=[Main Layout], instanceCount=2
+previously local: source="Main Layout", overridingLayouts=[Second Layout], instanceCount=1
