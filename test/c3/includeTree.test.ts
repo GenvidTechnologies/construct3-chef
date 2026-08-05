@@ -49,10 +49,15 @@ describe("buildSheetNameMap", () => {
   });
 
   // Editor-local exclusion is delegated to c3source (isEditorLocalPath), so the
-  // next two tests MUST stay synthetic: the construct3-chef-sample fixture carries
-  // zero uistate files under eventSheets/, so a fixture-based version would pass
+  // next three tests MUST stay synthetic: the construct3-chef-sample fixture carries
+  // zero editor-local files under eventSheets/, so a fixture-based version would pass
   // vacuously — asserting nothing about the exclusion. (That trap is live in this
   // repo; see test/mcp/serverHandlers.test.ts:281-292 and :337-346.)
+  //
+  // One test per dimension, deliberately. EDITOR_LOCAL_EXCLUSIONS has three
+  // independent mechanisms — fileSuffixes ([".uistate.json"]), dirs (["uistate",
+  // "ts-defs"]) and exactNames (["tsconfig.json"]) — and a single combined test
+  // could not say which one regressed. See ADR docs/decisions/0016.
   it("excludes *.uistate.json siblings", () => {
     writeSheet("eventSheets/Real.json", []);
     writeSheet("eventSheets/Real.uistate.json", []);
@@ -69,6 +74,20 @@ describe("buildSheetNameMap", () => {
 
     const map = buildSheetNameMap(tmpDir);
     assert.isFalse(map.has("Hidden"));
+    assert.equal(map.size, 1);
+  });
+
+  // The exactNames dimension is the non-obvious one, and it was LIVE here rather
+  // than theoretical: tsconfig.json IS a .json file, so the hand-rolled walk this
+  // replaced would have registered a sheet named "tsconfig". It is exactly what a
+  // hand-written `.endsWith(".json")` predicate cannot express — the reason to use
+  // c3source's named collector rather than the generic walk plus a local predicate.
+  it("excludes the editor-owned tsconfig.json", () => {
+    writeSheet("eventSheets/Real.json", []);
+    writeSheet("eventSheets/tsconfig.json", []);
+
+    const map = buildSheetNameMap(tmpDir);
+    assert.isFalse(map.has("tsconfig"));
     assert.equal(map.size, 1);
   });
 

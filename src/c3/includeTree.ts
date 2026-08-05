@@ -33,6 +33,16 @@ export interface IncludeTreeNode {
  * The collector returns absolute paths; the project-root-relative POSIX
  * normalization below is chef's own rendering and deliberately stays local.
  * A missing eventSheets directory throws, as it always has.
+ *
+ * One tolerance is deliberately traded away. The collector `statSync`s every
+ * entry, so a sheet vanishing mid-walk now throws out of the whole call, where
+ * the old dirent-only recursion would not have noticed. ADR 0016 cites exactly
+ * that per-entry `statSync` as a reason to DECLINE the shared walk at
+ * `generators.findJsonFiles`, whose second caller is written to skip a vanished
+ * file and keep scanning. The asymmetry is intended: `list-include-tree` — this
+ * map's only consumer — answers a one-shot query where failing loudly is right,
+ * and every other event-sheet discovery site in chef already accepts the same
+ * trade by using the collector.
  */
 export function buildSheetNameMap(projectDir: string): Map<string, string> {
   const esDir = openProject(projectDir).eventSheetsDir;
