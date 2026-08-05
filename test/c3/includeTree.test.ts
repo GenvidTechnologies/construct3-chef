@@ -47,6 +47,47 @@ describe("buildSheetNameMap", () => {
     const map = buildSheetNameMap(tmpDir);
     assert.equal(map.get("DeepSheet"), "eventSheets/A/B/DeepSheet.json");
   });
+
+  // Editor-local exclusion is delegated to c3source (isEditorLocalPath), so the
+  // next two tests MUST stay synthetic: the construct3-chef-sample fixture carries
+  // zero uistate files under eventSheets/, so a fixture-based version would pass
+  // vacuously — asserting nothing about the exclusion. (That trap is live in this
+  // repo; see test/mcp/serverHandlers.test.ts:281-292 and :337-346.)
+  it("excludes *.uistate.json siblings", () => {
+    writeSheet("eventSheets/Real.json", []);
+    writeSheet("eventSheets/Real.uistate.json", []);
+
+    const map = buildSheetNameMap(tmpDir);
+    assert.equal(map.get("Real"), "eventSheets/Real.json");
+    assert.isFalse(map.has("Real.uistate"));
+    assert.equal(map.size, 1);
+  });
+
+  it("does not descend into uistate/ subfolders", () => {
+    writeSheet("eventSheets/Real.json", []);
+    writeSheet("eventSheets/uistate/Hidden.json", []);
+
+    const map = buildSheetNameMap(tmpDir);
+    assert.isFalse(map.has("Hidden"));
+    assert.equal(map.size, 1);
+  });
+
+  // The map is keyed on the bare sheet name, so two sheets sharing a name in
+  // different folders collide. The winner is simply the LAST one the walk visits
+  // in its sorted depth-first order — not the shallowest and not the deepest.
+  // Here the sorted eventSheets/ level is ["Dup.json", "Nested"]: "Dup.json" is
+  // registered first, then "Nested" is recursed into and overwrites it. Rename
+  // "Nested" to something sorting before "Dup.json" and the shallow one wins
+  // instead. A duplicate sheet name is unreachable in a valid C3 project
+  // (manifest names are unique project-wide), so this locks determinism only —
+  // there is no semantic preference between the two paths.
+  it("resolves a duplicate sheet name deterministically (last in the walk's sorted DFS order)", () => {
+    writeSheet("eventSheets/Nested/Dup.json", []);
+    writeSheet("eventSheets/Dup.json", []);
+
+    const map = buildSheetNameMap(tmpDir);
+    assert.equal(map.get("Dup"), "eventSheets/Nested/Dup.json");
+  });
 });
 
 // ─── extractFunctions ───
