@@ -629,7 +629,7 @@ describe("layoutFormatter", () => {
   });
 
   describe("buildGlobalLayerReport", () => {
-    it("should return the correct report entry for the construct3-chef-sample fixture", () => {
+    it("should return the correct report entries for the construct3-chef-sample fixture", () => {
       const mainLayoutJson = readFileSync(path.join(FIXTURE_LAYOUTS_DIR, "Main Layout.json"), "utf-8");
       const secondLayoutJson = readFileSync(path.join(FIXTURE_LAYOUTS_DIR, "Second Layout.json"), "utf-8");
       const parsedLayouts = [
@@ -637,13 +637,25 @@ describe("layoutFormatter", () => {
         { layout: JSON.parse(mainLayoutJson) as Layout },
       ];
       const reports = buildGlobalLayerReport(parsedLayouts);
-      assert.equal(reports.length, 1);
-      const r = reports[0];
-      assert.equal(r.name, "global layer");
-      assert.equal(r.sourceLayout, "Second Layout");
-      assert.deepEqual(r.overridingLayouts, ["Main Layout"]);
-      assert.equal(r.instanceCount, 2);
-      assert.isUndefined(r.multiSourceWarning);
+      assert.equal(reports.length, 2);
+
+      // [0] the pre-existing pair: defined in Second Layout, overridden by Main Layout.
+      assert.equal(reports[0].name, "global layer");
+      assert.equal(reports[0].sourceLayout, "Second Layout");
+      assert.deepEqual(reports[0].overridingLayouts, ["Main Layout"]);
+      assert.equal(reports[0].instanceCount, 2);
+      assert.isUndefined(reports[0].multiSourceWarning);
+
+      // [1] NEW in the v0.7.0 fixture: the reverse-direction pair — defined in Main
+      // Layout, overridden by Second Layout. First real-data coverage of two global
+      // layers whose DEFINING layouts differ, which is the input that could trip
+      // buildGlobalLayerReport into a false multiSourceWarning — hence the
+      // isUndefined assertion on both entries.
+      assert.equal(reports[1].name, "previously local");
+      assert.equal(reports[1].sourceLayout, "Main Layout");
+      assert.deepEqual(reports[1].overridingLayouts, ["Second Layout"]);
+      assert.equal(reports[1].instanceCount, 1);
+      assert.isUndefined(reports[1].multiSourceWarning);
     });
 
     it("should set multiSourceWarning when the same layer name sources from multiple layouts", () => {
