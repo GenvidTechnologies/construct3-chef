@@ -9,15 +9,15 @@ If you're forking or adapting the plugin for your own org, this file is what you
 | File | Purpose | Required |
 |------|---------|----------|
 | `CLAUDE.md` | Project context loaded by Claude Code on session start. Holds project-specific facts the plugin's skills reference (commit format, PR format, etc.). Imports this file with `@CONVENTIONS.md`. | Yes |
-| `CONVENTIONS.md` | This file. Lives at the consuming repo's root as a copy of the plugin's canonical version, written by `/gvt-dev:audit-conventions --fix` on first migration. The audit reports drift on each run so you can re-sync after the plugin updates. | Yes |
+| `CONVENTIONS.md` | This file. Lives at the consuming repo's root as a copy of the plugin's canonical version, written by `/gvt-dev:audit-conventions --fix` on first migration. The plain audit warns on each run if this copy has drifted from the canonical; `/gvt-dev:audit-conventions --fix` (dry-run preview, then `--apply`) re-syncs it after the plugin updates. | Yes |
 | `docs/TOC.md` | Index of the project's documentation. Used by planning skills to scope their work. | Yes |
 | `.gvt-agent.json` | Capability registry — project name, build/test commands, repo settings, feature toggles. | Yes |
 
 Anything else (architecture docs, runbooks, design patterns) is your own; the plugin doesn't depend on it.
 
-Some skills scaffold a doc into `docs/` and **self-index it in `docs/TOC.md`** under a conventional section heading — `Decision Records` for ADRs (`/gvt-dev:plan-task`), `Process` for workflow/convention docs like `docs/issue-triage.md` (`/gvt-dev:triage-issues`). These sections are optional and created on demand. The index is the discovery surface, so a scaffolded doc that isn't indexed is invisible to the planning and triage skills.
+Some skills scaffold a doc into `docs/` and **self-index it in `docs/TOC.md`** under a conventional section heading — `Decision Records` for ADRs (`/gvt-dev:plan-task`), `Process` for workflow/convention docs like `docs/issue-triage.md` (`/gvt-dev:triage-issues`), `Knowledge Base` for `docs/wiki-schema.md` (`/gvt-dev:maintain-wiki`). These sections are optional and created on demand. The index is the discovery surface, so a scaffolded doc that isn't indexed is invisible to the planning and triage skills.
 
-> **Scope note:** genvid carries project-aware workflows, not generic tooling. It deliberately does not reimplement standalone PR review or code simplification — use Anthropic's official `code-review` (`/code-review`) and `code-simplifier` plugins for those. The `gvt-dev:code-reviewer` agent exists only as the `plan-task` review gate.
+> **Scope note:** genvid carries project-aware workflows, not generic tooling. It deliberately does not reimplement standalone PR review or code simplification — use Anthropic's official `code-review` (`/code-review`) and `code-simplifier` plugins for those. The `gvt-dev:code-reviewer` agent exists only as the `plan-task` review gate. This is verification-first, not review-as-an-afterthought: implementers author, then a distinct-model `code-reviewer` (haiku) and the `validator` independently critique against a pre-committed `## Acceptance Criteria` checklist, and the orchestrator gates the commit on both. Because the criteria are fixed before generation, the critic checks a target that can't move (see ADR-0017).
 
 ## Expected sections in `CLAUDE.md`
 
@@ -94,6 +94,20 @@ This is expected extensibility, **not** schema drift. Keep these blocks lean (ma
 
 One scope caution for the `bugTracker` block: keep its `actionQuery` covering the **whole open backlog**, not narrowed to a single label (e.g. `--label bug`). `triage-issues` and `plan-next-issue` detect untriaged work by subtracting `triagedLabel` from `actionQuery`, so a label-scoped query silently hides untriaged issues that don't match the label and makes the backlog look groomed when it isn't.
 
+A second example is `audit-conventions`' optional `hygiene` block, tuning its advisory repo-hygiene scanners (retired-token deny-list, broken intra-repo doc links, orphaned-doc check — see the skill for what each check does). Two optional keys, each with baked-in defaults so the block can be omitted entirely:
+
+- `retiredTokens` (array) — **replaces** the default deny-list (`genvid:`, `genvid-dev:`, `genvid-c3`) when provided, since a repo's deny-list is a deliberate full override.
+- `excludePaths` (array) — **unioned** with the default exclusions (`CHANGELOG.md`, `docs/superpowers/`, `docs/decisions/`) when provided, so a repo only needs to name what it wants to *add*. Applies to all three scanners. This repo's own `.gvt-agent.json` uses it to exclude `docs/plugin-authoring.md` (maintainer-only notes) from the token scan.
+
+A third example is the `wiki` block, configuring the LLM-wiki compounding-memory practice (`/gvt-dev:maintain-wiki` and its read-only `wiki-librarian` agent):
+
+- `wikiDir` (default `wiki`) — the directory holding the wiki's pages, index, and log. `wikiDir` **is** the OKF v0.2 bundle root — no separate `bundleRoot` key is introduced, since a second name for one thing is guaranteed drift. `rawDir` is outside the bundle.
+- `rawDir` (default `raw`) — the directory holding immutable source captures cited for provenance.
+
+`wikiDir` and `rawDir` are declared `required: false` in both the `maintain-wiki` skill's and the `wiki-librarian` agent's `metadata.expects`. Both are optional because the wiki practice is opt-in — a repo that doesn't maintain a wiki must never fail the aggregated audit over it, the same reasoning behind the `package.json` expectation in `publish-npm-package`.
+
+`plan-task` reuses the existing `bugTracker` block — `readOne` to fetch the current issue body, plus the host-native issue-edit command (e.g. `gh issue edit --body-file`) — to read and write the plan's pre-committed `## Acceptance Criteria` checklist in the issue body. No new config block is introduced. For issue-less runs, the checklist falls back to a committed `docs/acceptance/<slug>.md` file. See ADR-0017.
+
 ## How `/gvt-dev:audit-conventions` works
 
 `audit-conventions` is the plugin's validator and migration tool.
@@ -142,6 +156,8 @@ metadata:
 ```
 
 Three axes — `files`, `config`, `tools` — plus a mandatory `reason` on every entry. `required: true` is the default; only `required: false` is written explicitly. A skill with no prerequisites omits `expects:` entirely.
+
+Under `files`, a **trailing slash marks a directory expectation** — `docs/decisions/` is satisfied by a directory, `docs/TOC.md` by a file, and the two are checked differently. Write the slash only when you mean a directory: a file path given a trailing slash will look for a directory of that name and report `directory not found`, and a directory path *without* one will never be satisfied no matter what is on disk. `create-adr`, `plan-task`, and `tech-writer` all declare `docs/decisions/` this way.
 
 Because `audit-conventions` aggregates every installed skill's **required** expectations into one repo-wide check, a prerequisite that only one skill needs — and that isn't one of the four contract files — should be `required: false`. Otherwise every consuming repo's audit fails even when that skill is never used. (Same principle as the `commands.*` rule above: "required if the corresponding skill is used.") The `package.json` expectation in `publish-npm-package` is the canonical example.
 

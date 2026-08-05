@@ -1240,7 +1240,7 @@ reg(
   {
     title: "Search C3 Docs",
     description:
-      "Look up C3 ACE (action/condition/expression) reference — parameter names/types, expression syntax, and condition/action ids — for the project's custom addons and (when a c3-reference cache is present) built-in plugins, layouts, scripting, and the Expression language. Filter by object/plugin name, ace id, param name, or free-text query. Custom-addon coverage is always available; built-in/manual coverage requires the genvid-c3 build-reference skill to populate <extractedDir>/c3-reference/.",
+      "Look up C3 ACE (action/condition/expression) reference — parameter names/types, expression syntax, and condition/action ids — for the project's custom addons and (when a c3-reference cache is present) built-in plugins, layouts, scripting, and the Expression language. Filter by object/plugin name, ace id, param name, or free-text query. Custom-addon coverage is always available; built-in/manual coverage requires the gvt-construct3 build-reference skill to populate <extractedDir>/c3-reference/.",
     annotations: READ_ONLY,
     inputSchema: {
       query: z.string().optional().describe("Free-text search query"),

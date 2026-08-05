@@ -209,7 +209,7 @@ export function formatLookupResult(result: LookupResult): string {
   const { aces, chunks, cachePresent } = result;
 
   const noCacheNote =
-    "\n(no c3-reference cache — only custom-addon ACEs available; run the genvid-c3 build-reference skill for built-in/layout/scripting/expression coverage)";
+    "\n(no c3-reference cache — only custom-addon ACEs available; run the gvt-construct3 build-reference skill for built-in/layout/scripting/expression coverage)";
 
   if (aces.length === 0 && chunks.length === 0) {
     return `No results found.${cachePresent ? "" : noCacheNote}`;
