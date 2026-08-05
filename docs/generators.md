@@ -53,7 +53,7 @@ Event sheet file names encode the C3 event/action coordinates: `{SheetName}_e{ev
 
 The generator also produces a `tsconfig.json` under `extracted/` that includes all C3 type definitions, so editors can resolve types without per-file `/// <reference>` directives.
 
-**`sid-registry.txt` excludes editor-local state.** The SID walk over `eventSheets/`/`layouts/`/`objectTypes/` skips editor-local paths (e.g. `layouts/uistate/*.instancesBar.json`) via c3source's `isEditorLocalPath` — mirroring the skip `projectSync` applies. Those files only *reference* instance SIDs the layout already owns, so walking them would emit duplicate rows; the registry lists each SID once at its owning node.
+**`sid-registry.txt` excludes editor-local state.** The SID walk over `eventSheets/`/`layouts/`/`objectTypes/` skips editor-local paths (e.g. `layouts/uistate/*.instancesBar.json`) by applying c3source's `isEditorLocalPath` post-hoc over each path *segment*, which covers both a `uistate/` directory and a `*.uistate.json` sibling. Those files only *reference* instance SIDs the layout already owns, so walking them would emit duplicate rows; the registry lists each SID once at its owning node. (This used to say it mirrored a skip in `projectSync`. That has been false since #47 rerouted name-section sync through c3source's `detectManifestDrift`, which delegates internally — `projectSync` applies no such skip of its own. See ADR `docs/decisions/0016`.)
 
 ---
 

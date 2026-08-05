@@ -14,7 +14,7 @@
 //   2. zero directories named `uistate` under the fixture
 //   3. exactly 12 git-tracked overlay files under the fixture
 //   4. the strong oracle — a recursive path-set + byte compare of the submodule's
-//      `project/` tree against the fixture, excluding chef's overlay basenames
+//      `project/` tree against the fixture, excluding chef's top-level overlay dirs
 //
 // Node rather than `find`/`diff -rq` on purpose: the shell-agnostic form is the
 // only one runnable from both PowerShell and bash, and `prep-fixture.mjs` is the
@@ -32,22 +32,28 @@ const source = path.join(submodule, "project");
 const fixture = path.join(repoRoot, "test", "fixtures", "construct3-chef-sample");
 const fixtureRel = "test/fixtures/construct3-chef-sample";
 
-// Chef's own overlay / separately-copied trees. Excluded from the strong oracle by
-// BASENAME at any depth: `extracted/` is the generated read surface (it exists in
-// neither canonical tree), `archive-sources/` is copied out of the submodule ROOT
-// rather than out of `project/`, and `c3-reference` is reference material.
-const OVERLAY_BASENAMES = new Set(["extracted", "archive-sources", "c3-reference"]);
+// Chef's own overlay / separately-copied trees, excluded from the strong oracle.
+// `extracted/` is the generated read surface (it exists in neither canonical tree);
+// `archive-sources/` is copied out of the submodule ROOT rather than out of
+// `project/`. Both are TOP-LEVEL directories, and the exclusion is anchored there
+// on purpose: matching the basename at any depth would let a canonical file that
+// happened to be named `extracted` escape assertion 4 unnoticed — a masking channel
+// in the very thing that exists to detect masking.
+// (`<extractedDir>/c3-reference/` needs no entry of its own: it lives inside
+// `extracted/` and is excluded with it.)
+const OVERLAY_DIRS = new Set(["extracted", "archive-sources"]);
 
 const EXPECTED_TRACKED_FILES = 12;
 
 // Walk a tree, returning project-relative POSIX paths for every file and every
-// directory, sorted. `exclude` is matched on the entry's basename at any depth.
-function walk(root, exclude = new Set()) {
+// directory, sorted. `excludeTopLevelDirs` skips a directory only when it sits at
+// the root — never a same-named entry deeper in, and never a file.
+function walk(root, excludeTopLevelDirs = new Set()) {
 	const files = [];
 	const dirs = [];
 	const recurse = (abs, rel) => {
 		for (const entry of readdirSync(abs, { withFileTypes: true })) {
-			if (exclude.has(entry.name)) continue;
+			if (rel === "" && entry.isDirectory() && excludeTopLevelDirs.has(entry.name)) continue;
 			const childAbs = path.join(abs, entry.name);
 			const childRel = rel ? `${rel}/${entry.name}` : entry.name;
 			if (entry.isDirectory()) {
@@ -119,8 +125,8 @@ if (!existsSync(source) || walk(source).files.length === 0) {
 		"run `npm run fixture:prep` to initialize and materialize it.",
 	]);
 } else {
-	const canonical = walk(source, OVERLAY_BASENAMES);
-	const compared = walk(fixture, OVERLAY_BASENAMES);
+	const canonical = walk(source, OVERLAY_DIRS);
+	const compared = walk(fixture, OVERLAY_DIRS);
 	const canonicalSet = new Set(canonical.files);
 	const comparedSet = new Set(compared.files);
 

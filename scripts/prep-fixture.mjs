@@ -16,11 +16,18 @@
 // submodules by default) — step 1 self-inits the submodule.
 //
 // KNOWN LIMITATION — stale-file drift. This is a copy-only materialization
-// (`fs.cpSync`); it never deletes. If a future canonical pin *removes* a file a
-// prior pin shipped, the stale copy lingers on disk (gitignored, so invisible to
-// `git status`). After a pin bump that drops files, reset first with:
+// (`fs.cpSync`); it never deletes, so a stale copy lingers on disk — gitignored,
+// and therefore invisible to `git status`. This is NOT limited to a pin that
+// removes a file: leftovers from *earlier* pins survive indefinitely, which is
+// how 14 pre-#130 `*.uistate.json` files reached the v0.3.0 -> v0.7.0 bump.
+//
+// So the purge is an UNCONDITIONAL step 0 of the pin-update protocol, not a
+// conditional remedy:
 //   git clean -fdX -- test/fixtures/construct3-chef-sample/
-// then re-run this script.
+//   npm run fixture:prep
+//   npm run fixture:verify
+// `npm run fixture:verify` (`verify-fixture-parity.mjs`) is the oracle that the
+// purge worked. See CLAUDE.md § Fixture materialization and ADR 0013.
 
 import { execSync } from "node:child_process";
 import { cpSync } from "node:fs";
