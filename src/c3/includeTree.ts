@@ -1,7 +1,12 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { EventSheet, FunctionParameter } from "@genvidtech/c3source";
-import { extractIncludes, extractFunctions as extractFunctionsUpstream, openProject } from "@genvidtech/c3source";
+import {
+  extractIncludes,
+  extractFunctions as extractFunctionsUpstream,
+  find_all_eventsheets_path,
+  openProject,
+} from "@genvidtech/c3source";
 
 export interface IncludeTreeNode {
   /** Sheet name (e.g., "CommonEvents") */
@@ -15,26 +20,39 @@ export interface IncludeTreeNode {
 }
 
 /**
- * Build a name → file path map by scanning the eventSheets directory.
+ * Build a name → file path map over the eventSheets directory.
  * Sheet names are filenames without extension (e.g., "CommonEvents").
+ *
+ * c3source's named collector owns the discovery: the recursion, the
+ * editor-local classification (both the `uistate/` directory it never descends
+ * into and the `*.uistate.json` siblings its predicate rejects), and the
+ * deterministic per-level `readdirSync().sort()` depth-first ordering — which
+ * also fixes the map's key-collision winner (last visited in that sorted order)
+ * for the duplicate sheet names a valid C3 project cannot contain anyway.
+ *
+ * The collector returns absolute paths; the project-root-relative POSIX
+ * normalization below is chef's own rendering and deliberately stays local.
+ * A missing eventSheets directory throws, as it always has.
+ *
+ * One tolerance is deliberately traded away. The collector `statSync`s every
+ * entry, so a sheet vanishing mid-walk now throws out of the whole call, where
+ * the old dirent-only recursion would not have noticed. ADR 0016 cites exactly
+ * that per-entry `statSync` as a reason to DECLINE the shared walk at
+ * `generators.findJsonFiles`, whose second caller is written to skip a vanished
+ * file and keep scanning. The asymmetry is intended: `list-include-tree` — this
+ * map's only consumer — answers a one-shot query where failing loudly is right,
+ * and every other event-sheet discovery site in chef already accepts the same
+ * trade by using the collector.
  */
 export function buildSheetNameMap(projectDir: string): Map<string, string> {
   const esDir = openProject(projectDir).eventSheetsDir;
   const map = new Map<string, string>();
 
-  function scan(dir: string): void {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (entry.isDirectory()) {
-        scan(path.join(dir, entry.name));
-      } else if (entry.name.endsWith(".json")) {
-        const sheetName = entry.name.replace(/\.json$/, "");
-        const relPath = path.relative(projectDir, path.join(dir, entry.name)).replace(/\\/g, "/");
-        map.set(sheetName, relPath);
-      }
-    }
+  for (const absPath of find_all_eventsheets_path(esDir)) {
+    const sheetName = path.basename(absPath).replace(/\.json$/, "");
+    map.set(sheetName, path.relative(projectDir, absPath).replace(/\\/g, "/"));
   }
 
-  scan(esDir);
   return map;
 }
 

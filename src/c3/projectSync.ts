@@ -39,6 +39,18 @@ export interface FileSectionConfig {
 export interface NameSectionConfig {
   key: string;
   diskDir: string;
+  /**
+   * @deprecated Dead since #47. Declared here and set `true` on all six
+   * NAME_SECTIONS but READ NOWHERE in src/ or test/: name-section sync was
+   * rerouted through c3source's `detectManifestDrift` + the local
+   * `applyNameDrift`, and `detectManifestDrift` already delegates to
+   * `isEditorLocalPath` internally — so the editor-local skip this flag once
+   * controlled is now upstream's, unconditionally.
+   *
+   * Retained (not deleted) because `NameSectionConfig` is barrel-exported
+   * (src/index.ts:7) and the repo is at 1.0.0; removal is a MAJOR bump.
+   * Delete at the next major. #146.
+   */
   ignoreUistate: boolean;
 }
 
@@ -156,6 +168,44 @@ export interface DiskTree {
   dirs: string[];
 }
 
+/**
+ * Read ONE directory level: its (filtered) file names and its subdirectory names.
+ *
+ * NOT routed through c3source's `find_all_files_path` / `isEditorLocalPath`.
+ * That delegation was proposed by #146 and DECLINED on shape-fit grounds — see
+ * ADR `docs/decisions/0016-shared-file-walk-adoption-triage.md`. Three
+ * independent mismatches, any ONE of which is sufficient:
+ *
+ * 1. IT RETURNS DIRECTORIES. `syncFileFolder` mirrors the disk folder tree into
+ *    `rootFileFolders[].subfolders[]` and emits `+ foo/ (new folder)` / `- foo/`
+ *    change lines from `DiskTree.dirs` (:311-:344). A flat, files-only primitive
+ *    structurally CANNOT report an empty disk directory that must nonetheless
+ *    become a manifest subfolder.
+ *
+ * 2. IT MUST BE PER-LEVEL, NOT RECURSIVE. `syncFileFolder` owns the recursion so
+ *    it can descend in lockstep with the manifest folder object it mutates
+ *    (:346-:374), and it deliberately DROPS the root-level `ignorePaths` /
+ *    `ignoreDirs` at depth >= 1 (:356, :367). A self-recursing walk owns the
+ *    traversal, so it can neither be stepped alongside the manifest tree nor
+ *    vary its filter by depth.
+ *
+ * 3. THE IGNORE RULES ARE NOT ALL EDITOR-LOCAL CLASSIFICATION. `ignorePaths:
+ *    ["tsconfig.json"]` (:84) and `ignoreDirs: ["ts-defs"]` (:85) ARE covered
+ *    by c3source's `EDITOR_LOCAL_EXCLUSIONS`, but the `extensions` filters
+ *    (`.ts` / `.webm` / `.ttf` / `.png`, :83 and :87-:90) encode
+ *    manifest-section MEMBERSHIP semantics, about which upstream has — and
+ *    should have — no opinion.
+ *
+ * Consequence: delegating ONLY the ignore predicate would be a BEHAVIOUR CHANGE,
+ * not a refactor. The exclusions would newly apply at every nesting level, and
+ * `uistate` would newly be excluded from all six file sections. `sync-project`'s
+ * output must not change inside a refactor PR.
+ *
+ * Precedent: the same "owning the fact upstream isn't sufficient — the
+ * primitive's SHAPE must fit the consuming operation" call was made for #42 (the
+ * flat `detectManifestDrift` that couldn't back a nested mutating sync); see ADR
+ * `docs/decisions/0006-upstream-ownership-boundary-and-adoption-posture.md`.
+ */
 export function readDiskDir(
   dirPath: string,
   extensions: string[] | undefined,
@@ -559,10 +609,14 @@ export function reportImageDrift(rootDir: string, log: Logger = console.log): vo
   try {
     drift = detectImageDrift(rootDir);
   } catch (err) {
-    // c3source >=1.3.0 throws on a malformed/unknown image `fileType` (#63). Unlike
-    // `detectManifestDrift`, our direct `detectImageDrift` call has no upstream
-    // try/catch, so guard here: report the failure as a visibility line rather than
-    // crashing the whole `validate-project` run.
+    // c3source throws on an image `fileType` it cannot map to an on-disk extension (#63),
+    // and upstream documents that the throw PROPAGATES through `detectImageDrift` — only
+    // `detectManifestDrift` catches it, into a `degraded` entry. So guard here: report the
+    // failure as a visibility line rather than crashing the whole `validate-project` run.
+    // (c3source 1.9.0 / their #68 narrowed the throw to UNMAPPED fileTypes; an absent one
+    // is now tolerated, since pre-r402 C3 omits the field on real images. The guard still
+    // matters for unmapped MIMEs, and for a malformed objectTypes/*.json, which
+    // `detectImageDrift` JSON.parses without a try/catch of its own.)
     log(`[images]`.padEnd(16) + `error: ${err instanceof Error ? err.message : String(err)}`);
     return;
   }

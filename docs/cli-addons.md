@@ -239,7 +239,7 @@ Object types:
 
 Call sites:
   Event sheet 1
-    event #2  events[1].children[1]   [action] Sprite2.stop()
+    event #5  events[1].children[4]   [action] Sprite2.stop()
 ```
 
 **Family-member attribution.** A behavior attached to a *family* (not to any individual member) still produces call sites on the members themselves: a member's own conditions/actions carry its real `objectClass` (e.g. `Text`) and the family's behavior instance name in `behaviorType` (e.g. `Timer`), because a member never gets its own `behaviorTypes` entry — it inherits the family's. `scan-addon-usage` attributes that call site's count to the **family's** presence row (the row that actually declares the behavior instance), while the call-site line itself keeps the member's real `objectClass` — only the aggregated count moves, never the recorded call. In the `construct3-chef-sample` fixture, `TextFamily` carries its own `Timer` instance and family member `Text` calls `stop-timer` (`Text.stop-timer()`, `behaviorType: "Timer"`) in `Event sheet 2`; that call site attributes to `TextFamily`'s row, not a separate `Text` row — once `Timer` is scannable at all (see the built-in limitation, next).

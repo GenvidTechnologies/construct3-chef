@@ -61,13 +61,14 @@
 		"test:file": "mocha --timeout 5000 --import=tsx --require ./test/setup.ts --exit",
 		"format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
 		"format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
-		"fixture:prep": "node scripts/prep-fixture.mjs"
+		"fixture:prep": "node scripts/prep-fixture.mjs",
+		"fixture:verify": "node scripts/verify-fixture-parity.mjs"
 	},
 	"engines": {
 		"node": ">=22"
 	},
 	"dependencies": {
-		"@genvidtech/c3source": "^1.8.0",
+		"@genvidtech/c3source": "^1.9.0",
 		"@genvidtech/mcp-utils": "^0.5.1",
 		"@modelcontextprotocol/sdk": "^1.27.1",
 		"fflate": "^0.8.3",

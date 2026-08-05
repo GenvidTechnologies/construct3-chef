@@ -2,7 +2,10 @@
 # Source: eventSheets/Event sheet 2.json
 
 group "Second Layout Events" (active)
+  static isActive: boolean = true
+
   block
     when: NavButton.on-clicked()
+    when: System.compare-boolean-eventvar(variable=isActive)
     do: System.go-to-layout-by-name(layout="Main Layout")
     do: Text[Timer].stop-timer(tag="test")
