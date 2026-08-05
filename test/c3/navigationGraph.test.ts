@@ -1,6 +1,6 @@
 import { describe, it, after } from "mocha";
 import { assert } from "chai";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
@@ -415,10 +415,34 @@ describe("navigationGraph", () => {
       // Sort for deterministic comparison (order may vary by file-walk order)
       const sorted = [...entries].sort((a, b) => a.fromSheet.localeCompare(b.fromSheet));
 
-      assert.deepEqual(sorted, [
-        { fromSheet: "Event sheet 1", targetLayout: "Second Layout", lineNumber: 16 },
-        { fromSheet: "Event sheet 2", targetLayout: "Main Layout", lineNumber: 7 },
-      ] satisfies NavEntry[]);
+      // Semantic facts stay hardcoded — they ARE the fixture's meaning.
+      assert.deepEqual(
+        sorted.map(({ fromSheet, targetLayout }) => ({ fromSheet, targetLayout })),
+        [
+          { fromSheet: "Event sheet 1", targetLayout: "Second Layout" },
+          { fromSheet: "Event sheet 2", targetLayout: "Main Layout" },
+        ],
+      );
+
+      // lineNumber is fixture-derived, not semantic: assert it RESOLVES, don't pin it — any
+      // unrelated edit to the fixture's event sheets shifts it (a v0.7.0 pin bump did exactly
+      // that). Cross-validating against the golden bytes still guards the 1-indexing contract
+      // (an off-by-one lands on a line that names no layout) without re-deriving the line from
+      // the same regex the scanner uses.
+      //
+      // NOTE: both fixture sheets are FLAT under extracted/eventSheets/ ("Event sheet 1.dsl.txt",
+      // "Event sheet 2.dsl.txt"), so joining `${fromSheet}.dsl.txt` onto FIXTURE_EXTRACTED
+      // resolves. A sheet living in a subfolder would break this join.
+      for (const e of sorted) {
+        const dsl = readFileSync(path.join(FIXTURE_EXTRACTED, `${e.fromSheet}.dsl.txt`), "utf-8").split("\n");
+        assert.isAtLeast(e.lineNumber, 1);
+        assert.isAtMost(e.lineNumber, dsl.length);
+        assert.include(
+          dsl[e.lineNumber - 1],
+          e.targetLayout,
+          `lineNumber ${e.lineNumber} should resolve to the line naming ${e.targetLayout}`,
+        );
+      }
     });
   });
 
