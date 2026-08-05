@@ -40,7 +40,7 @@ consumer-side stance:
   the original #130 issue body anticipated — there was no drift needing a
   recipe layer or a strip-list, so both are absent (empty strip-list, in
   effect):
-  - a submodule at `test/fixtures/construct3-sample`, pinned to tag `v0.2.0`;
+  - a submodule at `test/fixtures/construct3-sample`, pinned to tag `v0.7.0`;
   - `scripts/prep-fixture.mjs`, a pure `fs.cpSync` of the submodule's
     `project/` tree over `test/fixtures/construct3-chef-sample/`, self-initing
     the submodule first (`git submodule update --init`) — **load-bearing**,
@@ -66,16 +66,17 @@ consumer-side stance:
   by `fixture:prep`).
 - The golden test and its fixture bytes are unchanged in kind (still
   `extracted/` diffed byte-for-byte against a committed golden), but the
-  golden was regenerated against the `v0.2.0` pin and the golden-regen flow
+  golden was regenerated against the `v0.7.0` pin and the golden-regen flow
   now requires `npm run fixture:prep` before `generate` if the fixture hasn't
   just been materialized by the test suite.
 - [#132](https://github.com/GenvidTechnologies/construct3-chef/issues/132)
   item 1 (the incomplete `MyCompany_MyEffect` application that null-pointered
   the project on import) is **fixed** by adopting the `v0.2.0` canonical
-  fixture — the editor-authored application now round-trips cleanly. Items 2–3
-  (two `validate-addons` false positives the real export exposed: effects
-  legitimately ship no `aces.json`, and `usedAddons` carries the user-assigned
-  instance name, not the addon's display name) are separate and remain open.
+  fixture (the pin at the time; the pin has since moved) — the editor-authored
+  application now round-trips cleanly. Items 2–3 (two `validate-addons` false
+  positives the real export exposed: effects legitimately ship no `aces.json`,
+  and `usedAddons` carries the user-assigned instance name, not the addon's
+  display name) are separate and remain open.
   Note the effect application **changed**, not merely completed: the
   editor-authored version applies at three sites named `"MyCustomEffect"`
   (Sprite2 objectType, TextFamily family, Second Layout's layer 1), versus the
@@ -109,10 +110,30 @@ consumer-side stance:
   from the submodule beside `project/`, which kept the test path unchanged — the
   adoption needed no test edits at all.
 - A known limitation of the copy-only prep script: it never deletes, so a
-  future canonical pin that *removes* a file leaves the stale copy on disk
-  (gitignored, invisible to `git status`). Reset with
+  canonical pin that *removes* a file leaves the stale copy on disk
+  (gitignored, invisible to `git status`). The reset is
   `git clean -fdX -- test/fixtures/construct3-chef-sample/` before re-running
-  `fixture:prep` after such a pin bump.
+  `fixture:prep` — unconditionally, per the next bullet, not only at a pin that
+  removes something.
+- Copy-only materialization accumulates leftovers **across pins**, which is the
+  wider case: at the `v0.3.0`→`v0.7.0` bump the materialized fixture still
+  carried 14 pre-#130 `*.uistate.json` files that the canonical repo has
+  **never tracked at any tag** (its `project/.gitignore` excludes them). They
+  were harmless to the golden — nothing generates from them — but they made
+  `CLAUDE.md`'s fixture-shape prose factually wrong (it claimed editor-local
+  `uistate/` at two levels, when the fixture has neither those directories nor
+  the files) and made two `serverHandlers` uistate assertions pass
+  **vacuously**. `git clean -fdX -- test/fixtures/construct3-chef-sample/` is
+  therefore an **unconditional step 0** of the update protocol, verified with
+  `npm run fixture:verify` (`scripts/verify-fixture-parity.mjs`: no
+  `*.uistate.json`, no `uistate/` dirs, exactly 12 tracked overlay files, and a
+  recursive path-set + byte compare of the submodule's `project/` tree against
+  the materialization). The `extracted/` golden is structurally safe from that
+  clean: `.gitignore:19` ignores `/test/fixtures/construct3-chef-sample/*` with
+  `/*`, not `/**`, so the `!…/extracted/` negation on `:20` un-ignores the whole
+  subtree. A useful corollary: a 13th file generated into `extracted/` shows up
+  as untracked in `git status`, which is a second, independent guard on the
+  golden file set.
 - Full consumption-mechanism rationale (rejected alternatives, the prep-script
   shape, why `c3source` is validator-not-owner) lives in
   [`construct3-sample` ADR 0001](https://github.com/GenvidTechnologies/construct3-sample/blob/main/docs/decisions/0001-consumption-mechanism.md) —
