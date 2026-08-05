@@ -505,6 +505,37 @@ function rootLocationForFile(relativePath: string): string {
 /**
  * Recursively find all JSON files in a directory. Returns [] if the directory
  * does not exist. Exported so other tooling (e.g. staleness checks) can reuse it.
+ *
+ * **Deliberately stays on mcp-utils' `walkFiles`; do NOT swap in c3source's
+ * `find_all_files_path`** (see ADR `docs/decisions/0016-shared-file-walk-adoption-triage.md`).
+ * The two walks differ in two tolerances that both callers depend on:
+ *
+ * 1. **ENOENT tolerance is load-bearing.** `walkFiles` swallows `ENOENT` *inside*
+ *    the recursion (it re-throws every other error), so a missing directory yields
+ *    `[]`. `find_all_files_path` does a bare `readdirSync` and throws. The caller
+ *    below, `generateSidRegistry`, iterates all three `SID_SOURCE_DIRS`, and a
+ *    partial project — one without `objectTypes/`, say — must still produce a
+ *    registry. An `existsSync` prefix guard is a weaker substitute: it is a TOCTOU
+ *    race, and it covers neither `EACCES` nor `ENOTDIR`.
+ * 2. **Per-entry `statSync` would regress the OTHER caller.** `walkFiles` reads
+ *    dirents only; `find_all_files_path` `statSync`s every entry inside the walk.
+ *    `findJsonFiles` is also called from `src/mcp/server.ts` (the sid-registry
+ *    freshness check), whose per-file loop deliberately tolerates a file vanishing
+ *    mid-walk (atomic-rename save, antivirus quarantine, network mount glitch) and
+ *    keeps scanning, because aborting would mask later staleness. Under
+ *    `find_all_files_path` that per-file TOCTOU throws out of the *whole directory*
+ *    walk, hitting the coarse per-dir `catch { continue; }` and silently skipping
+ *    that entire dir's mtimes — a strictly worse failure mode.
+ *
+ * And the swap buys nothing: the editor-local *classification* is **already**
+ * delegated to c3source's `isEditorLocalPath` by the post-hoc path-segment filter
+ * in `generateSidRegistry` below. There is no duplicated rule to dedup — only a
+ * duplicated *walk*, and the walk is exactly where the tolerances differ.
+ *
+ * Both `findJsonFiles` and `SID_SOURCE_DIRS` are barrel-exported (`src/index.ts`),
+ * so any behavior change here — newly excluding editor-local files for every
+ * caller, newly throwing on a non-ENOENT filesystem error, newly returning sorted
+ * output — is a public-contract change at 1.0.0, for zero gain.
  */
 export function findJsonFiles(dir: string): string[] {
   return walkFiles(dir, ".json");
@@ -515,7 +546,9 @@ export function generateSidRegistry(projectRoot: string, outDir: string, log: Lo
   // findJsonFiles returns [] for missing dirs so partial projects work.
   // Exclude editor-local state (e.g. `layouts/uistate/*.instancesBar.json`): it
   // only *references* instance SIDs the layout already owns, so walking it would
-  // register duplicate SID rows. Mirrors projectSync's `isEditorLocalPath` skip.
+  // register duplicate SID rows. The classification itself is c3source's
+  // (`isEditorLocalPath`), applied post-hoc over the path *segments* — which
+  // covers both the `uistate/` directory and the `*.uistate.json` sibling file.
   const allFiles = SID_SOURCE_DIRS.flatMap((dir) => findJsonFiles(path.join(projectRoot, dir))).filter(
     (filePath) =>
       !path
