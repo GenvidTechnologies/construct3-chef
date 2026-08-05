@@ -47,6 +47,6 @@ _Numbered chronologically by when the decision landed (earliest first); 0001–0
 ## C3 platform reference (the *why* behind the gotchas)
 
 C3 platform reference (event-sheet & layout JSON structure, the scripting API,
-the TS async/concurrency model) now lives in the **genvid-c3** Claude Code
+the TS async/concurrency model) now lives in the **gvt-construct3** Claude Code
 plugin at `${CLAUDE_PLUGIN_ROOT}/docs/c3/*`. construct3-chef owns the *tooling*
 docs above; the plugin owns the *platform* knowledge.
