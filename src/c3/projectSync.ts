@@ -609,10 +609,14 @@ export function reportImageDrift(rootDir: string, log: Logger = console.log): vo
   try {
     drift = detectImageDrift(rootDir);
   } catch (err) {
-    // c3source >=1.3.0 throws on a malformed/unknown image `fileType` (#63). Unlike
-    // `detectManifestDrift`, our direct `detectImageDrift` call has no upstream
-    // try/catch, so guard here: report the failure as a visibility line rather than
-    // crashing the whole `validate-project` run.
+    // c3source throws on an image `fileType` it cannot map to an on-disk extension (#63),
+    // and upstream documents that the throw PROPAGATES through `detectImageDrift` — only
+    // `detectManifestDrift` catches it, into a `degraded` entry. So guard here: report the
+    // failure as a visibility line rather than crashing the whole `validate-project` run.
+    // (c3source 1.9.0 / their #68 narrowed the throw to UNMAPPED fileTypes; an absent one
+    // is now tolerated, since pre-r402 C3 omits the field on real images. The guard still
+    // matters for unmapped MIMEs, and for a malformed objectTypes/*.json, which
+    // `detectImageDrift` JSON.parses without a try/catch of its own.)
     log(`[images]`.padEnd(16) + `error: ${err instanceof Error ? err.message : String(err)}`);
     return;
   }

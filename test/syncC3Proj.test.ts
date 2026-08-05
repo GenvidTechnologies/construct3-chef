@@ -267,18 +267,24 @@ describe("syncC3Proj", () => {
   });
 
   describe("reportImageDrift error guard", () => {
-    // c3source >=1.3.0 makes detectImageDrift THROW on a malformed/unknown image
-    // `fileType` (#63). reportImageDrift calls it directly (no detectManifestDrift
-    // try/catch upstream), so it must catch and report rather than crash validate-project.
-    it("reports an error line instead of throwing on a malformed fileType", () => {
+    // c3source THROWS on an image `fileType` it cannot map to an on-disk extension (#63).
+    // reportImageDrift calls detectImageDrift directly, and upstream documents that the
+    // throw PROPAGATES there (only detectManifestDrift catches it into `degraded`), so the
+    // guard must catch and report rather than crash validate-project.
+    //
+    // The trigger is an UNMAPPED fileType, not an absent one. c3source 1.9.0 (their #68)
+    // narrowed the throw: pre-r402 C3 serializes image nodes with no `fileType` at all and
+    // the on-disk file is still a real image, so absent is now tolerated (resolved by
+    // on-disk stem match, else the legacy .png) and only an unrecognized MIME throws.
+    it("reports an error line instead of throwing on an unmapped fileType", () => {
       const dir = createTmpDir();
       mkdirSync(path.join(dir, "images"), { recursive: true });
       writeFileSync(path.join(dir, "images", "foo.png"), "");
       mkdirSync(path.join(dir, "objectTypes"), { recursive: true });
-      // image member with NO fileType -> deriveExpectedImageNames throws "malformed object type".
+      // image member with an unrecognized fileType -> extensionForFileTypeOrUndefined throws.
       writeFileSync(
         path.join(dir, "objectTypes", "Foo.json"),
-        JSON.stringify({ name: "Foo", image: { width: 1, height: 1 } }),
+        JSON.stringify({ name: "Foo", image: { width: 1, height: 1, fileType: "image/bmp" } }),
       );
       const lines: string[] = [];
       assert.doesNotThrow(() => reportImageDrift(dir, (m) => lines.push(m)));
