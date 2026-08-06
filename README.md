@@ -60,10 +60,11 @@ If you install globally or add to `package.json` scripts, you can omit `npx`.
 | `search-docs` | Search the C3 ACE reference (action/condition/expression ids, param names) for custom addons and the built-in reference cache |
 | `read-addon [name]` | Read a C3 addon's metadata + ACE summary (or a raw entry, or list all addons); works on extracted and archive-only addons |
 | `validate-addons [--addon <id|path>]` | Validate bundled `.c3addon` packages against `project.c3proj.usedAddons` (metadata, integrity, orphan/missing/duplicate) and each addon's `aces.json`/`plugin.js` properties against its `lang/*.json` locales; `--addon` scopes to one addon (by id or source-tree path). Read-only, non-zero exit on findings |
+| `sync-addon-metadata --direction <manifest-from-package\|package-from-manifest>` | Sync a bundled `.c3addon` package's `version`/`author` with its `project.c3proj.usedAddons` entry; `manifest-from-package` writes, `package-from-manifest` is a read-only report (chef has no `.c3addon` writer). `--addon` scopes to one addon by id only. `--dry-run` previews. Exits non-zero iff outstanding human work remains |
 | `list-ops` | List available user-defined ops |
 | `apply-op <name>` | Apply a user-defined op by name |
 
-See [docs/cli.md](docs/cli.md) for full flag documentation (addon-tooling commands — `read-addon`, `validate-addons` — are in [docs/cli-addons.md](docs/cli-addons.md)).
+See [docs/cli.md](docs/cli.md) for full flag documentation (addon-tooling commands — `read-addon`, `validate-addons`, `sync-addon-metadata` — are in [docs/cli-addons.md](docs/cli-addons.md)).
 
 ## Recipes
 
@@ -144,6 +145,7 @@ Configure it in your MCP client (example for Claude Desktop or similar):
 | `validate-project` | Dry-run project.c3proj sync check |
 | `read-addon` | Read a C3 addon's metadata + ACE summary (or a raw entry, or list all addons); works on extracted and archive-only addons |
 | `validate-addons` | Validate bundled `.c3addon` packages against `project.c3proj.usedAddons` (metadata, integrity, orphan/missing/duplicate) and each addon's `aces.json`/`plugin.js` properties against its `lang/*.json` locales; optional `addon` param scopes to one addon (by id or source-tree path). Read-only |
+| `preview-addon-metadata-sync` | Dry-run report of `version`/`author` drift between bundled `.c3addon` packages and `project.c3proj.usedAddons` — the read-only preview for `sync-addon-metadata`. Optional `addon` param scopes to one addon by id. Never writes |
 | `get-state` | Return server state: txId and extractedDirty flag |
 
 **Mutate tools** (modify source files):
@@ -154,6 +156,7 @@ Configure it in your MCP client (example for Claude Desktop or similar):
 | `sync-project` | Sync project.c3proj to match disk |
 | `scaffold-layout` | Clone a layout with new UIDs/SIDs |
 | `scaffold-sprite` | Clone a sprite objectType with new SIDs and copied images |
+| `sync-addon-metadata` | Sync `project.c3proj.usedAddons` `version`/`author` fields against bundled `.c3addon` packages; only `direction: "manifest-from-package"` writes. Optional `addon` param scopes to one addon by id |
 
 **Regenerate tool**:
 
@@ -190,4 +193,4 @@ The `extracted/` directory is written by `generate` and read by the MCP server. 
 - [docs/recipe-reference.md](docs/recipe-reference.md) — Complete recipe reference: format, SID addressing, all 15 event sheet operations, all 12 layout operations, builder shorthands, gotchas
 - [docs/generators.md](docs/generators.md) — Generator internals, output format, cross-referencing C3 errors, localVars matching
 - [docs/cli.md](docs/cli.md) — Full CLI flag documentation for all subcommands
-- [docs/cli-addons.md](docs/cli-addons.md) — Addon-tooling commands (`read-addon`, `validate-addons`)
+- [docs/cli-addons.md](docs/cli-addons.md) — Addon-tooling commands (`read-addon`, `validate-addons`, `sync-addon-metadata`)
