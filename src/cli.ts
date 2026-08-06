@@ -42,6 +42,7 @@ import { validateAddons, formatAddonValidation } from "./c3/addonValidator.js";
 import { listAddons, formatAddonInventory } from "./c3/addonInventory.js";
 import { diffAddonAces, formatAceDiff, resolveAceSource } from "./c3/addonAceDiff.js";
 import { scanAddonUsage, formatAddonUsage } from "./c3/addonAceUsage.js";
+import { syncAddonMetadata, formatAddonMetadataSync, type SyncDirection } from "./c3/addonMetadataSync.js";
 
 const GENERATOR_NAMES = ["scripts", "dsl", "layouts", "templates", "sid-registry", "global-layers"] as const;
 type GeneratorName = (typeof GENERATOR_NAMES)[number];
@@ -608,6 +609,42 @@ yargs(hideBin(process.argv))
       }
       console.log(formatAddonUsage(result));
       if (result.blast !== undefined && result.blast.affectedCount > 0) {
+        process.exitCode = 1;
+      }
+    },
+  )
+  .command(
+    "sync-addon-metadata",
+    "Sync a bundled .c3addon package's version/author with its project.c3proj.usedAddons entry, in either direction. --direction manifest-from-package writes the manifest to match the package; --direction package-from-manifest is a read-only report (chef has no .c3addon writer).",
+    (y) =>
+      y
+        .option("direction", {
+          type: "string",
+          choices: ["manifest-from-package", "package-from-manifest"] as const,
+          demandOption: true,
+          describe: "Sync direction — REQUIRED, never defaulted: this is a human decision the tool must never guess.",
+        })
+        .option("addon", {
+          type: "string",
+          describe: "Scope to a single addon by discovered id (an id, not a path — see docs for accepted forms).",
+        })
+        .option("dry-run", { type: "boolean", default: false, describe: "Preview without writing" }),
+    (argv) => {
+      const rootDir = resolveProjectDir(argv);
+      const result = syncAddonMetadata(rootDir, {
+        direction: argv.direction as SyncDirection,
+        addon: argv.addon,
+        dryRun: argv.dryRun,
+      });
+      if ("error" in result) {
+        console.error(result.error);
+        process.exitCode = 1;
+        return;
+      }
+      console.log(formatAddonMetadataSync(result));
+      const blocked = result.rows.some((r) => r.status === "blocked");
+      const wouldChange = result.rows.some((r) => r.status === "would-change");
+      if (blocked || (result.dryRun && wouldChange)) {
         process.exitCode = 1;
       }
     },
