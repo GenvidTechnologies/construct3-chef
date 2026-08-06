@@ -17,6 +17,7 @@ import {
 import { validateAddons, formatAddonValidation } from "../../src/c3/addonValidator.js";
 import { listAddons, formatAddonInventory } from "../../src/c3/addonInventory.js";
 import { syncAddonMetadata, formatAddonMetadataSync, type AddonSyncResult } from "../../src/c3/addonMetadataSync.js";
+import { SID_SOURCE_DIRS } from "../../src/c3/generators.js";
 import { seedManifestDrift } from "../helpers/seedManifestDrift.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -102,6 +103,18 @@ function makeExtractedNewerThanSource(root: string): void {
   };
   const extractedDir = path.join(root, "extracted");
   if (fs.existsSync(extractedDir)) walk(extractedDir);
+}
+
+// Deterministic mtime control for the checkRegistryFreshness tests below:
+// stamps every file under `dir` (recursively) with an explicit mtime, so the
+// freshness comparison isn't at the mercy of cpSync/wall-clock ordering.
+function setAllMtimesRecursive(dir: string, time: Date): void {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) setAllMtimesRecursive(full, time);
+    else fs.utimesSync(full, time, time);
+  }
 }
 
 // ── Suite ─────────────────────────────────────────────────────────────────────
@@ -637,6 +650,52 @@ describe("MCP server handler response shaping", () => {
       const serverSource = fs.readFileSync(path.resolve("src/mcp/server.ts"), "utf-8");
       const callCount = (serverSource.match(/formatAddonMetadataSync\(/g) ?? []).length;
       expect(callCount, "both tools should call formatAddonMetadataSync").to.be.at.least(2);
+    });
+  });
+
+  // ── 14. checkRegistryFreshness excludes editor-local paths (ADR 0018 site 2) ─
+  // generate-sids is the only handler whose response surfaces the effect of
+  // checkRegistryFreshness's own scan directly (via appendStaleWarning), rather
+  // than a stale flag set earlier by something else — so it's the right probe.
+  // Mtimes are set explicitly (utimesSync) on every real source file plus the
+  // registry, never relying on wall-clock/cpSync ordering.
+
+  describe("checkRegistryFreshness (generate-sids probe)", () => {
+    const BASELINE = new Date(2020, 0, 1);
+    const NEWER = new Date(BASELINE.getTime() + 100_000);
+
+    function pinBaseline(): void {
+      for (const dir of SID_SOURCE_DIRS) {
+        setAllMtimesRecursive(path.join(tmp, dir), BASELINE);
+      }
+      fs.utimesSync(path.join(tmp, "extracted", "sid-registry.txt"), BASELINE, BASELINE);
+    }
+
+    it("a newer *.uistate.json sibling under layouts/ does NOT set extractedDirty or bump", async () => {
+      pinBaseline();
+      const uistatePath = path.join(tmp, "layouts", "Main Layout.uistate.json");
+      fs.writeFileSync(uistatePath, "{}");
+      fs.utimesSync(uistatePath, NEWER, NEWER);
+
+      const handler = __getHandler("generate-sids")!;
+      const result = (await handler({}, makeExtra())) as any;
+
+      expect(result.content[0].text).to.not.include(STALE_WARNING);
+      expect(__getExtractedDirty()).to.equal(false);
+      expect(watcher.bumped).to.equal(0);
+    });
+
+    it("positive control: a newer REAL layouts/*.json file DOES set extractedDirty and bump", async () => {
+      pinBaseline();
+      const layoutPath = path.join(tmp, "layouts", "Main Layout.json");
+      fs.utimesSync(layoutPath, NEWER, NEWER);
+
+      const handler = __getHandler("generate-sids")!;
+      const result = (await handler({}, makeExtra())) as any;
+
+      expect(result.content[0].text).to.include(STALE_WARNING);
+      expect(__getExtractedDirty()).to.equal(true);
+      expect(watcher.bumped).to.equal(1);
     });
   });
 });

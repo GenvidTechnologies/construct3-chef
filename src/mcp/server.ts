@@ -39,6 +39,7 @@ import {
   SID_SOURCE_DIRS,
 } from "../c3/generators.js";
 import { runSync, reportImageDrift } from "../c3/projectSync.js";
+import { isEditorLocalPathUnder } from "../c3/editorLocal.js";
 import { readRegistryFile, mintUniqueSid } from "../c3/sidUtils.js";
 import { filterIndex, buildShallowSidMap, type SidMapEntry } from "../c3/dslFormatter.js";
 import { find_all_eventsheets_path, find_all_layouts_path, openProject } from "@genvidtech/c3source";
@@ -245,7 +246,12 @@ function checkRegistryFreshness(registryPath: string): void {
     } catch {
       continue; // Directory vanished mid-walk — try the next dir.
     }
-    for (const file of files) {
+    // Exclude editor-local paths (e.g. `layouts/uistate/*.instancesBar.json`):
+    // generateSidRegistry excludes them the same way when building the very
+    // registry this scan checks freshness against, so including them here
+    // would compare against files the registry never contained. See ADR
+    // docs/decisions/0018-editor-local-writes-are-not-source-changes.md.
+    for (const file of files.filter((f) => !isEditorLocalPathUnder(PROJECT_ROOT, f))) {
       try {
         const m = fs.statSync(file).mtimeMs;
         if (m > newestSourceMtime) newestSourceMtime = m;
