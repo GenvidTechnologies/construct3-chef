@@ -124,11 +124,13 @@ The CLI is stateless; the server adds a concurrency layer worth understanding be
 
 ## Commit Format
 
-Conventional Commits: `<type>: <subject>`, where `type` is one of `feat`, `fix`, `chore`, `docs`, `refactor`, `test`. Subject is imperative, lowercase, no trailing period. Body (optional) explains the *why* and any non-obvious *what*, wrapped at ~72 cols. When a commit is authored with Claude Code, end the message with the trailer:
+Conventional Commits: `<type>: <subject>`, where `type` is one of `feat`, `fix`, `chore`, `docs`, `refactor`, `test`. Subject is imperative, lowercase, no trailing period. Body (optional) explains the *why* and any non-obvious *what*, wrapped at ~72 cols. When a commit is authored with Claude Code, end the message with a `Co-Authored-By` trailer:
 
 ```
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+Co-Authored-By: Claude <model> (1M context) <noreply@anthropic.com>
 ```
+
+**`<model>` is the model that actually authored the commit** — read it off the running session (e.g. `Opus 5`), don't copy the example. This line is an attribution record, so a pinned version here is wrong the moment the model changes, and pinning has already gone stale twice: the trailer read `Opus 4.6` for nine commits, was hand-bumped to `Opus 4.8 (1M context)` in `93b4627`, and was still claiming 4.8 while Opus 5 was authoring. Drop the ` (1M context)` qualifier if the session isn't a long-context one.
 
 Squash-merged PRs carry a `(#N)` suffix on the subject (added by the merge), e.g. `feat: composite template workflow ops + MCP tools (#9)`.
 
