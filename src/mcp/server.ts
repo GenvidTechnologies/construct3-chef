@@ -1116,7 +1116,7 @@ reg(
   {
     title: "Validate Addons",
     description:
-      "Validate every bundled .c3addon package under addons/ against the project.c3proj usedAddons manifest: reports metadata mismatches (id/name/author/version), package-integrity failures (malformed zip, missing addon.json/aces.json, un-materialized git-lfs pointer, addon-id vs filename), aces.json vs lang/ ACE-entry consistency, orphan packages (on disk but not in usedAddons), missing packages (usedAddons bundled:true with no package on disk), and duplicate packages (multiple archives resolving to the same addon id). With `addon`, scope validation to a single addon (by discovered id, or by path to an addon source tree) instead of the whole project. Read-only; no mutation.",
+      "Validate every bundled .c3addon package under addons/ against the project.c3proj usedAddons manifest: reports metadata mismatches (author/version), package-integrity failures (malformed zip, missing addon.json/aces.json, un-materialized git-lfs pointer, addon-id vs filename), aces.json vs lang/ ACE-entry consistency, orphan packages (on disk but not in usedAddons), missing packages (usedAddons bundled:true with no package on disk), and duplicate packages (multiple archives resolving to the same addon id). With `addon`, scope validation to a single addon (by discovered id, or by path to an addon source tree) instead of the whole project. Read-only; no mutation.",
     annotations: READ_ONLY,
     inputSchema: {
       addon: z

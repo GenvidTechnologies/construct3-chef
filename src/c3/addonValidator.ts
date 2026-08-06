@@ -23,7 +23,7 @@ export interface AddonFinding {
     | "lang-missing-ace"
     | "lang-missing-param"
     | "lang-missing-property";
-  field?: "id" | "author" | "version"; // metadata-mismatch only
+  field?: "author" | "version"; // metadata-mismatch only
   packageValue?: string; // metadata-mismatch: addon.json value
   manifestValue?: string; // metadata-mismatch / missing: usedAddons value
   problem?: string; // human-readable problem string (all kinds but metadata-mismatch)
@@ -125,15 +125,24 @@ function checkIntegrity(addon: DiscoveredAddon, pkg: string): { findings: AddonF
 
 /**
  * Compare a discovered addon's `addon.json` metadata against its matching
- * `usedAddons` entry (matched by id), flagging any of `id`/`author`/
- * `version` that are present on both sides but differ. `name` is
- * deliberately NOT cross-checked: `addon.json` `name` is the addon's
- * DISPLAY name, while `usedAddons[].name` is the user-assigned INSTANCE
- * name C3 writes when the addon is applied — the two are legitimately
- * independent, and flagging a mismatch between them is a false positive
- * (see #132 item 3). `id` remains the identity anchor both sides must
- * agree on. Orphan addons (no matching `usedAddons` entry) are out of
- * scope here — see #108. Never throws.
+ * `usedAddons` entry (matched by id), flagging any of `author`/`version`
+ * that are present on both sides but differ. `name` is deliberately NOT
+ * cross-checked: `addon.json` `name` is the addon's DISPLAY name, while
+ * `usedAddons[].name` is the user-assigned INSTANCE name C3 writes when the
+ * addon is applied — the two are legitimately independent, and flagging a
+ * mismatch between them is a false positive (see #132 item 3). `id` is
+ * likewise NOT cross-checked here, but for a different reason: `used` is
+ * looked up via `usedById.get(metadata.id ?? addon.name)`, so the join key
+ * IS `metadata.id` whenever it's defined — `used.id === metadata.id` always
+ * holds on that path, and when `metadata.id` is undefined the field-check
+ * loop's `packageValue === undefined` guard skips it anyway. An `id` row is
+ * therefore structurally unreachable, not merely redundant. Duality note:
+ * the forthcoming `planAddonMetadataSync` (`src/c3/addonMetadataSync.ts`,
+ * not yet written) implements this same "both defined && differ" rule over
+ * a different representation — the live manifest document rather than
+ * `UsedAddonEntry` projections — so a change to the comparison rule here
+ * must be mirrored there. Orphan addons (no matching `usedAddons` entry)
+ * are out of scope here — see #108. Never throws.
  */
 function checkMetadataMismatch(
   addon: DiscoveredAddon,
@@ -152,11 +161,10 @@ function checkMetadataMismatch(
   const addonId = metadata.id;
 
   const fieldChecks: Array<{
-    field: "id" | "author" | "version";
+    field: "author" | "version";
     packageValue?: string;
     manifestValue?: string;
   }> = [
-    { field: "id", packageValue: metadata.id, manifestValue: used.id },
     { field: "author", packageValue: metadata.author, manifestValue: used.author },
     { field: "version", packageValue: metadata.version, manifestValue: used.version },
   ];
