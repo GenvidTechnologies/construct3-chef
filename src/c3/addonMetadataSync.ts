@@ -293,3 +293,86 @@ export function buildAddonSyncPlan(
   if (reformatWarning !== undefined) plan.reformatWarning = reformatWarning;
   return plan;
 }
+
+// ── Formatter ────────────────────────────────────────────────────────────────
+
+const STATUS_ORDER: AddonSyncStatus[] = ["would-change", "in-sync", "blocked", "no-manifest-entry"];
+
+/**
+ * The per-row status label + framing, direction-aware for `would-change` only.
+ * `direction` never changes classification (see {@link planAddonMetadataSync}),
+ * only how a `would-change` row reads: `manifest-from-package` is the
+ * write direction (the manifest entry would be updated to match the package),
+ * so it reads as an action the tool would take. `package-from-manifest` never
+ * writes anything — chef has no `.c3addon` writer — so the same row instead
+ * tells the operator which side is stale and points them at Construct.
+ */
+function formatRowHeader(row: AddonSyncRow, direction: SyncDirection): string {
+  const base = `  [${row.status}] ${row.addonId}  ${row.package}`;
+  if (row.status !== "would-change") return base;
+
+  const framing =
+    direction === "package-from-manifest"
+      ? "package is stale, re-export it from Construct to update"
+      : "would update manifest entry";
+  return `${base}  — ${framing}`;
+}
+
+/**
+ * Render an `AddonSyncResult` to plain text. Shared by the CLI and MCP
+ * surfaces so output stays byte-identical (see the sibling `addon*`
+ * formatters — `formatAddonValidation`, `formatAddonInventory`,
+ * `formatAceDiff` — this one matches their voice: a header + summary, one
+ * line per row, and an owned empty case).
+ *
+ * The report is deliberately identical between a dry-run and an apply render
+ * of the same rows, except for a single trailing `Nothing written (dry run).`
+ * line appended only when `dryRun` — callers that preview with
+ * `planAddonMetadataSync` (always `dryRun: true`) and then apply see the same
+ * report shape, so the trailing line is the only tell.
+ */
+export function formatAddonMetadataSync(result: AddonSyncResult): string {
+  const { direction, rows, dryRun, reformatWarning } = result;
+
+  const counts: Record<AddonSyncStatus, number> = {
+    "would-change": 0,
+    "in-sync": 0,
+    blocked: 0,
+    "no-manifest-entry": 0,
+  };
+  for (const row of rows) counts[row.status]++;
+
+  const lines: string[] = [
+    `sync-addon-metadata: ${direction} — ${rows.length} package(s)`,
+    "  " + STATUS_ORDER.map((status) => `${counts[status]} ${status}`).join(", "),
+  ];
+
+  if (rows.length === 0) {
+    lines.push("");
+    lines.push("No addon packages found to sync.");
+  } else {
+    for (const row of rows) {
+      lines.push("");
+      lines.push(formatRowHeader(row, direction));
+      if (row.status === "blocked" && row.reason !== undefined) {
+        lines.push(`    reason: ${row.reason}`);
+      }
+      if (row.status === "would-change") {
+        for (const change of row.changes) {
+          lines.push(`    ${change.field}: '${change.from}' → '${change.to}'`);
+        }
+      }
+    }
+  }
+
+  if (reformatWarning !== undefined) {
+    lines.push("");
+    lines.push(`note: ${reformatWarning}`);
+  }
+
+  if (dryRun) {
+    lines.push("Nothing written (dry run).");
+  }
+
+  return lines.join("\n");
+}

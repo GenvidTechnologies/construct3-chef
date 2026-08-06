@@ -4,7 +4,13 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { zipSync } from "fflate";
-import { planAddonMetadataSync, type AddonSyncResult, type AddonSyncStatus } from "../../src/c3/addonMetadataSync.js";
+import {
+  formatAddonMetadataSync,
+  planAddonMetadataSync,
+  type AddonSyncResult,
+  type AddonSyncRow,
+  type AddonSyncStatus,
+} from "../../src/c3/addonMetadataSync.js";
 import { validateAddons } from "../../src/c3/addonValidator.js";
 
 const FIXTURE_ROOT = path.resolve("test/fixtures/addon-validate");
@@ -290,6 +296,141 @@ describe("addonMetadataSync", () => {
         planAddonMetadataSync(FIXTURE_ROOT, { direction: "manifest-from-package", addon: "Complete" }),
       );
       expect(result.rows.map((r) => r.addonId)).to.deep.equal(["Complete"]);
+    });
+  });
+
+  describe("formatAddonMetadataSync", () => {
+    // Hand-built rows — a pure formatter needs no pipeline run, and hand-built
+    // inputs let us cover states the addon-validate fixture doesn't exercise
+    // together (a two-field would-change row, an author-only change).
+    const rows: AddonSyncRow[] = [
+      {
+        addonId: "Complete",
+        package: "addons/plugin/Complete.c3addon",
+        status: "would-change",
+        changes: [{ field: "version", from: "1.0.0.9", to: "1.0.0.0" }],
+      },
+      {
+        addonId: "TwoFields",
+        package: "addons/plugin/TwoFields.c3addon",
+        status: "would-change",
+        changes: [
+          { field: "version", from: "1.0.0.9", to: "1.0.0.0" },
+          { field: "author", from: "Old Author", to: "New Author" },
+        ],
+      },
+      {
+        addonId: "CleanControl",
+        package: "addons/plugin/CleanControl.c3addon",
+        status: "in-sync",
+        changes: [],
+      },
+      {
+        addonId: "CorruptZip",
+        package: "addons/plugin/CorruptZip.c3addon",
+        status: "blocked",
+        changes: [],
+        reason: "package is unreadable (corrupt archive, malformed zip, or un-materialized LFS pointer)",
+      },
+      {
+        addonId: "Orphan",
+        package: "addons/plugin/Orphan.c3addon",
+        status: "no-manifest-entry",
+        changes: [],
+      },
+    ];
+
+    function makeResult(overrides: Partial<AddonSyncResult> = {}): AddonSyncResult {
+      return {
+        direction: "manifest-from-package",
+        rows,
+        dryRun: true,
+        wrote: false,
+        manifestIssues: [],
+        ...overrides,
+      };
+    }
+
+    describe("T4: all four statuses, blocked reason, summary", () => {
+      it("renders a visually distinguishable line per status", () => {
+        const output = formatAddonMetadataSync(makeResult());
+        expect(output).to.include("[would-change] Complete");
+        expect(output).to.include("[in-sync] CleanControl");
+        expect(output).to.include("[blocked] CorruptZip");
+        expect(output).to.include("[no-manifest-entry] Orphan");
+      });
+
+      it("renders the blocked row's reason", () => {
+        const output = formatAddonMetadataSync(makeResult());
+        expect(output).to.include(
+          "reason: package is unreadable (corrupt archive, malformed zip, or un-materialized LFS pointer)",
+        );
+      });
+
+      it("summarizes counts for all four states", () => {
+        const output = formatAddonMetadataSync(makeResult());
+        expect(output).to.include("2 would-change");
+        expect(output).to.include("1 in-sync");
+        expect(output).to.include("1 blocked");
+        expect(output).to.include("1 no-manifest-entry");
+      });
+    });
+
+    describe("T5: per-field from→to lines", () => {
+      it("renders one line with both values for a single-field change", () => {
+        const output = formatAddonMetadataSync(makeResult());
+        expect(output).to.include("version: '1.0.0.9' → '1.0.0.0'");
+      });
+
+      it("renders one line per field for a row changing two fields", () => {
+        const output = formatAddonMetadataSync(makeResult());
+        const twoFieldsSection = output.slice(output.indexOf("[would-change] TwoFields"));
+        expect(twoFieldsSection).to.include("version: '1.0.0.9' → '1.0.0.0'");
+        expect(twoFieldsSection).to.include("author: 'Old Author' → 'New Author'");
+      });
+    });
+
+    describe("T18: dry-run vs apply render", () => {
+      it("dry-run output equals apply output plus exactly one trailing line", () => {
+        const dryRunOutput = formatAddonMetadataSync(makeResult({ dryRun: true }));
+        const applyOutput = formatAddonMetadataSync(makeResult({ dryRun: false, wrote: true }));
+
+        expect(dryRunOutput).to.equal(applyOutput + "\nNothing written (dry run).");
+      });
+    });
+
+    describe("T31: reformatWarning renders as a note: line", () => {
+      const reformatWarning =
+        "project.c3proj is not in canonical serialized form — a write will reformat the whole file";
+
+      it("appears in dry-run output", () => {
+        const output = formatAddonMetadataSync(makeResult({ dryRun: true, reformatWarning }));
+        expect(output).to.include(`note: ${reformatWarning}`);
+      });
+
+      it("appears in apply output", () => {
+        const output = formatAddonMetadataSync(makeResult({ dryRun: false, wrote: true, reformatWarning }));
+        expect(output).to.include(`note: ${reformatWarning}`);
+      });
+    });
+
+    describe("direction-aware framing", () => {
+      it("package-from-manifest reads differently from manifest-from-package for the same rows", () => {
+        const manifestFromPackage = formatAddonMetadataSync(makeResult({ direction: "manifest-from-package" }));
+        const packageFromManifest = formatAddonMetadataSync(makeResult({ direction: "package-from-manifest" }));
+
+        expect(manifestFromPackage).to.not.equal(packageFromManifest);
+        expect(manifestFromPackage).to.include("would update manifest entry");
+        expect(packageFromManifest).to.include("re-export it from Construct");
+        expect(packageFromManifest).to.not.include("would update manifest entry");
+      });
+    });
+
+    describe("empty case", () => {
+      it("renders something sensible for zero rows, not a bare header", () => {
+        const output = formatAddonMetadataSync(makeResult({ rows: [] }));
+        expect(output).to.include("No addon packages found to sync.");
+      });
     });
   });
 });
