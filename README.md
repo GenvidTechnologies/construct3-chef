@@ -41,7 +41,7 @@ If you install globally or add to `package.json` scripts, you can omit `npx`.
 
 ## CLI Overview
 
-17 subcommands — all accept `--project-dir <path>` (defaults to `cwd`).
+21 subcommands — all accept `--project-dir <path>` (defaults to `cwd`). The table below is kept in lockstep with `src/cli.ts` by `test/readmeCommandInventory.test.ts`.
 
 | Subcommand | Purpose |
 | ---------- | ------- |
@@ -60,11 +60,14 @@ If you install globally or add to `package.json` scripts, you can omit `npx`.
 | `search-docs` | Search the C3 ACE reference (action/condition/expression ids, param names) for custom addons and the built-in reference cache |
 | `read-addon [name]` | Read a C3 addon's metadata + ACE summary (or a raw entry, or list all addons); works on extracted and archive-only addons |
 | `validate-addons [--addon <id|path>]` | Validate bundled `.c3addon` packages against `project.c3proj.usedAddons` (metadata, integrity, orphan/missing/duplicate) and each addon's `aces.json`/`plugin.js` properties against its `lang/*.json` locales; `--addon` scopes to one addon (by id or source-tree path). Read-only, non-zero exit on findings |
+| `list-addons` | Unified addon inventory — bundled `.c3addon` packages, `project.c3proj.usedAddons` entries, and editor-only addons — one row per addon with status, version, and package path. Read-only, never fails |
+| `diff-addon-aces <from> <to>` | Diff the ACE contract between two addon versions: added/removed ACEs plus changed param signatures. Sources are local (a `.c3addon` path, a discovered id, or an extracted dir). Read-only |
+| `scan-addon-usage <addon>` | Find where a plugin, behavior, or effect addon is used: object/family presence, event-sheet ACE call sites, and expression references. `--from` reports blast radius against a prior version, exiting non-zero when any affected site exists. Read-only |
 | `sync-addon-metadata --direction <manifest-from-package\|package-from-manifest>` | Sync a bundled `.c3addon` package's `version`/`author` with its `project.c3proj.usedAddons` entry; `manifest-from-package` writes, `package-from-manifest` is a read-only report (chef has no `.c3addon` writer). `--addon` scopes to one addon by id only. `--dry-run` previews. Exits non-zero iff outstanding human work remains |
 | `list-ops` | List available user-defined ops |
 | `apply-op <name>` | Apply a user-defined op by name |
 
-See [docs/cli.md](docs/cli.md) for full flag documentation (addon-tooling commands — `read-addon`, `validate-addons`, `sync-addon-metadata` — are in [docs/cli-addons.md](docs/cli-addons.md)).
+See [docs/cli.md](docs/cli.md) for full flag documentation (addon-tooling commands — `read-addon`, `validate-addons`, `list-addons`, `diff-addon-aces`, `scan-addon-usage`, `sync-addon-metadata` — are in [docs/cli-addons.md](docs/cli-addons.md)).
 
 ## Recipes
 
@@ -193,4 +196,4 @@ The `extracted/` directory is written by `generate` and read by the MCP server. 
 - [docs/recipe-reference.md](docs/recipe-reference.md) — Complete recipe reference: format, SID addressing, all 15 event sheet operations, all 12 layout operations, builder shorthands, gotchas
 - [docs/generators.md](docs/generators.md) — Generator internals, output format, cross-referencing C3 errors, localVars matching
 - [docs/cli.md](docs/cli.md) — Full CLI flag documentation for all subcommands
-- [docs/cli-addons.md](docs/cli-addons.md) — Addon-tooling commands (`read-addon`, `validate-addons`, `sync-addon-metadata`)
+- [docs/cli-addons.md](docs/cli-addons.md) — Addon-tooling commands (`read-addon`, `validate-addons`, `list-addons`, `diff-addon-aces`, `scan-addon-usage`, `sync-addon-metadata`)

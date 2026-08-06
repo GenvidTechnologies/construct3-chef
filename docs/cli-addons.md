@@ -105,7 +105,7 @@ The clean case prints `Checked N bundled addon(s): all consistent.` Output uses 
 
 ## list-addons
 
-Read-only **unified inventory** that reconciles three sources into one row per addon id: bundled `.c3addon` packages on disk (flat discovery under `addons/plugin/` and `addons/effect/`, the same set `read-addon` with no name lists), `project.c3proj`'s `usedAddons` entries, and editor-only addons. Each row carries a **status**, the declared **version**, and — for on-disk addons — the **package path**:
+Read-only **unified inventory** that reconciles three sources into one row per addon id: bundled `.c3addon` packages on disk (flat discovery under `addons/plugin/`, `addons/effect/` and `addons/behavior/`, the same set `read-addon` with no name lists), `project.c3proj`'s `usedAddons` entries, and editor-only addons. Each row carries a **status**, the declared **version**, and — for on-disk addons — the **package path**:
 
 - **bundled** — declared in `usedAddons` **and** present on disk.
 - **editor-only** — a `usedAddons` entry with `bundled: false` (supplied by the C3 editor's installed addons; no package expected on disk).
