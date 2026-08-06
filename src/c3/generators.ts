@@ -14,10 +14,10 @@ import {
   formatCondition,
   walkSids,
   formatSidPath,
-  isEditorLocalPath,
   openProject,
 } from "@genvidtech/c3source";
 import { formatEventSheet, formatIndex } from "./dslFormatter.js";
+import { isEditorLocalPathUnder } from "./editorLocal.js";
 import {
   formatLayout,
   buildGlobalLayerMap,
@@ -549,12 +549,12 @@ export function generateSidRegistry(projectRoot: string, outDir: string, log: Lo
   // register duplicate SID rows. The classification itself is c3source's
   // (`isEditorLocalPath`), applied post-hoc over the path *segments* — which
   // covers both the `uistate/` directory and the `*.uistate.json` sibling file.
+  // (This is not a reopening of ADR 0016 §3 — that record declined swapping the
+  // *walk* above, `findJsonFiles`, for `find_all_files_path`; the walk is
+  // untouched here. Only this pre-existing *filter* is being given a name, in
+  // the shared off-barrel `editorLocal.ts`, so #149/#152 can consume it too.)
   const allFiles = SID_SOURCE_DIRS.flatMap((dir) => findJsonFiles(path.join(projectRoot, dir))).filter(
-    (filePath) =>
-      !path
-        .relative(projectRoot, filePath)
-        .split(/[\\/]/)
-        .some((segment) => isEditorLocalPath(segment)),
+    (filePath) => !isEditorLocalPathUnder(projectRoot, filePath),
   );
 
   const allEntries: SidEntry[] = [];
