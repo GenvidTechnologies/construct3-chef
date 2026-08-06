@@ -24,7 +24,9 @@ describe("createSourceWatcher", () => {
     mkdirSync(path.join(root, "eventSheets"));
     mkdirSync(path.join(root, "layouts"));
     mkdirSync(path.join(root, "objectTypes"));
-    // Deliberately omit families/ and scripts/ to exercise the existsSync filter.
+    mkdirSync(path.join(root, "scripts"));
+    // Deliberately omit families/ to exercise the existsSync filter (scripts/
+    // is now needed to exercise the editor-local exactNames test below).
     writeFileSync(path.join(root, "project.c3proj"), "{}");
 
     expected = new ExpectedChanges();
@@ -62,9 +64,9 @@ describe("createSourceWatcher", () => {
     assert.ok(targets.includes(path.resolve(root, "eventSheets")));
     assert.ok(targets.includes(path.resolve(root, "layouts")));
     assert.ok(targets.includes(path.resolve(root, "objectTypes")));
+    assert.ok(targets.includes(path.resolve(root, "scripts")));
     assert.ok(targets.includes(path.resolve(root, "project.c3proj")));
     assert.ok(!targets.includes(path.resolve(root, "families")));
-    assert.ok(!targets.includes(path.resolve(root, "scripts")));
   });
 
   it("external source change bumps txId and fires onSourceChange", () => {
@@ -81,6 +83,32 @@ describe("createSourceWatcher", () => {
     assert.ok(onEvent);
     onEvent(path.resolve(root, "project.c3proj"));
     assert.equal(w.txId, 1);
+    assert.deepEqual(fired, []);
+  });
+
+  // ADR 0018: editor-local paths are dropped at the watcher factory, before
+  // OptimisticWatcher.handleEvent ever sees them, so neither txId bumps nor
+  // onSourceChange fires. One test per isEditorLocalPath dimension — a
+  // combined test could not say which mechanism regressed.
+
+  it("editor-local uistate/ directory segment neither bumps txId nor fires onSourceChange", () => {
+    const w = build();
+    emit("layouts", path.join("uistate", "foo.json"));
+    assert.equal(w.txId, 0);
+    assert.deepEqual(fired, []);
+  });
+
+  it("editor-local *.uistate.json file suffix neither bumps txId nor fires onSourceChange", () => {
+    const w = build();
+    emit("layouts", "Main.uistate.json");
+    assert.equal(w.txId, 0);
+    assert.deepEqual(fired, []);
+  });
+
+  it("editor-local exact tsconfig.json name neither bumps txId nor fires onSourceChange", () => {
+    const w = build();
+    emit("scripts", "tsconfig.json");
+    assert.equal(w.txId, 0);
     assert.deepEqual(fired, []);
   });
 
