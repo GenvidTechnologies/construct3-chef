@@ -4,6 +4,7 @@ import {
   PROJECT_MANIFEST_FILE,
   readProjectManifestTolerant,
   serializeProjectManifest,
+  writeProjectManifest,
   type C3ProjectManifest,
 } from "@genvidtech/c3source";
 import { toPosixPath } from "@genvidtech/mcp-utils";
@@ -292,6 +293,64 @@ export function buildAddonSyncPlan(
   };
   if (reformatWarning !== undefined) plan.reformatWarning = reformatWarning;
   return plan;
+}
+
+/** Result of {@link applyAddonMetadataSync}. Byte counts are of the utf-8 encoded text. */
+export interface AddonSyncApplyResult {
+  wrote: boolean;
+  bytesBefore: number;
+  bytesAfter: number;
+}
+
+/**
+ * Write the `would-change` rows of `plan` back into `project.c3proj`.
+ *
+ * **Byte-fidelity discipline** (this is the load-bearing part of the whole module):
+ * every mutation below is an in-place field assignment on `plan.manifest` — the SAME
+ * object `buildAddonSyncPlan` got back from `readProjectManifestTolerant`, by identity.
+ * Never re-parse, never clone, never rebuild via spread (not the manifest, not
+ * `usedAddons`, not an entry) — a spread reorders keys and silently drops any field
+ * this module doesn't model (e.g. `sdkVersion`), which `serializeProjectManifest`
+ * would then fail to reproduce. Only `blocked` / `in-sync` / `no-manifest-entry` rows
+ * are left untouched, and only the fields named in a row's `changes` are written —
+ * never `name` (see #132) and never a key that doesn't already exist on the entry
+ * (`classifyAddon`'s missing-key pass already routed that case to `blocked`).
+ *
+ * Writes via c3source's `writeProjectManifest` (→ `serializeProjectManifest` →
+ * `JSON.stringify(m, undefined, "\t")`, **no trailing newline** — do not append `"\n"`;
+ * `project.c3proj` is NOT event-sheet/layout JSON, which does get one). See the
+ * matching cross-reference comment at `projectSync.ts`'s `writeFileSync(projectPath,
+ * …)` call site — `project.c3proj` now has two writers, and both rely on this same
+ * parse-by-identity/mutate-in-place/serialize discipline to avoid clobbering each
+ * other's unmodeled fields.
+ *
+ * If no row is applicable (no `would-change` rows, or `opts.addon` scoped the plan to
+ * none), the file is **not written at all** — `wrote: false` and an untouched mtime.
+ */
+export function applyAddonMetadataSync(plan: AddonSyncPlan): AddonSyncApplyResult {
+  const bytesBefore = Buffer.byteLength(plan.originalText, "utf-8");
+
+  const usedAddons = plan.manifest.usedAddons;
+  let mutated = false;
+  if (Array.isArray(usedAddons)) {
+    for (const row of plan.rows) {
+      if (row.status !== "would-change") continue;
+      const entry = usedAddons.find((e) => e !== null && typeof e === "object" && e.id === row.addonId);
+      if (entry === undefined) continue;
+      for (const change of row.changes) {
+        entry[change.field] = change.to; // in-place field write — see the docstring above
+        mutated = true;
+      }
+    }
+  }
+
+  if (!mutated) {
+    return { wrote: false, bytesBefore, bytesAfter: bytesBefore };
+  }
+
+  writeProjectManifest(plan.manifestPath, plan.manifest);
+  const bytesAfter = Buffer.byteLength(serializeProjectManifest(plan.manifest), "utf-8");
+  return { wrote: true, bytesBefore, bytesAfter };
 }
 
 // ── Formatter ────────────────────────────────────────────────────────────────

@@ -1,19 +1,25 @@
 import { describe, it } from "mocha";
 import { expect } from "chai";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync, rmSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { zipSync } from "fflate";
+import { validateProjectManifest } from "@genvidtech/c3source";
 import {
+  applyAddonMetadataSync,
+  buildAddonSyncPlan,
   formatAddonMetadataSync,
   planAddonMetadataSync,
+  type AddonSyncPlan,
   type AddonSyncResult,
   type AddonSyncRow,
   type AddonSyncStatus,
 } from "../../src/c3/addonMetadataSync.js";
 import { validateAddons } from "../../src/c3/addonValidator.js";
+import { seedManifestDrift } from "../helpers/seedManifestDrift.js";
 
 const FIXTURE_ROOT = path.resolve("test/fixtures/addon-validate");
+const SAMPLE_FIXTURE_ROOT = path.resolve("test/fixtures/construct3-chef-sample");
 
 function expectOk(result: AddonSyncResult | { error: string }): AddonSyncResult {
   if ("error" in result) throw new Error(`unexpected error: ${result.error}`);
@@ -296,6 +302,201 @@ describe("addonMetadataSync", () => {
         planAddonMetadataSync(FIXTURE_ROOT, { direction: "manifest-from-package", addon: "Complete" }),
       );
       expect(result.rows.map((r) => r.addonId)).to.deep.equal(["Complete"]);
+    });
+  });
+
+  // ── applyAddonMetadataSync — P3 write path ──────────────────────────────────
+  // All cases here seed drift into a temp COPY of test/fixtures/construct3-chef-sample
+  // (never the tracked fixture itself — see seedManifestDrift.ts) using
+  // `MyCompany_MyBehavior` (usedAddons[8]) as the anchor entry: its package's
+  // addon.json (version 1.0.0.0, author Scirra) matches the PRISTINE manifest entry
+  // exactly, so seeding version/author drift and then successfully syncing must
+  // reproduce the pristine file byte-for-byte.
+
+  function expectPlanOk(plan: AddonSyncPlan | { error: string }): AddonSyncPlan {
+    if ("error" in plan) throw new Error(`unexpected error: ${plan.error}`);
+    return plan;
+  }
+
+  function makeSeededProject(): string {
+    const root = makeTempProject();
+    seedManifestDrift(SAMPLE_FIXTURE_ROOT, root, [
+      { id: "MyCompany_MyBehavior", version: "0.9.0.0", author: "Nobody" },
+    ]);
+    return root;
+  }
+
+  describe("applyAddonMetadataSync", () => {
+    it("T6: byte fidelity — the written file equals the pristine fixture's project.c3proj byte-for-byte", () => {
+      const root = makeSeededProject();
+      try {
+        const plan = expectPlanOk(buildAddonSyncPlan(root, { direction: "manifest-from-package" }));
+        const applyResult = applyAddonMetadataSync(plan);
+        expect(applyResult.wrote).to.equal(true);
+
+        const written = readFileSync(path.join(root, "project.c3proj"));
+        const pristine = readFileSync(path.join(SAMPLE_FIXTURE_ROOT, "project.c3proj"));
+        expect(written.equals(pristine)).to.equal(true);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("T7: sdkVersion (the only field this module doesn't model) survives at its original key position", () => {
+      const root = makeSeededProject();
+      try {
+        const plan = expectPlanOk(buildAddonSyncPlan(root, { direction: "manifest-from-package" }));
+        applyAddonMetadataSync(plan);
+
+        const written = JSON.parse(readFileSync(path.join(root, "project.c3proj"), "utf-8"));
+        const entry = written.usedAddons[8];
+        expect(entry.id).to.equal("MyCompany_MyBehavior");
+        expect(entry.sdkVersion).to.equal(2);
+        expect(Object.keys(entry)).to.deep.equal(["type", "id", "name", "author", "bundled", "version", "sdkVersion"]);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("T8: unmodeled top-level fields (uniqueId, autosaveData, useWorker, bundleAddons, functionsName) are unchanged", () => {
+      const root = makeSeededProject();
+      try {
+        const plan = expectPlanOk(buildAddonSyncPlan(root, { direction: "manifest-from-package" }));
+        applyAddonMetadataSync(plan);
+
+        const written = JSON.parse(readFileSync(path.join(root, "project.c3proj"), "utf-8"));
+        const pristine = JSON.parse(readFileSync(path.join(SAMPLE_FIXTURE_ROOT, "project.c3proj"), "utf-8"));
+
+        for (const key of ["uniqueId", "autosaveData", "useWorker", "bundleAddons", "functionsName"]) {
+          expect(Object.prototype.hasOwnProperty.call(pristine, key), `fixture is missing '${key}'`).to.equal(true);
+          expect(written[key]).to.deep.equal(pristine[key]);
+        }
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("T9: no trailing newline — ends '\\n}' not '}\\n', and the module never appends one", () => {
+      const root = makeSeededProject();
+      try {
+        const plan = expectPlanOk(buildAddonSyncPlan(root, { direction: "manifest-from-package" }));
+        applyAddonMetadataSync(plan);
+
+        const written = readFileSync(path.join(root, "project.c3proj"), "utf-8");
+        expect(written.slice(-2)).to.equal("\n}");
+
+        const moduleSource = readFileSync(path.resolve("src/c3/addonMetadataSync.ts"), "utf-8");
+        expect(moduleSource).to.not.include('+ "\\n"');
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("T10: author drift is a {field:'author'} change, restored by apply, and reported by validateAddons on the seeded copy", () => {
+      const root = makeSeededProject();
+      try {
+        const seededValidation = validateAddons(root);
+        const authorMismatch = seededValidation.findings.find(
+          (f) => f.kind === "metadata-mismatch" && f.addonId === "MyCompany_MyBehavior" && f.field === "author",
+        );
+        expect(authorMismatch, "expected a metadata-mismatch/author finding on the seeded copy").to.not.be.undefined;
+
+        const plan = expectPlanOk(buildAddonSyncPlan(root, { direction: "manifest-from-package" }));
+        const row = plan.rows.find((r) => r.addonId === "MyCompany_MyBehavior");
+        expect(row).to.not.be.undefined;
+        expect(row!.status).to.equal("would-change");
+        expect(row!.changes).to.deep.include({ field: "author", from: "Nobody", to: "Scirra" });
+
+        applyAddonMetadataSync(plan);
+        const written = JSON.parse(readFileSync(path.join(root, "project.c3proj"), "utf-8"));
+        expect(written.usedAddons[8].author).to.equal("Scirra");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("T11: name is never written, even though it differs from the package's display name", () => {
+      const root = makeSeededProject();
+      try {
+        const plan = expectPlanOk(buildAddonSyncPlan(root, { direction: "manifest-from-package" }));
+        const row = plan.rows.find((r) => r.addonId === "MyCompany_MyBehavior");
+        expect(row!.changes.some((c) => (c.field as string) === "name")).to.equal(false);
+
+        applyAddonMetadataSync(plan);
+        const written = JSON.parse(readFileSync(path.join(root, "project.c3proj"), "utf-8"));
+        expect(written.usedAddons[8].name).to.equal("MyCustomBehavior");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("T12: a blocked (missing-key) row is never applied and the write gains no such key", () => {
+      const root = makeTempProject();
+      try {
+        writeFileSync(
+          path.join(root, "project.c3proj"),
+          JSON.stringify({
+            projectFormatVersion: 1,
+            savedWithRelease: 1,
+            name: "missing-key-apply-fixture",
+            runtime: "c3",
+            usedAddons: [{ type: "plugin", id: "NoVersionKey", name: "n", author: "a", bundled: true }],
+          }),
+        );
+        writeAddonPackage(root, "addons/plugin/NoVersionKey.c3addon", {
+          id: "NoVersionKey",
+          version: "1.0.0.0",
+          author: "a",
+        });
+
+        const plan = expectPlanOk(buildAddonSyncPlan(root, { direction: "manifest-from-package" }));
+        const row = plan.rows.find((r) => r.addonId === "NoVersionKey");
+        expect(row!.status).to.equal("blocked");
+
+        const applyResult = applyAddonMetadataSync(plan);
+        expect(applyResult.wrote).to.equal(false);
+
+        const written = JSON.parse(readFileSync(path.join(root, "project.c3proj"), "utf-8"));
+        expect(Object.prototype.hasOwnProperty.call(written.usedAddons[0], "version")).to.equal(false);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("no-op run (nothing would-change) does not write the file at all", () => {
+      const root = makeTempProject();
+      try {
+        seedManifestDrift(SAMPLE_FIXTURE_ROOT, root, []); // copy, no drift
+        const before = statSync(path.join(root, "project.c3proj")).mtimeMs;
+
+        const plan = expectPlanOk(buildAddonSyncPlan(root, { direction: "manifest-from-package" }));
+        const applyResult = applyAddonMetadataSync(plan);
+        expect(applyResult.wrote).to.equal(false);
+        expect(applyResult.bytesAfter).to.equal(applyResult.bytesBefore);
+
+        const after = statSync(path.join(root, "project.c3proj")).mtimeMs;
+        expect(after).to.equal(before);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("T14: applying does not change the manifest's validateProjectManifest issue set", () => {
+      const root = makeSeededProject();
+      try {
+        const before = validateProjectManifest(JSON.parse(readFileSync(path.join(root, "project.c3proj"), "utf-8")));
+        const beforeIds = before.map((i) => `${i.rule}@${i.path}`).sort();
+
+        const plan = expectPlanOk(buildAddonSyncPlan(root, { direction: "manifest-from-package" }));
+        applyAddonMetadataSync(plan);
+
+        const after = validateProjectManifest(JSON.parse(readFileSync(path.join(root, "project.c3proj"), "utf-8")));
+        const afterIds = after.map((i) => `${i.rule}@${i.path}`).sort();
+
+        expect(afterIds).to.deep.equal(beforeIds);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
     });
   });
 
