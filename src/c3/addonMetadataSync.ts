@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
+  C3ADDON_EXTENSION,
   PROJECT_MANIFEST_FILE,
   readProjectManifestTolerant,
   serializeProjectManifest,
@@ -182,12 +183,21 @@ export function planAddonMetadataSync(
 ): AddonSyncResult | { error: string } {
   const plan = buildAddonSyncPlan(projectRoot, opts);
   if ("error" in plan) return plan;
+  return toResult(plan, true, false);
+}
 
+/**
+ * Build an {@link AddonSyncResult} from an {@link AddonSyncPlan}, honestly reflecting
+ * whether the caller applied it. Shared by {@link planAddonMetadataSync} (always
+ * `dryRun: true, wrote: false` — it never applies) and {@link syncAddonMetadata} (which
+ * passes the real outcome for both flags).
+ */
+function toResult(plan: AddonSyncPlan, dryRun: boolean, wrote: boolean): AddonSyncResult {
   const result: AddonSyncResult = {
     direction: plan.direction,
     rows: plan.rows,
-    dryRun: true,
-    wrote: false,
+    dryRun,
+    wrote,
     manifestIssues: plan.manifestIssues,
   };
   if (plan.reformatWarning !== undefined) result.reformatWarning = plan.reformatWarning;
@@ -351,6 +361,105 @@ export function applyAddonMetadataSync(plan: AddonSyncPlan): AddonSyncApplyResul
   writeProjectManifest(plan.manifestPath, plan.manifest);
   const bytesAfter = Buffer.byteLength(serializeProjectManifest(plan.manifest), "utf-8");
   return { wrote: true, bytesBefore, bytesAfter };
+}
+
+// ── --addon scoping ─────────────────────────────────────────────────────────
+
+/**
+ * Resolve a `syncAddonMetadata`/`sync-addon-metadata` `--addon` argument to a
+ * discovered addon's resolved id.
+ *
+ * **Deliberately id-only** — unlike `validate-addons`/`diff-addon-aces`'s
+ * `resolveAddonTarget` (`addonDiscovery.ts`), which also accepts a raw addon SOURCE
+ * TREE path. This tool mutates a discovered *package*'s matching `usedAddons` entry;
+ * `resolveAddonTarget`'s path-mode addon carries `archivePath: ""` (no package, no
+ * manifest join), which would make the mutation a structural no-op. A half-supported
+ * option is worse than a clearly-scoped one, so a path-shaped argument is rejected
+ * outright rather than silently resolving to nothing.
+ *
+ * Accepts, in this order:
+ *  - a discovered addon's resolved id (`resolveAddonId` — the `addon.json` `id`, or
+ *    the archive basename when `addon.json` doesn't resolve);
+ *  - the archive's bare filename, with or without the `.c3addon` extension — which may
+ *    differ from the resolved id (e.g. a package filed as `Misnamed.c3addon` whose
+ *    `addon.json` declares `id: "NotMisnamed"`).
+ *
+ * Never throws. Returns `{ error }` — rendered verbatim, no stack — for a path-shaped
+ * argument (contains a `/` or `\` separator, is absolute, or contains `..`) or an
+ * unresolvable id; both are user-input errors, not exceptional conditions.
+ */
+export function resolveAddonSyncScope(
+  projectRoot: string,
+  addonArg: string,
+): { resolvedId: string } | { error: string } {
+  if (addonArg.includes("/") || addonArg.includes("\\") || addonArg.includes("..") || path.isAbsolute(addonArg)) {
+    return { error: "--addon takes an addon id, not a path" };
+  }
+
+  const bareName = addonArg.endsWith(C3ADDON_EXTENSION) ? addonArg.slice(0, -C3ADDON_EXTENSION.length) : addonArg;
+
+  const discovered = discoverAddons(projectRoot).map((addon) => ({ addon, resolvedId: resolveAddonId(addon) }));
+  const match = discovered.find(
+    (d) => d.resolvedId === addonArg || d.addon.name === addonArg || d.addon.name === bareName,
+  );
+
+  if (match === undefined) {
+    return { error: `Addon '${addonArg}' not found` };
+  }
+
+  return { resolvedId: match.resolvedId };
+}
+
+// ── Orchestrator ─────────────────────────────────────────────────────────────
+
+export interface SyncAddonMetadataOpts {
+  direction: SyncDirection;
+  addon?: string;
+  dryRun?: boolean;
+}
+
+/**
+ * The orchestrator behind the `sync-addon-metadata` CLI subcommand + MCP tool: resolve
+ * `--addon` scope → plan → conditionally apply → return a fully-populated
+ * {@link AddonSyncResult}. The single entry point both surfaces call.
+ *
+ * **Apply is reachable only for `direction: "manifest-from-package"` with
+ * `dryRun` not `true`** — the switch below gives `package-from-manifest` its own
+ * branch that never mentions `applyAddonMetadataSync` at all, so the no-write
+ * guarantee for that direction is structural (a property of this function's control
+ * flow), not a runtime check living inside `applyAddonMetadataSync` (P3) itself, which
+ * has none. `dryRun` and `wrote` on the returned result are populated honestly:
+ * `formatAddonMetadataSync` renders its dry-run trailing line off `dryRun`, and the MCP
+ * handler (F2) bumps `txId` only when `wrote`.
+ *
+ * A bad `--addon` value short-circuits with `{ error }` before the manifest is even
+ * read — see {@link resolveAddonSyncScope}. Never throws.
+ */
+export function syncAddonMetadata(
+  projectRoot: string,
+  opts: SyncAddonMetadataOpts,
+): AddonSyncResult | { error: string } {
+  let resolvedAddon: string | undefined;
+  if (opts.addon !== undefined) {
+    const scope = resolveAddonSyncScope(projectRoot, opts.addon);
+    if ("error" in scope) return scope;
+    resolvedAddon = scope.resolvedId;
+  }
+
+  const plan = buildAddonSyncPlan(projectRoot, { direction: opts.direction, addon: resolvedAddon });
+  if ("error" in plan) return plan;
+
+  switch (opts.direction) {
+    case "package-from-manifest":
+      // Read-only report — chef has no `.c3addon` writer. No call to
+      // applyAddonMetadataSync appears in this branch; see the docstring above.
+      return toResult(plan, true, false);
+    case "manifest-from-package": {
+      if (opts.dryRun === true) return toResult(plan, true, false);
+      const applyResult = applyAddonMetadataSync(plan);
+      return toResult(plan, false, applyResult.wrote);
+    }
+  }
 }
 
 // ── Formatter ────────────────────────────────────────────────────────────────

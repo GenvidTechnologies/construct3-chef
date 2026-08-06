@@ -1,6 +1,6 @@
 import { describe, it } from "mocha";
 import { expect } from "chai";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, rmSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { zipSync } from "fflate";
@@ -10,6 +10,7 @@ import {
   buildAddonSyncPlan,
   formatAddonMetadataSync,
   planAddonMetadataSync,
+  syncAddonMetadata,
   type AddonSyncPlan,
   type AddonSyncResult,
   type AddonSyncRow,
@@ -26,6 +27,11 @@ function expectOk(result: AddonSyncResult | { error: string }): AddonSyncResult 
   return result;
 }
 
+function expectError(result: AddonSyncResult | { error: string }): string {
+  if (!("error" in result)) throw new Error("expected an { error } result, got a success result");
+  return result.error;
+}
+
 function rowsByStatus(result: AddonSyncResult, status: AddonSyncStatus) {
   return result.rows.filter((r) => r.status === status);
 }
@@ -40,6 +46,31 @@ function makeTempProject(): string {
 
 function writeManifest(root: string, text: string): void {
   writeFileSync(path.join(root, "project.c3proj"), text);
+}
+
+/** Sorted list of every file's path (POSIX, relative to `root`) under `root`. */
+function listFilesRecursive(root: string): string[] {
+  const out: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else out.push(path.relative(root, full).split(path.sep).join("/"));
+    }
+  };
+  walk(root);
+  return out.sort();
+}
+
+/** Every `.c3addon` file's bytes under `root`, keyed by its POSIX-relative path. */
+function snapshotAddonPackages(root: string): Map<string, Buffer> {
+  const snapshot = new Map<string, Buffer>();
+  for (const relPath of listFilesRecursive(root)) {
+    if (relPath.endsWith(".c3addon")) {
+      snapshot.set(relPath, readFileSync(path.join(root, ...relPath.split("/"))));
+    }
+  }
+  return snapshot;
 }
 
 function writeAddonPackage(root: string, relPackagePath: string, addonJson: Record<string, unknown>): void {
@@ -497,6 +528,172 @@ describe("addonMetadataSync", () => {
       } finally {
         rmSync(root, { recursive: true, force: true });
       }
+    });
+  });
+
+  // ── syncAddonMetadata — P4 orchestrator ─────────────────────────────────────
+
+  describe("syncAddonMetadata", () => {
+    describe("T16: package-from-manifest writes nothing anywhere", () => {
+      it("leaves project.c3proj bytes+mtime and every .c3addon package byte-identical", () => {
+        const root = makeSeededProject();
+        try {
+          const manifestPath = path.join(root, "project.c3proj");
+          const manifestBytesBefore = readFileSync(manifestPath);
+          const manifestMtimeBefore = statSync(manifestPath).mtimeMs;
+          const filesBefore = listFilesRecursive(root);
+          const packagesBefore = snapshotAddonPackages(root);
+
+          const result = expectOk(syncAddonMetadata(root, { direction: "package-from-manifest" }));
+          expect(result.wrote).to.equal(false);
+          expect(result.dryRun).to.equal(true);
+          // Sanity: the seeded drift is actually visible as a would-change row, so this
+          // isn't a vacuous "nothing to write anyway" pass.
+          expect(rowsByStatus(result, "would-change").map((r) => r.addonId)).to.deep.equal(["MyCompany_MyBehavior"]);
+
+          const manifestBytesAfter = readFileSync(manifestPath);
+          const manifestMtimeAfter = statSync(manifestPath).mtimeMs;
+          expect(manifestBytesAfter.equals(manifestBytesBefore)).to.equal(true);
+          expect(manifestMtimeAfter).to.equal(manifestMtimeBefore);
+
+          const filesAfter = listFilesRecursive(root);
+          expect(filesAfter).to.deep.equal(filesBefore);
+
+          const packagesAfter = snapshotAddonPackages(root);
+          expect([...packagesAfter.keys()].sort()).to.deep.equal([...packagesBefore.keys()].sort());
+          for (const [relPath, before] of packagesBefore) {
+            const after = packagesAfter.get(relPath);
+            expect(after, `missing package after sync: ${relPath}`).to.not.be.undefined;
+            expect(after!.equals(before), `package bytes changed: ${relPath}`).to.equal(true);
+          }
+        } finally {
+          rmSync(root, { recursive: true, force: true });
+        }
+      });
+    });
+
+    describe("T18: dry-run is inert end-to-end", () => {
+      it("touches no bytes/mtime, and its render equals the apply render plus the dry-run trailer", () => {
+        const root = makeSeededProject();
+        try {
+          const manifestPath = path.join(root, "project.c3proj");
+          const bytesBefore = readFileSync(manifestPath);
+          const mtimeBefore = statSync(manifestPath).mtimeMs;
+
+          const dryRunResult = expectOk(syncAddonMetadata(root, { direction: "manifest-from-package", dryRun: true }));
+          expect(dryRunResult.dryRun).to.equal(true);
+          expect(dryRunResult.wrote).to.equal(false);
+
+          const bytesAfter = readFileSync(manifestPath);
+          const mtimeAfter = statSync(manifestPath).mtimeMs;
+          expect(bytesAfter.equals(bytesBefore)).to.equal(true);
+          expect(mtimeAfter).to.equal(mtimeBefore);
+
+          const dryRunReport = formatAddonMetadataSync(dryRunResult);
+          const nonDryRunReport = formatAddonMetadataSync({ ...dryRunResult, dryRun: false });
+          expect(dryRunReport).to.equal(nonDryRunReport + "\nNothing written (dry run).");
+        } finally {
+          rmSync(root, { recursive: true, force: true });
+        }
+      });
+    });
+
+    describe("T19: post-condition — zero metadata-mismatch findings after a real sync", () => {
+      it("validateAddons reports zero metadata-mismatch findings (pre-existing lang-missing-ace findings untouched)", () => {
+        const root = makeSeededProject();
+        try {
+          // Pre-existing baseline on the pristine sample fixture: 3 `lang-missing-ace`
+          // findings, 0 `metadata-mismatch` findings. Scope to metadata-mismatch only —
+          // asserting the whole findings array is empty would fail for an unrelated
+          // reason (the lang findings), not the one this test exists to check.
+          const result = expectOk(syncAddonMetadata(root, { direction: "manifest-from-package" }));
+          expect(result.wrote).to.equal(true);
+
+          const validation = validateAddons(root);
+          const mismatchFindings = validation.findings.filter((f) => f.kind === "metadata-mismatch");
+          expect(mismatchFindings).to.have.lengthOf(0);
+        } finally {
+          rmSync(root, { recursive: true, force: true });
+        }
+      });
+    });
+
+    describe("T26: --addon scoping touches only the targeted entry", () => {
+      it("scoping to MyCompany_MyBehavior leaves a second drifted entry (MyCompany_MyEffect) untouched", () => {
+        const root = makeTempProject();
+        try {
+          seedManifestDrift(SAMPLE_FIXTURE_ROOT, root, [
+            { id: "MyCompany_MyBehavior", version: "0.9.0.0", author: "Nobody" },
+            { id: "MyCompany_MyEffect", version: "0.5.0.0", author: "Someone Else" },
+          ]);
+
+          const before = JSON.parse(readFileSync(path.join(root, "project.c3proj"), "utf-8"));
+          const effectEntryBefore = before.usedAddons.find((e: { id: string }) => e.id === "MyCompany_MyEffect");
+          expect(effectEntryBefore).to.not.be.undefined;
+
+          const result = expectOk(
+            syncAddonMetadata(root, { direction: "manifest-from-package", addon: "MyCompany_MyBehavior" }),
+          );
+          expect(result.wrote).to.equal(true);
+          expect(result.rows.map((r) => r.addonId)).to.deep.equal(["MyCompany_MyBehavior"]);
+
+          const after = JSON.parse(readFileSync(path.join(root, "project.c3proj"), "utf-8"));
+          const behaviorEntryAfter = after.usedAddons.find((e: { id: string }) => e.id === "MyCompany_MyBehavior");
+          expect(behaviorEntryAfter.version).to.equal("1.0.0.0");
+          expect(behaviorEntryAfter.author).to.equal("Scirra");
+
+          const effectEntryAfter = after.usedAddons.find((e: { id: string }) => e.id === "MyCompany_MyEffect");
+          // Untouched — still carries the seeded drift, byte-identical to the pre-sync entry.
+          expect(effectEntryAfter).to.deep.equal(effectEntryBefore);
+        } finally {
+          rmSync(root, { recursive: true, force: true });
+        }
+      });
+    });
+
+    describe("T27: --addon scoping is id-only", () => {
+      it("resolves a discovered addon's resolved id", () => {
+        const result = expectOk(
+          syncAddonMetadata(FIXTURE_ROOT, { direction: "package-from-manifest", addon: "Complete" }),
+        );
+        expect(result.rows.map((r) => r.addonId)).to.deep.equal(["Complete"]);
+      });
+
+      it("resolves a package filename, with or without the .c3addon extension, even when it differs from the resolved id", () => {
+        const bare = expectOk(
+          syncAddonMetadata(FIXTURE_ROOT, { direction: "package-from-manifest", addon: "Misnamed" }),
+        );
+        expect(bare.rows.map((r) => r.addonId)).to.deep.equal(["NotMisnamed"]);
+
+        const withExtension = expectOk(
+          syncAddonMetadata(FIXTURE_ROOT, { direction: "package-from-manifest", addon: "Misnamed.c3addon" }),
+        );
+        expect(withExtension.rows.map((r) => r.addonId)).to.deep.equal(["NotMisnamed"]);
+      });
+
+      it("rejects a path-shaped --addon value with the exact error message", () => {
+        const result = syncAddonMetadata(FIXTURE_ROOT, {
+          direction: "package-from-manifest",
+          addon: "addons/plugin/Complete.c3addon",
+        });
+        expect(expectError(result)).to.equal("--addon takes an addon id, not a path");
+      });
+
+      it("rejects a Windows-style path-shaped --addon value too", () => {
+        const result = syncAddonMetadata(FIXTURE_ROOT, {
+          direction: "package-from-manifest",
+          addon: "addons\\plugin\\Complete.c3addon",
+        });
+        expect(expectError(result)).to.equal("--addon takes an addon id, not a path");
+      });
+
+      it("errors cleanly on an unresolvable id, with no manifest read attempted first", () => {
+        const result = syncAddonMetadata(FIXTURE_ROOT, {
+          direction: "package-from-manifest",
+          addon: "NoSuchAddon",
+        });
+        expect(expectError(result)).to.equal("Addon 'NoSuchAddon' not found");
+      });
     });
   });
 
