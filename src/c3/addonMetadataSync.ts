@@ -494,10 +494,17 @@ function formatRowHeader(row: AddonSyncRow, direction: SyncDirection): string {
  * line per row, and an owned empty case).
  *
  * The report is deliberately identical between a dry-run and an apply render
- * of the same rows, except for a single trailing `Nothing written (dry run).`
- * line appended only when `dryRun` — callers that preview with
+ * of the same rows, except for a single trailing "nothing written" line
+ * appended only when `dryRun` — callers that preview with
  * `planAddonMetadataSync` (always `dryRun: true`) and then apply see the same
  * report shape, so the trailing line is the only tell.
+ *
+ * That trailing line is **direction-aware**, because `dryRun` carries two
+ * distinct meanings: the caller asked for a preview (`manifest-from-package`
+ * with `--dry-run`), or the direction structurally never writes
+ * (`package-from-manifest`, which chef cannot satisfy — it has no `.c3addon`
+ * writer). Labelling the second case a "dry run" would tell the operator to
+ * re-run without the flag, which would do exactly the same nothing.
  */
 export function formatAddonMetadataSync(result: AddonSyncResult): string {
   const { direction, rows, dryRun, reformatWarning } = result;
@@ -539,7 +546,20 @@ export function formatAddonMetadataSync(result: AddonSyncResult): string {
   }
 
   if (dryRun) {
-    lines.push("Nothing written (dry run).");
+    // `dryRun` carries two distinct meanings and the wording must not conflate them:
+    // the caller asked for a preview, OR the direction structurally never writes.
+    // Calling the latter a "dry run" would imply re-running without `--dry-run`
+    // would write — false, since chef has no `.c3addon` writer at all.
+    if (direction === "package-from-manifest") {
+      const stale = counts["would-change"];
+      lines.push(
+        stale > 0
+          ? `Nothing written — construct3-chef never rewrites a .c3addon. Re-export ${stale} package(s) from Construct.`
+          : "Nothing written — no package is stale.",
+      );
+    } else {
+      lines.push("Nothing written (dry run).");
+    }
   }
 
   return lines.join("\n");

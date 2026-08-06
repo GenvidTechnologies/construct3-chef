@@ -822,6 +822,29 @@ describe("addonMetadataSync", () => {
         expect(packageFromManifest).to.include("re-export it from Construct");
         expect(packageFromManifest).to.not.include("would update manifest entry");
       });
+
+      // `dryRun` is true for BOTH a requested preview and for package-from-manifest,
+      // which structurally never writes. Calling the second one a "dry run" would tell
+      // the operator to re-run without the flag — which would do the same nothing,
+      // since chef has no `.c3addon` writer.
+      it("package-from-manifest does not call itself a dry run", () => {
+        const output = formatAddonMetadataSync(makeResult({ direction: "package-from-manifest" }));
+        expect(output).to.not.include("(dry run)");
+        expect(output).to.include("never rewrites a .c3addon");
+        expect(output).to.include("Re-export 2 package(s) from Construct.");
+      });
+
+      it("package-from-manifest with nothing stale says so, rather than naming a count", () => {
+        const inSyncOnly = rows.filter((r) => r.status === "in-sync");
+        const output = formatAddonMetadataSync(makeResult({ direction: "package-from-manifest", rows: inSyncOnly }));
+        expect(output).to.not.include("(dry run)");
+        expect(output).to.include("Nothing written — no package is stale.");
+      });
+
+      it("manifest-from-package still uses the dry-run wording", () => {
+        const output = formatAddonMetadataSync(makeResult({ direction: "manifest-from-package" }));
+        expect(output).to.include("Nothing written (dry run).");
+      });
     });
 
     describe("empty case", () => {
