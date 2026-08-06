@@ -68,6 +68,7 @@ import { validateAddons, formatAddonValidation } from "../c3/addonValidator.js";
 import { listAddons, formatAddonInventory } from "../c3/addonInventory.js";
 import { diffAddonAces, formatAceDiff, resolveAceSource } from "../c3/addonAceDiff.js";
 import { scanAddonUsage, formatAddonUsage } from "../c3/addonAceUsage.js";
+import { syncAddonMetadata, formatAddonMetadataSync } from "../c3/addonMetadataSync.js";
 import { lookup, formatLookupResult } from "../c3/aceLookup.js";
 import { OpsRegistry } from "./opsRegistry.js";
 
@@ -108,11 +109,16 @@ function mcpErrorText(r: CallToolResult): string {
 
 // ── Handler registry (also enables direct handler invocation in tests) ─────────
 const handlers = new Map<string, (args: any, extra: Extra) => Promise<unknown>>();
+// Config objects (inputSchema/annotations/description) as passed to registerTool,
+// keyed by tool name — lets tests introspect the declared schema/annotations
+// without round-tripping through the SDK's own registration bookkeeping.
+const toolConfigs = new Map<string, Record<string, unknown>>();
 function reg<
   OutputArgs extends Record<string, import("zod").ZodTypeAny>,
   InputArgs extends undefined | Record<string, import("zod").ZodTypeAny> = undefined,
 >(...args: Parameters<typeof server.registerTool<OutputArgs, InputArgs>>): void {
   handlers.set(args[0] as string, args[2] as (a: any, e: Extra) => Promise<unknown>);
+  toolConfigs.set(args[0] as string, args[1] as Record<string, unknown>);
   server.registerTool(...args);
 }
 
@@ -1116,7 +1122,7 @@ reg(
   {
     title: "Validate Addons",
     description:
-      "Validate every bundled .c3addon package under addons/ against the project.c3proj usedAddons manifest: reports metadata mismatches (id/name/author/version), package-integrity failures (malformed zip, missing addon.json/aces.json, un-materialized git-lfs pointer, addon-id vs filename), aces.json vs lang/ ACE-entry consistency, orphan packages (on disk but not in usedAddons), missing packages (usedAddons bundled:true with no package on disk), and duplicate packages (multiple archives resolving to the same addon id). With `addon`, scope validation to a single addon (by discovered id, or by path to an addon source tree) instead of the whole project. Read-only; no mutation.",
+      "Validate every bundled .c3addon package under addons/ against the project.c3proj usedAddons manifest: reports metadata mismatches (author/version), package-integrity failures (malformed zip, missing addon.json/aces.json, un-materialized git-lfs pointer, addon-id vs filename), aces.json vs lang/ ACE-entry consistency, orphan packages (on disk but not in usedAddons), missing packages (usedAddons bundled:true with no package on disk), and duplicate packages (multiple archives resolving to the same addon id). With `addon`, scope validation to a single addon (by discovered id, or by path to an addon source tree) instead of the whole project. Read-only; no mutation.",
     annotations: READ_ONLY,
     inputSchema: {
       addon: z
@@ -1230,6 +1236,107 @@ reg(
         prefix: "scan-addon-usage:",
         extraLines: () => [txIdLine()],
       }),
+    ),
+);
+
+// Shared by both addon-metadata-sync tools below — `direction` is deliberately
+// NOT .optional(): the MCP analogue of the CLI's demandOption. The SDK rejects
+// a call missing it before either handler body runs (see T2).
+const ADDON_METADATA_SYNC_DIRECTION_SCHEMA = z
+  .enum(["manifest-from-package", "package-from-manifest"])
+  .describe(
+    "Sync direction: 'manifest-from-package' treats each .c3addon package's addon.json as source of " +
+      "truth and reports/writes into project.c3proj's usedAddons; 'package-from-manifest' is the reverse " +
+      "read-only report (chef has no .c3addon writer, so this direction never writes).",
+  );
+
+reg(
+  "preview-addon-metadata-sync",
+  {
+    title: "Preview Addon Metadata Sync",
+    description:
+      "Dry-run report of version/author drift between bundled .c3addon packages and project.c3proj's " +
+      "usedAddons manifest entries — the read-only preview for sync-addon-metadata. Never writes. With " +
+      "`addon`, scope to a single addon by discovered id.",
+    annotations: READ_ONLY,
+    inputSchema: {
+      direction: ADDON_METADATA_SYNC_DIRECTION_SCHEMA,
+      addon: z.string().optional().describe("Scope to a single addon by discovered id. Omit to preview all."),
+    },
+  },
+  async ({ direction, addon }) =>
+    rwlock.read(
+      withMcpErrors(
+        async () => {
+          const result = syncAddonMetadata(PROJECT_ROOT, { direction, addon, dryRun: true });
+          if ("error" in result) {
+            return mcpError(result.error, { prefix: "preview-addon-metadata-sync:", extraLines: [txIdLine()] });
+          }
+          return mcpContent(formatAddonMetadataSync(result), txIdLine());
+        },
+        { prefix: "preview-addon-metadata-sync:", extraLines: () => [txIdLine()] },
+      ),
+    ),
+);
+
+reg(
+  "sync-addon-metadata",
+  {
+    title: "Sync Addon Metadata",
+    description:
+      "Sync project.c3proj's usedAddons version/author fields against bundled .c3addon packages. Only " +
+      "'manifest-from-package' writes anything (chef has no .c3addon writer, so 'package-from-manifest' is " +
+      "a read-only report identical to preview-addon-metadata-sync). With `addon`, scope to a single addon. " +
+      "Pass txId from preview-addon-metadata-sync (or a prior call) for optimistic concurrency. Returns the " +
+      "sync report and the current txId — bumped only when the manifest was actually written.",
+    annotations: MUTATE,
+    inputSchema: {
+      direction: ADDON_METADATA_SYNC_DIRECTION_SCHEMA,
+      addon: z.string().optional().describe("Scope to a single addon by discovered id. Omit to sync all."),
+      txId: z.number().optional().describe("Expected txId — if stale, sync is rejected"),
+    },
+  },
+  async ({ direction, addon, txId: expectedTxId }) =>
+    rwlock.write(
+      withMcpErrors(
+        async () => {
+          if (expectedTxId !== undefined && expectedTxId !== watcher.txId) {
+            return mcpError(
+              `State changed (expected ${expectedTxId}, got ${watcher.txId}) — re-validate before syncing`,
+              { extraLines: [txIdLine()] },
+            );
+          }
+
+          let result: ReturnType<typeof syncAddonMetadata> | undefined;
+          // Suppress watcher — project.c3proj IS a watched target (sourceWatcher.ts
+          // SOURCE_DIRS/PROJECT_MANIFEST_FILE), so an unsuppressed write would
+          // self-trigger onSourceChange. No watcher.expect() needed: the sole write
+          // is to an already-existing, already-watched path entirely inside this
+          // synchronous suppress window — same rule sync-project (above) follows,
+          // and the same reasoning recorded at the workflow-tools comment below.
+          await watcher.suppress(async () => {
+            result = syncAddonMetadata(PROJECT_ROOT, { direction, addon, dryRun: false });
+          });
+
+          if (result === undefined || "error" in result) {
+            const message = result === undefined ? "sync-addon-metadata produced no result" : result.error;
+            return mcpError(message, { prefix: "sync-addon-metadata:", extraLines: [txIdLine()] });
+          }
+
+          // Bump ONLY if a write actually happened — a deliberate departure from
+          // sync-project (which bumps unconditionally because it's always in write
+          // mode). This tool has genuine no-write paths (a preview-shaped
+          // package-from-manifest report, or a manifest-from-package apply with no
+          // would-change rows); bumping on those would falsely invalidate every
+          // client's txId. extractedDirty is untouched either way — project.c3proj
+          // isn't a generator input (generateSidRegistry reads project.containers
+          // only) and the watcher itself excludes it from onSourceChange.
+          if (result.wrote) watcher.bump();
+
+          return mcpContent(formatAddonMetadataSync(result), txIdLine());
+        },
+        { prefix: "sync-addon-metadata:", extraLines: () => [txIdLine()] },
+      ),
     ),
 );
 
@@ -1812,6 +1919,9 @@ reg(
 // not on the src/index.ts barrel, so these stay internal. Do NOT import from production code.
 export function __getHandler(name: string): ((args: any, extra: Extra) => Promise<unknown>) | undefined {
   return handlers.get(name);
+}
+export function __getToolConfig(name: string): Record<string, unknown> | undefined {
+  return toolConfigs.get(name);
 }
 export function __setTestWatcher(w: OptimisticWatcher): void {
   watcher = w;

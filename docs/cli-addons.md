@@ -1,8 +1,8 @@
 # CLI Reference — Addon Tooling
 
 Bundled `.c3addon` package commands (`read-addon`, `validate-addons`, `list-addons`,
-`diff-addon-aces`, `scan-addon-usage`), split out of [cli.md](cli.md) as the
-c3addon-tooling cluster (#100 umbrella, #106–#111/#98/#109/#110) grows. All
+`diff-addon-aces`, `scan-addon-usage`, `sync-addon-metadata`), split out of [cli.md](cli.md) as the
+c3addon-tooling cluster (#100 umbrella, #106–#111/#98/#109/#110/#145) grows. All
 commands accept the global `--project-dir` option — see
 [cli.md § Global Options](cli.md#global-options).
 
@@ -56,11 +56,11 @@ npx construct3-chef read-addon FixtureClock --file aces.json --project-dir test/
 
 ## validate-addons
 
-Read-only check that bundled `.c3addon` packages under `addons/plugin/` and `addons/effect/` are consistent with `project.c3proj`'s `usedAddons` manifest and internally well-formed. Reports **metadata mismatches** (`id`/`author`/`version` differing between the package's `addon.json` and the matching `usedAddons` entry, matched by `id` — `name` is deliberately **not** cross-checked, since a package's `addon.json` display name legitimately differs from `usedAddons[].name`, the user-assigned instance name), **package-integrity** problems (un-materialized git-lfs pointer, malformed zip, a missing required entry — `addon.json` is required for every addon, `aces.json` is required for **plugin and behavior** addons only (effect addons legitimately ship none and are exempt) — or an addon `id` that doesn't match its package filename), and package-consistency problems:
+Read-only check that bundled `.c3addon` packages under `addons/plugin/`, `addons/behavior/`, and `addons/effect/` are consistent with `project.c3proj`'s `usedAddons` manifest and internally well-formed. Reports **metadata mismatches** (`author`/`version` differing between the package's `addon.json` and the matching `usedAddons` entry, matched by `id` — `name` is deliberately **not** cross-checked, since a package's `addon.json` display name legitimately differs from `usedAddons[].name`, the user-assigned instance name), **package-integrity** problems (un-materialized git-lfs pointer, malformed zip, a missing required entry — `addon.json` is required for every addon, `aces.json` is required for **plugin and behavior** addons only (effect addons legitimately ship none and are exempt) — or an addon `id` that doesn't match its package filename), and package-consistency problems:
 
 - **orphan** — a clean bundled `.c3addon` on disk (parses fine, no integrity problems) whose addon id is absent from `project.c3proj`'s `usedAddons`. A package that already fails an integrity check is reported via that finding only, not also as an orphan.
 - **missing** — a `usedAddons` entry with `bundled: true` that has no matching `.c3addon` package file on disk. `bundled: false` (editor-installed) addons are never flagged.
-- **duplicate** — two or more package files, enumerated recursively under `addons/plugin/` and `addons/effect/` (so a stale copy nested in a subfolder is caught), resolving to the same addon id.
+- **duplicate** — two or more package files, enumerated recursively under `addons/plugin/`, `addons/behavior/`, and `addons/effect/` (so a stale copy nested in a subfolder is caught), resolving to the same addon id.
 
 `c3runtime` is deliberately not required — plugin/effect layouts vary.
 
@@ -77,7 +77,7 @@ npx construct3-chef validate-addons [--project-dir <path>] [--addon <id|path>]
 Exits with code 1 if any finding is reported, so it fits a project's `commands.validate` chain.
 
 ```
-Checked 8 bundled addon(s), 8 issue(s):
+Checked 10 bundled addon(s), 8 issue(s):
   addons/plugin/Complete.c3addon: version mismatch — package '1.0.0.0' vs project.c3proj '1.0.0.9'
   addons/plugin/CorruptZip.c3addon: malformed zip (not a valid .c3addon archive)
   addons/plugin/LfsPointer.c3addon: un-materialized LFS pointer (git-lfs not fetched)
@@ -133,6 +133,88 @@ npx construct3-chef list-addons [--project-dir <path>]
 ```
 
 An empty project prints `No addons found.` Output uses the shared `formatAddonInventory` formatter, so the CLI and MCP `list-addons` surfaces are byte-identical. (Duplicate/nested-package detection is intentionally out of scope here — that's a `validate-addons` finding; `list-addons` uses flat discovery.)
+
+---
+
+## sync-addon-metadata
+
+Sync a bundled `.c3addon` package's `version`/`author` with its matching `project.c3proj` `usedAddons` entry. This is the addon-tooling cluster's only **mutation** — every other command above is read-only. See [ADR 0017](decisions/0017-sync-addon-metadata-separate-mutation-command.md) for the full design rationale (why a separate command rather than a fold, the byte-fidelity write mechanism, and the exit-code policy).
+
+```bash
+npx construct3-chef sync-addon-metadata --direction <manifest-from-package|package-from-manifest> [--addon <id>] [--dry-run] [--project-dir <path>]
+```
+
+| Option | Description |
+| ------ | ----------- |
+| `--direction <manifest-from-package\|package-from-manifest>` | **Required, no default.** Which side is source of truth. This is a human decision the tool must never guess — there is no principled way to compute "which side is newer" from C3's four-part dotted addon versions (not semver) — so it's enforced structurally (yargs `demandOption` on the CLI, a non-optional `z.enum` on the MCP tool) rather than left to fall through to a default. |
+| `--addon <id>` | Scope to a single addon. **Id-only** — unlike `validate-addons`/`diff-addon-aces`'s `<id|path>`, this does **not** accept a path to a raw addon source tree. The tool's whole job is writing into a discovered package's matching `usedAddons` entry; a path-mode addon has no package (`archivePath: ""`) and therefore no manifest entry to join against, so a path-shaped `--addon` is rejected outright rather than silently resolving to nothing. |
+| `--dry-run` | Preview without writing. Only meaningful for `--direction manifest-from-package` — `package-from-manifest` never writes regardless of this flag (see below). |
+
+**Only `manifest-from-package` writes.** It treats each package's `addon.json` as source of truth and updates the matching `usedAddons` entry's `version`/`author` fields in place. `package-from-manifest` is the reverse direction, but construct3-chef has no `.c3addon` writer — repacking a zip archive is out of scope — so it is always a **read-only report**: it tells you which packages are stale and that you need to re-export them from Construct, but never writes anything, `--dry-run` or not.
+
+Each addon is classified into one of four row states:
+
+- **would-change** — the two sides differ on `version` and/or `author`; the report lists the field(s) and their `from`/`to` values.
+- **in-sync** — the two sides already agree.
+- **blocked** — the row can't be resolved automatically (an unreadable package, an editor-only `bundled: false` manifest entry, an ambiguous addon id shared by two packages, or a manifest entry missing the field key outright — this tool overwrites a field, it never adds one).
+- **no-manifest-entry** — the package has no matching `usedAddons` entry at all (that's `list-addons`/`validate-addons` territory; this tool has nothing to sync it against).
+
+```
+$ npx construct3-chef sync-addon-metadata --project-dir test/fixtures/addon-validate --direction package-from-manifest
+sync-addon-metadata: package-from-manifest — 10 package(s)
+  1 would-change, 4 in-sync, 2 blocked, 3 no-manifest-entry
+
+  [in-sync] CleanControl  addons/plugin/CleanControl.c3addon
+
+  [would-change] Complete  addons/plugin/Complete.c3addon  — package is stale, re-export it from Construct to update
+    version: '1.0.0.9' → '1.0.0.0'
+
+  [blocked] CorruptZip  addons/plugin/CorruptZip.c3addon
+    reason: package is unreadable (corrupt archive, malformed zip, or un-materialized LFS pointer) — cannot read addon.json
+
+  [in-sync] Dup  addons/plugin/Dup.c3addon
+
+  [blocked] LfsPointer  addons/plugin/LfsPointer.c3addon
+    reason: package is unreadable (corrupt archive, malformed zip, or un-materialized LFS pointer) — cannot read addon.json
+
+  [no-manifest-entry] MissingAces  addons/plugin/MissingAces.c3addon
+
+  [in-sync] NameMismatchBehavior  addons/behavior/NameMismatchBehavior.c3addon
+
+  [in-sync] NoAcesEffect  addons/effect/NoAcesEffect.c3addon
+
+  [no-manifest-entry] NotMisnamed  addons/plugin/Misnamed.c3addon
+
+  [no-manifest-entry] Orphan  addons/plugin/Orphan.c3addon
+
+note: project.c3proj is not in canonical serialized form (original 1079 bytes vs canonical 1212 bytes) — a write will reformat the whole file
+Nothing written — construct3-chef never rewrites a .c3addon. Re-export 1 package(s) from Construct.
+```
+
+A `--direction manifest-from-package` dry-run against the same fixture reports the identical rows, framed as an action the tool would take (`would update manifest entry`) rather than a report:
+
+```
+$ npx construct3-chef sync-addon-metadata --project-dir test/fixtures/addon-validate --direction manifest-from-package --dry-run --addon Complete
+sync-addon-metadata: manifest-from-package — 1 package(s)
+  1 would-change, 0 in-sync, 0 blocked, 0 no-manifest-entry
+
+  [would-change] Complete  addons/plugin/Complete.c3addon  — would update manifest entry
+    version: '1.0.0.9' → '1.0.0.0'
+
+note: project.c3proj is not in canonical serialized form (original 1079 bytes vs canonical 1212 bytes) — a write will reformat the whole file
+Nothing written (dry run).
+```
+
+Dropping `--dry-run` from a `manifest-from-package` run writes the `would-change` rows' fields into `project.c3proj` in place (see ADR 0017's byte-fidelity discussion — the file is not reformatted beyond the fields actually changed, though a `note:` line warns when the file wasn't already in canonical serialized form before the write). Only fields, never keys, are written — a manifest entry missing a field key is `blocked`, not silently extended.
+
+### Exit codes
+
+**Exit 1 iff outstanding human work remains** — a rule specific to this command's blend of mutation and reporting, deliberately not a direct adoption of either of the two closest in-repo precedents (`sync-project`, which never exits non-zero, or `validate-addons`, which exits 1 on any finding regardless of severity):
+
+- **0** — every row is `in-sync`/`no-manifest-entry`, or a `manifest-from-package` apply (no `--dry-run`) resolved every `would-change` row it could. A successful write is exit 0 even though it mutated `project.c3proj`.
+- **1** — any row is `blocked` (requires the operator to resolve the ambiguity or editor-only status by hand), or any row is `would-change` in a mode that didn't write (`--dry-run`, or the inherently read-only `package-from-manifest` direction).
+
+Output uses the shared `formatAddonMetadataSync` formatter, so the CLI and MCP (`preview-addon-metadata-sync` / `sync-addon-metadata`) surfaces are byte-identical.
 
 ---
 

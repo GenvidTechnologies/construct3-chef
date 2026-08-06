@@ -3,14 +3,21 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
+import { READ_ONLY } from "@genvidtech/mcp-utils";
 import {
   __getHandler,
+  __getToolConfig,
   __setTestWatcher,
   __setExtractedDirty,
   __getExtractedDirty,
   __setProjectRoot,
   __resetTestState,
 } from "../../src/mcp/server.js";
+import { validateAddons, formatAddonValidation } from "../../src/c3/addonValidator.js";
+import { listAddons, formatAddonInventory } from "../../src/c3/addonInventory.js";
+import { syncAddonMetadata, formatAddonMetadataSync, type AddonSyncResult } from "../../src/c3/addonMetadataSync.js";
+import { seedManifestDrift } from "../helpers/seedManifestDrift.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = path.join(__dirname, "..", "fixtures", "construct3-chef-sample");
@@ -32,26 +39,37 @@ const VALID_RECIPE = JSON.stringify({
 });
 
 // ── Fake watcher ─────────────────────────────────────────────────────────────
-// Handlers under test only touch watcher.txId, watcher.bump(), and
-// watcher.suppress(fn). Cast to the SDK type when handing to __setTestWatcher.
+// Handlers under test only touch watcher.txId, watcher.bump(), watcher.suppress(fn),
+// and (sync-addon-metadata, deliberately NOT) watcher.expect(path) — expectCalls
+// records calls to prove the latter, T24 below asserts it stays empty.
+// Cast to the SDK type when handing to __setTestWatcher.
 
 interface FakeWatcher {
   txId: number;
   bumped: number;
+  suppressCalls: number;
+  expectCalls: string[];
   bump(): void;
   suppress<T>(fn: () => Promise<T>): Promise<T>;
+  expect(filePath: string): void;
 }
 
 function makeFakeWatcher(txId = 0): FakeWatcher {
   return {
     txId,
     bumped: 0,
+    suppressCalls: 0,
+    expectCalls: [],
     bump() {
       this.txId++;
       this.bumped++;
     },
     async suppress<T>(fn: () => Promise<T>): Promise<T> {
+      this.suppressCalls++;
       return fn();
+    },
+    expect(filePath: string) {
+      this.expectCalls.push(filePath);
     },
   };
 }
@@ -452,5 +470,173 @@ describe("MCP server handler response shaping", () => {
     expect(result.content[0].text).to.match(/\ntxId: 6$/);
     expect(watcher.bumped).to.equal(1);
     expect(__getExtractedDirty()).to.be.true;
+  });
+
+  // ── 13. preview-addon-metadata-sync / sync-addon-metadata (F2) ────────────
+  // sync-addon-metadata is the FIRST MUTATE tool in the addon surface — every
+  // other addon tool (read-addon, validate-addons, list-addons, diff-addon-aces,
+  // scan-addon-usage) is READ_ONLY. `tmp` (the mkdtempSync fixture copy set up
+  // in the outer beforeEach) is used directly by these tests, exactly like the
+  // apply-recipe MUTATE tests above — never the tracked fixture itself.
+
+  describe("addon-metadata-sync MCP tools", () => {
+    // MyCompany_MyBehavior's addon.json (version 1.0.0.0, author Scirra) matches
+    // the PRISTINE fixture's usedAddons entry exactly (see
+    // test/c3/addonMetadataSync.test.ts's makeSeededProject) — seeding this drift
+    // and then successfully applying manifest-from-package must reproduce
+    // project.c3proj byte-for-byte against FIXTURE_DIR's pristine copy.
+    function seedDrift(): void {
+      seedManifestDrift(FIXTURE_DIR, tmp, [{ id: "MyCompany_MyBehavior", version: "0.9.0.0", author: "Nobody" }]);
+    }
+
+    it("T2: direction is a required (non-optional) z.enum on both tools — the schema rejects a missing/invalid value before either handler body runs", () => {
+      for (const name of ["preview-addon-metadata-sync", "sync-addon-metadata"]) {
+        const config = __getToolConfig(name);
+        expect(config, `${name} should be registered`).to.exist;
+        const schema = z.object(config!.inputSchema as Record<string, z.ZodTypeAny>);
+
+        expect(schema.safeParse({}).success, `${name}: missing direction should be rejected`).to.equal(false);
+        expect(
+          schema.safeParse({ direction: "bogus" }).success,
+          `${name}: invalid direction should be rejected`,
+        ).to.equal(false);
+        expect(
+          schema.safeParse({ direction: "manifest-from-package" }).success,
+          `${name}: a valid direction should be accepted`,
+        ).to.equal(true);
+      }
+      expect(watcher.bumped).to.equal(0);
+    });
+
+    it("T20: validate-addons and list-addons keep READ_ONLY annotations and byte-identical output; neither module imports addonMetadataSync", async () => {
+      expect(__getToolConfig("validate-addons")!.annotations).to.deep.equal(READ_ONLY);
+      expect(__getToolConfig("list-addons")!.annotations).to.deep.equal(READ_ONLY);
+
+      const validateHandler = __getHandler("validate-addons")!;
+      const validateResult = (await validateHandler({}, makeExtra())) as any;
+      expect(validateResult.content[0].text).to.equal(`${formatAddonValidation(validateAddons(tmp))}\ntxId: 5`);
+
+      const listHandler = __getHandler("list-addons")!;
+      const listResult = (await listHandler({}, makeExtra())) as any;
+      expect(listResult.content[0].text).to.equal(`${formatAddonInventory(listAddons(tmp))}\ntxId: 5`);
+
+      // A prose cross-reference to addonMetadataSync.ts (its module doc comment
+      // names the sibling module by design — see the "Duality note" above
+      // checkMetadataMismatch) is fine; an actual `import ... from
+      // "./addonMetadataSync.js"` is the regression this guards against.
+      for (const modulePath of ["src/c3/addonValidator.ts", "src/c3/addonInventory.ts"]) {
+        const source = fs.readFileSync(path.resolve(modulePath), "utf-8");
+        expect(source, `${modulePath} should not import addonMetadataSync`).to.not.match(
+          /from\s+["']\.\/addonMetadataSync\.js["']/,
+        );
+      }
+    });
+
+    it("T21: sync-addon-metadata rejects a stale txId BEFORE any write, does not bump, response carries txId", async () => {
+      seedDrift();
+      const manifestPath = path.join(tmp, "project.c3proj");
+      const before = fs.readFileSync(manifestPath);
+
+      const handler = __getHandler("sync-addon-metadata")!;
+      const result = (await handler({ direction: "manifest-from-package", txId: 4 }, makeExtra())) as any;
+
+      expect(result.isError).to.be.true;
+      expect(result.content).to.have.length(1);
+      expect(result.content[0].text).to.equal(
+        "State changed (expected 4, got 5) — re-validate before syncing\ntxId: 5",
+      );
+      expect(watcher.bumped).to.equal(0);
+      expect(fs.readFileSync(manifestPath).equals(before), "manifest bytes must be unchanged").to.equal(true);
+    });
+
+    it("T22: a successful apply writes exactly one content block with a txId footer, bumps exactly once, and leaves extractedDirty unchanged", async () => {
+      seedDrift();
+      expect(__getExtractedDirty()).to.equal(false);
+
+      const handler = __getHandler("sync-addon-metadata")!;
+      const result = (await handler({ direction: "manifest-from-package", txId: 5 }, makeExtra())) as any;
+
+      expect(result.isError).to.be.undefined;
+      expect(result.content).to.have.length(1);
+      expect(result.content[0].text).to.include("txId: 6");
+      expect(watcher.bumped).to.equal(1);
+      expect(__getExtractedDirty()).to.equal(false);
+
+      const written = fs.readFileSync(path.join(tmp, "project.c3proj"));
+      const pristine = fs.readFileSync(path.join(FIXTURE_DIR, "project.c3proj"));
+      expect(written.equals(pristine), "restored manifest should equal the pristine fixture byte-for-byte").to.equal(
+        true,
+      );
+    });
+
+    it("T23: preview, a package-from-manifest sync, and a no-drift apply never call bump(); extractedDirty stays unchanged", async () => {
+      // Deliberately NOT seeded — the pristine fixture has no drift, so a
+      // manifest-from-package apply here is the no-write branch.
+      const previewHandler = __getHandler("preview-addon-metadata-sync")!;
+      const previewResult = (await previewHandler({ direction: "manifest-from-package" }, makeExtra())) as any;
+      expect(previewResult.isError).to.be.undefined;
+      expect(watcher.bumped).to.equal(0);
+
+      const syncHandler = __getHandler("sync-addon-metadata")!;
+
+      const packageFromManifestResult = (await syncHandler(
+        { direction: "package-from-manifest", txId: watcher.txId },
+        makeExtra(),
+      )) as any;
+      expect(packageFromManifestResult.isError).to.be.undefined;
+      expect(watcher.bumped).to.equal(0);
+
+      const noDriftResult = (await syncHandler(
+        { direction: "manifest-from-package", txId: watcher.txId },
+        makeExtra(),
+      )) as any;
+      expect(noDriftResult.isError).to.be.undefined;
+      expect(watcher.bumped).to.equal(0);
+
+      expect(__getExtractedDirty()).to.equal(false);
+    });
+
+    it("T24: the manifest write happens INSIDE watcher.suppress, and watcher.expect is never called", async () => {
+      seedDrift();
+      const manifestPath = path.join(tmp, "project.c3proj");
+
+      let changedDuringSuppress = false;
+      const trackingWatcher = makeFakeWatcher(5);
+      trackingWatcher.suppress = async <T>(fn: () => Promise<T>): Promise<T> => {
+        trackingWatcher.suppressCalls++;
+        const before = fs.readFileSync(manifestPath);
+        const result = await fn();
+        const after = fs.readFileSync(manifestPath);
+        changedDuringSuppress = !before.equals(after);
+        return result;
+      };
+      __setTestWatcher(trackingWatcher as any);
+
+      const handler = __getHandler("sync-addon-metadata")!;
+      const result = (await handler({ direction: "manifest-from-package", txId: 5 }, makeExtra())) as any;
+
+      expect(result.isError).to.be.undefined;
+      expect(trackingWatcher.suppressCalls).to.equal(1);
+      expect(changedDuringSuppress, "the manifest write should happen inside the suppress window").to.equal(true);
+      expect(trackingWatcher.expectCalls).to.deep.equal([]);
+    });
+
+    it("T25: MCP response text equals formatAddonMetadataSync's direct render of the same result — both surfaces route through the shared formatter", async () => {
+      seedDrift();
+
+      const previewHandler = __getHandler("preview-addon-metadata-sync")!;
+      const previewResult = (await previewHandler({ direction: "manifest-from-package" }, makeExtra())) as any;
+
+      const expected = syncAddonMetadata(tmp, { direction: "manifest-from-package", dryRun: true });
+      expect("error" in expected, "expected a success result").to.equal(false);
+      expect(previewResult.content[0].text).to.equal(
+        `${formatAddonMetadataSync(expected as AddonSyncResult)}\ntxId: 5`,
+      );
+
+      // Both tools must render via the shared formatter — not hand-built strings.
+      const serverSource = fs.readFileSync(path.resolve("src/mcp/server.ts"), "utf-8");
+      const callCount = (serverSource.match(/formatAddonMetadataSync\(/g) ?? []).length;
+      expect(callCount, "both tools should call formatAddonMetadataSync").to.be.at.least(2);
+    });
   });
 });
