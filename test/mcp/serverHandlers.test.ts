@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { READ_ONLY } from "@genvidtech/mcp-utils";
+import { READ_ONLY, walkFiles, toPosixPath } from "@genvidtech/mcp-utils";
 import {
   __getHandler,
   __getToolConfig,
@@ -272,7 +272,12 @@ describe("MCP server handler response shaping", () => {
   // ── 8. list-event-sheets pagination ──────────────────────────────────────
   // Fixture has 2 real event sheet entries under eventSheets/ (sorted):
   //   Event sheet 1.json, Event sheet 2.json
-  // The *.uistate.json editor-local files are excluded by the c3source finder.
+  // Editor-local exclusion here is an UPSTREAM c3source contract, not a
+  // chef-side filter: the handler calls PROJECT.findAllEventSheets(), which
+  // routes through c3source's find_all_eventsheets_path, which applies
+  // isEditorLocalPath internally. There is nothing in this repo to revert, so
+  // K1-K3 below cannot be driven red by reverting a local change — see the
+  // three-part anti-vacuity comment above those tests for what substitutes.
   // These are live filesystem reads — no stale warning even when dirty.
 
   describe("list-event-sheets", () => {
@@ -309,26 +314,97 @@ describe("MCP server handler response shaping", () => {
       expect(result.content[0].text).to.not.include(STALE_WARNING);
     });
 
-    it("excludes editor-local uistate files and includes all real sheets", async () => {
+    // K1-K3: one test per EDITOR_LOCAL_EXCLUSIONS dimension (fileSuffixes,
+    // dirs, exactNames — ADR 0016 precedent, see includeTree.test.ts for the
+    // same three-dimension split), each replacing the single vacuous test
+    // that used to live here. The canonical construct3-sample fixture tracks
+    // ZERO *.uistate.json/uistate/ files at every tag (verify-fixture-parity.mjs),
+    // so a bare `not.include` against the pristine fixture passes without
+    // exercising anything — and since the filter is c3source's, not chef's,
+    // there is no local hunk to revert for a genuine red (see the describe-
+    // level comment above). Each test below is therefore a THREE-part device:
+    //   (i)   an UNFILTERED baseline walk of the same tmp dir proves the
+    //         seeded editor-local file and the seeded real file both landed
+    //         and are reachable — kills a typo'd/misplaced seed.
+    //   (iii) a seeded REAL file (`Seeded Real.json`) proves the handler is
+    //         actually reading `tmp` (via __setProjectRoot) and not silently
+    //         falling back to the pristine fixture — if __setProjectRoot ever
+    //         stopped reassigning PROJECT, the handler would still list the
+    //         fixture's 2 real sheets and a bare not.include would still pass.
+    //   (ii)  the exclusion count is DERIVED (`baseline.length - 1`), never a
+    //         hardcoded literal, so the assertion survives a construct3-sample
+    //         pin bump that adds a real sheet to the fixture.
+    it("K1 fileSuffixes: excludes an *.uistate.json sibling, includes all real sheets", async () => {
+      const esDir = path.join(tmp, "eventSheets");
+      fs.writeFileSync(path.join(esDir, "Seeded Real.json"), JSON.stringify({ events: [] }));
+      fs.writeFileSync(path.join(esDir, "Event sheet 1.uistate.json"), JSON.stringify({ events: [] }));
+
+      const baseline = walkFiles(esDir, ".json").map((p) => toPosixPath(path.relative(esDir, p)));
+      expect(baseline).to.include("Event sheet 1.uistate.json");
+      expect(baseline).to.include("Seeded Real.json");
+
       const handler = __getHandler("list-event-sheets")!;
-      expect(handler).to.exist;
-
       const result = (await handler({}, makeExtra())) as any;
-      const text: string = result.content[0].text;
+      const lines: string[] = result.content[0].text.split("\n");
 
-      // Editor-local files must be absent
-      expect(text).to.not.include(".uistate.json");
-      // Both real event sheets must be present
-      expect(text).to.include("Event sheet 1.json");
-      expect(text).to.include("Event sheet 2.json");
+      expect(lines).to.include("Seeded Real.json");
+      expect(lines).to.not.include("Event sheet 1.uistate.json");
+      expect(lines).to.have.length(baseline.length - 1);
+    });
+
+    it("K2 dirs: excludes a uistate/ subfolder file, includes all real sheets", async () => {
+      const esDir = path.join(tmp, "eventSheets");
+      fs.writeFileSync(path.join(esDir, "Seeded Real.json"), JSON.stringify({ events: [] }));
+      fs.mkdirSync(path.join(esDir, "uistate"), { recursive: true });
+      fs.writeFileSync(path.join(esDir, "uistate", "Hidden.json"), JSON.stringify({ events: [] }));
+
+      const baseline = walkFiles(esDir, ".json").map((p) => toPosixPath(path.relative(esDir, p)));
+      expect(baseline).to.include("uistate/Hidden.json");
+      expect(baseline).to.include("Seeded Real.json");
+
+      const handler = __getHandler("list-event-sheets")!;
+      const result = (await handler({}, makeExtra())) as any;
+      const lines: string[] = result.content[0].text.split("\n");
+
+      expect(lines).to.include("Seeded Real.json");
+      expect(lines).to.not.include("uistate/Hidden.json");
+      expect(lines).to.have.length(baseline.length - 1);
+    });
+
+    it("K3 exactNames: excludes the editor-owned tsconfig.json, includes all real sheets", async () => {
+      const esDir = path.join(tmp, "eventSheets");
+      fs.writeFileSync(path.join(esDir, "Seeded Real.json"), JSON.stringify({ events: [] }));
+      fs.writeFileSync(path.join(esDir, "tsconfig.json"), JSON.stringify({}));
+
+      const baseline = walkFiles(esDir, ".json").map((p) => toPosixPath(path.relative(esDir, p)));
+      expect(baseline).to.include("tsconfig.json");
+      expect(baseline).to.include("Seeded Real.json");
+
+      const handler = __getHandler("list-event-sheets")!;
+      const result = (await handler({}, makeExtra())) as any;
+      const lines: string[] = result.content[0].text.split("\n");
+
+      expect(lines).to.include("Seeded Real.json");
+      expect(lines).to.not.include("tsconfig.json");
+      expect(lines).to.have.length(baseline.length - 1);
     });
   });
 
   // ── 9. list-layouts pagination ────────────────────────────────────────────
   // Fixture has 3 real layout entries under layouts/ (sorted):
   //   Main Layout.json, Second Layout.json, Templates Layout.json
-  // The *.uistate.json siblings and uistate/*.json files are excluded by the
-  // c3source finder.
+  // Editor-local exclusion here is an UPSTREAM c3source contract, not a
+  // chef-side filter: the handler calls PROJECT.findAllLayouts(), which
+  // routes through c3source's find_all_layouts_path, which applies
+  // isEditorLocalPath internally. There is nothing in this repo to revert, so
+  // L1-L3 below cannot be driven red by reverting a local change — the same
+  // three-part anti-vacuity device documented above list-event-sheets' K1-K3
+  // applies here, with ONE difference worth stating explicitly: the baseline
+  // walk below uses `walkFiles(layoutsDir, () => true)` with NO `.json`
+  // predicate, because find_all_layouts_path itself carries no `.json`
+  // filter (only !isEditorLocalPath) — unlike find_all_eventsheets_path. A
+  // `.json`-filtered baseline here would make the derived exclusion count
+  // wrong.
   // These are live filesystem reads — no stale warning even when dirty.
 
   describe("list-layouts", () => {
@@ -365,20 +441,62 @@ describe("MCP server handler response shaping", () => {
       expect(result.content[0].text).to.not.include(STALE_WARNING);
     });
 
-    it("excludes editor-local uistate files and includes all real layouts", async () => {
+    // L1-L3: the list-event-sheets K1-K3 device, replayed against list-layouts.
+    // See the describe-level comment above for why no genuine red is possible
+    // here and why the baseline predicate differs (no `.json` filter).
+    it("L1 fileSuffixes: excludes an *.uistate.json sibling, includes all real layouts", async () => {
+      const layoutsDir = path.join(tmp, "layouts");
+      fs.writeFileSync(path.join(layoutsDir, "Seeded Real.json"), JSON.stringify({ layers: [] }));
+      fs.writeFileSync(path.join(layoutsDir, "Main Layout.uistate.json"), JSON.stringify({ layers: [] }));
+
+      const baseline = walkFiles(layoutsDir, () => true).map((p) => toPosixPath(path.relative(layoutsDir, p)));
+      expect(baseline).to.include("Main Layout.uistate.json");
+      expect(baseline).to.include("Seeded Real.json");
+
       const handler = __getHandler("list-layouts")!;
-      expect(handler).to.exist;
-
       const result = (await handler({}, makeExtra())) as any;
-      const text: string = result.content[0].text;
+      const lines: string[] = result.content[0].text.split("\n");
 
-      // Editor-local files must be absent (*.uistate.json siblings and uistate/ subdir)
-      expect(text).to.not.include(".uistate.json");
-      expect(text).to.not.include("uistate/");
-      // All three real layouts must be present
-      expect(text).to.include("Main Layout.json");
-      expect(text).to.include("Second Layout.json");
-      expect(text).to.include("Templates Layout.json");
+      expect(lines).to.include("Seeded Real.json");
+      expect(lines).to.not.include("Main Layout.uistate.json");
+      expect(lines).to.have.length(baseline.length - 1);
+    });
+
+    it("L2 dirs: excludes a uistate/ subfolder file, includes all real layouts", async () => {
+      const layoutsDir = path.join(tmp, "layouts");
+      fs.writeFileSync(path.join(layoutsDir, "Seeded Real.json"), JSON.stringify({ layers: [] }));
+      fs.mkdirSync(path.join(layoutsDir, "uistate"), { recursive: true });
+      fs.writeFileSync(path.join(layoutsDir, "uistate", "Hidden.json"), JSON.stringify({ layers: [] }));
+
+      const baseline = walkFiles(layoutsDir, () => true).map((p) => toPosixPath(path.relative(layoutsDir, p)));
+      expect(baseline).to.include("uistate/Hidden.json");
+      expect(baseline).to.include("Seeded Real.json");
+
+      const handler = __getHandler("list-layouts")!;
+      const result = (await handler({}, makeExtra())) as any;
+      const lines: string[] = result.content[0].text.split("\n");
+
+      expect(lines).to.include("Seeded Real.json");
+      expect(lines).to.not.include("uistate/Hidden.json");
+      expect(lines).to.have.length(baseline.length - 1);
+    });
+
+    it("L3 exactNames: excludes the editor-owned tsconfig.json, includes all real layouts", async () => {
+      const layoutsDir = path.join(tmp, "layouts");
+      fs.writeFileSync(path.join(layoutsDir, "Seeded Real.json"), JSON.stringify({ layers: [] }));
+      fs.writeFileSync(path.join(layoutsDir, "tsconfig.json"), JSON.stringify({}));
+
+      const baseline = walkFiles(layoutsDir, () => true).map((p) => toPosixPath(path.relative(layoutsDir, p)));
+      expect(baseline).to.include("tsconfig.json");
+      expect(baseline).to.include("Seeded Real.json");
+
+      const handler = __getHandler("list-layouts")!;
+      const result = (await handler({}, makeExtra())) as any;
+      const lines: string[] = result.content[0].text.split("\n");
+
+      expect(lines).to.include("Seeded Real.json");
+      expect(lines).to.not.include("tsconfig.json");
+      expect(lines).to.have.length(baseline.length - 1);
     });
   });
 
