@@ -1,5 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import * as path from "node:path";
+import { readFileSync } from "node:fs";
 import type { EventSheet } from "@genvidtech/c3source";
 import { extractFunctions, find_all_eventsheets_path, visitEvents, openProject } from "@genvidtech/c3source";
 import type { C3Action } from "./eventSheetMutator.js";
@@ -40,7 +39,13 @@ export interface CustomAceIndex {
  * `<rootDir>/eventSheets/` and all family files under `<rootDir>/families/`.
  *
  * Uses synchronous I/O to match the rest of the codebase (recipeApplier etc.).
- * If `<rootDir>/families/` does not exist, the membership maps are left empty.
+ * A **missing** `<rootDir>/families/` is tolerated (mirrored from `C3Project`'s
+ * own `findInSection` `existsSync` guard) and leaves the membership maps empty.
+ * A **present-but-unreadable** `families/` throws instead of degrading to an
+ * empty map — this site owns a `C3Project` handle and can afford to fail loudly
+ * rather than silently emit false "not a member of family" errors at the #88
+ * runtime-resolution chokepoint (`recipeApplier.ts`). See ADR
+ * `docs/decisions/0019-two-walk-primitives-one-classification-rule.md`.
  */
 export function buildCustomAceIndex(rootDir: string): CustomAceIndex {
   const project = openProject(rootDir);
@@ -77,42 +82,44 @@ export function buildCustomAceIndex(rootDir: string): CustomAceIndex {
   // Reverse map:  memberName → Set<familyName>
   const memberToFamilies = new Map<string, Set<string>>();
 
-  const familiesDir = project.familiesDir;
-  if (existsSync(familiesDir)) {
-    let entries: string[];
+  let familyPaths: string[];
+  try {
+    familyPaths = project.findAllFamilies();
+  } catch (err) {
+    // Loud by design: this index backs the #88 runtime-resolution chokepoint
+    // (recipeApplier.ts:813). A validator that cannot read its inputs must say
+    // "could not validate", never fabricate a membership verdict. See ADR 0019.
+    throw new Error(
+      `custom-ACE validation could not read families/ under ${rootDir}: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
+  }
+
+  for (const absPath of familyPaths) {
+    let record: FamilyRecord;
     try {
-      entries = readdirSync(familiesDir);
+      record = JSON.parse(readFileSync(absPath, "utf-8")) as FamilyRecord;
     } catch {
-      entries = [];
+      continue;
     }
 
-    for (const filename of entries) {
-      if (!filename.endsWith(".json")) continue;
-      let record: FamilyRecord;
-      try {
-        record = JSON.parse(readFileSync(path.join(familiesDir, filename), "utf-8")) as FamilyRecord;
-      } catch {
-        continue;
-      }
+    const { name, members } = record;
+    if (!name || !Array.isArray(members)) continue;
 
-      const { name, members } = record;
-      if (!name || !Array.isArray(members)) continue;
+    let membersSet = familyToMembers.get(name);
+    if (!membersSet) {
+      membersSet = new Set();
+      familyToMembers.set(name, membersSet);
+    }
 
-      let membersSet = familyToMembers.get(name);
-      if (!membersSet) {
-        membersSet = new Set();
-        familyToMembers.set(name, membersSet);
+    for (const member of members) {
+      membersSet.add(member);
+      let familiesSet = memberToFamilies.get(member);
+      if (!familiesSet) {
+        familiesSet = new Set();
+        memberToFamilies.set(member, familiesSet);
       }
-
-      for (const member of members) {
-        membersSet.add(member);
-        let familiesSet = memberToFamilies.get(member);
-        if (!familiesSet) {
-          familiesSet = new Set();
-          memberToFamilies.set(member, familiesSet);
-        }
-        familiesSet.add(name);
-      }
+      familiesSet.add(name);
     }
   }
 
