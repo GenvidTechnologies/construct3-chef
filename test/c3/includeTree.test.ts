@@ -51,8 +51,10 @@ describe("buildSheetNameMap", () => {
   // Editor-local exclusion is delegated to c3source (isEditorLocalPath), so the
   // next three tests MUST stay synthetic: the construct3-chef-sample fixture carries
   // zero editor-local files under eventSheets/, so a fixture-based version would pass
-  // vacuously — asserting nothing about the exclusion. (That trap is live in this
-  // repo; see test/mcp/serverHandlers.test.ts:281-292 and :337-346.)
+  // vacuously — asserting nothing about the exclusion. (That trap was live in this
+  // repo until #149 closed it — see the K1-K3/L1-L3 seeded synthetic tests under
+  // "list-event-sheets"/"list-layouts" in test/mcp/serverHandlers.test.ts, and ADR
+  // docs/decisions/0019.)
   //
   // One test per dimension, deliberately. EDITOR_LOCAL_EXCLUSIONS has three
   // independent mechanisms — fileSuffixes ([".uistate.json"]), dirs (["uistate",
