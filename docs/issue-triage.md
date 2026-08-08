@@ -63,6 +63,36 @@ a proposed direction or acceptance criteria (even if rough), and at least one
 `area:*` label. An issue that is still an open question (no actionable direction)
 keeps/gets `to refine` instead — comment exactly what needs deciding.
 
+## What `triaged` does and does not assert
+
+`triaged` means the fields above are present and the issue has been deduplicated,
+linked, and prioritized. It does **not** mean the issue's **causal claims about the
+code** were verified — triage is a metadata pass over the whole backlog and
+deliberately does not read consumer chains or the installed dependency surface.
+Verifying premises belongs to planning (`gvt-dev:plan-task` treats an issue's
+concrete assertions as claims to diff against the artifact they describe).
+
+State it explicitly because the label reads as more assurance than it carries, and
+the gap has bitten: **#152** was triaged and carried three wrong premises — a
+severity direction that was *inverted* (the defect emitted false-positive
+rejections of valid recipes rather than letting bad ones through), a failure
+mechanism attributed to the wrong guard, and a "genuine fork, to be decided at plan
+time" whose upstream primitive already shipped in the pinned dependency. **#149**
+had already been corrected at triage once and *still* carried a stale line-number
+citation and an overstated failure mechanism — so a visible correction pass is not
+evidence the rest was checked.
+
+The fix is **not** to make triage verify code; that duplicates planning at
+backlog-wide cost. It is to keep the boundary legible in both directions:
+
+- **Triaging** — when you assert a mechanism or severity you have not checked,
+  write it as a hypothesis ("appears to…", "if so, then…"), not as a finding. A
+  confident wrong premise is more expensive than an admitted unknown, because the
+  planner may adopt it via the "issue is already a full proposal" shortcut.
+- **Planning** — read the artifact before adopting any premise, and reconcile the
+  issue body in the same PR when it turns out wrong, so the correction is inherited
+  rather than rediscovered.
+
 ## Splitting
 
 Split when one issue bundles unrelated work, or when an umbrella tracks several
