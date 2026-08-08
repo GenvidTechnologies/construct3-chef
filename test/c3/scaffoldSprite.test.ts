@@ -1,6 +1,6 @@
 import { describe, it, after } from "mocha";
 import { assert } from "chai";
-import { mkdtempSync, writeFileSync, copyFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import {
@@ -156,6 +156,79 @@ describe("scaffoldSprite", () => {
 
       assert.isFalse(sids.has(5212012), "imageSpriteId should not be treated as a sid");
     });
+
+    it("excludes a *.uistate.json sibling file but still collects the real file's sid (G1: fileSuffixes)", () => {
+      const dir = makeTmpDir();
+      writeObjectTypeFile(dir, "ObjA.json", makeObjectType("ObjA", { sid: 100000000000001 }));
+      writeObjectTypeFile(dir, "Real.uistate.json", makeObjectType("Real", { sid: 200000000000002 }));
+
+      const sids = collectAllObjectTypeSids(dir);
+
+      assert.isFalse(sids.has(200000000000002), "sid from a *.uistate.json sibling should be excluded");
+      assert.isTrue(sids.has(100000000000001), "sid from the real source file should still be collected");
+    });
+
+    it("excludes files under a uistate/ subdirectory but still collects the real file's sid (G2: dirs)", () => {
+      const dir = makeTmpDir();
+      writeObjectTypeFile(dir, "ObjA.json", makeObjectType("ObjA", { sid: 100000000000001 }));
+      mkdirSync(path.join(dir, "uistate"), { recursive: true });
+      writeObjectTypeFile(path.join(dir, "uistate"), "Hidden.json", makeObjectType("Hidden", { sid: 300000000000003 }));
+
+      const sids = collectAllObjectTypeSids(dir);
+
+      assert.isFalse(sids.has(300000000000003), "sid from a file under uistate/ should be excluded");
+      assert.isTrue(sids.has(100000000000001), "sid from the real source file should still be collected");
+    });
+
+    it("excludes files under a ts-defs/ subdirectory but still collects the real file's sid (G3: dirs)", () => {
+      const dir = makeTmpDir();
+      writeObjectTypeFile(dir, "ObjA.json", makeObjectType("ObjA", { sid: 100000000000001 }));
+      mkdirSync(path.join(dir, "ts-defs"), { recursive: true });
+      writeObjectTypeFile(path.join(dir, "ts-defs"), "Gen.json", makeObjectType("Gen", { sid: 400000000000004 }));
+
+      const sids = collectAllObjectTypeSids(dir);
+
+      assert.isFalse(sids.has(400000000000004), "sid from a file under ts-defs/ should be excluded");
+      assert.isTrue(sids.has(100000000000001), "sid from the real source file should still be collected");
+    });
+
+    it("does not crash on a JSONC tsconfig.json (with // comments) and still collects the real file's sid (G4: exactNames)", () => {
+      const dir = makeTmpDir();
+      writeObjectTypeFile(
+        dir,
+        "ObjA.json",
+        makeObjectType("ObjA", {
+          sid: 100000000000001,
+          instanceVarSid: 200000000000002,
+          animationSid: 300000000000003,
+        }),
+      );
+      writeFileSync(
+        path.join(dir, "tsconfig.json"),
+        '// this is a JSONC comment, not valid JSON\n{\n  "compilerOptions": {}\n}\n',
+        "utf-8",
+      );
+
+      // Not `assert.doesNotThrow(fn, message)` — chai's second positional arg
+      // is an errorLike/string matcher (asserting the thrown error's message
+      // does NOT match it), not a display message, so it would silently pass
+      // even if collectAllObjectTypeSids throws a differently-worded error.
+      let thrown: unknown;
+      let sids: Set<number> = new Set();
+      try {
+        sids = collectAllObjectTypeSids(dir);
+      } catch (err) {
+        thrown = err;
+      }
+      assert.isUndefined(thrown, "a JSONC tsconfig.json must not crash the sid collector");
+
+      assert.isTrue(sids.has(100000000000001), "sid from the real source file should still be collected");
+      assert.equal(
+        sids.size,
+        3,
+        "only ObjA.json's three sids should have been collected; tsconfig.json must be excluded, not parsed",
+      );
+    });
   });
 
   // ─── collectMaxImageSpriteId ───
@@ -182,6 +255,27 @@ describe("scaffoldSprite", () => {
       writeObjectTypeFile(dir, "ObjA.json", makeObjectType("ObjA", { imageSpriteId: 1234567 }));
       const max = collectMaxImageSpriteId(dir);
       assert.equal(max, 1234567);
+    });
+
+    it("does not inflate the max with an editor-local uistate imageSpriteId (H1)", () => {
+      const dir = makeTmpDir();
+      writeObjectTypeFile(dir, "ObjA.json", makeObjectType("ObjA", { imageSpriteId: 1234567 }));
+      writeObjectTypeFile(dir, "Real.uistate.json", makeObjectType("Real", { imageSpriteId: 99999999 }));
+
+      const max = collectMaxImageSpriteId(dir);
+
+      assert.equal(max, 1234567, "the larger uistate imageSpriteId must not be counted");
+    });
+
+    it("still finds the max imageSpriteId in a nested subdirectory (H2: regression lock)", () => {
+      const dir = makeTmpDir();
+      writeObjectTypeFile(dir, "ObjA.json", makeObjectType("ObjA", { imageSpriteId: 1234567 }));
+      mkdirSync(path.join(dir, "global"), { recursive: true });
+      writeObjectTypeFile(path.join(dir, "global"), "ObjB.json", makeObjectType("ObjB", { imageSpriteId: 8888888 }));
+
+      const max = collectMaxImageSpriteId(dir);
+
+      assert.equal(max, 8888888, "the larger value in the nested real file should still be found");
     });
   });
 

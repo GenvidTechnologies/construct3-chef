@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { mintUniqueSid } from "./sidUtils.js";
 import { walkFiles } from "@genvidtech/mcp-utils";
+import { isEditorLocalPathUnder } from "./editorLocal.js";
 
 // SID generation lives in ./sidUtils.js — `mintUniqueSid(existingSids)` enforces the
 // strict [1e14, 1e15) range with a 100-attempt collision cap. The historical local
@@ -10,9 +11,35 @@ import { walkFiles } from "@genvidtech/mcp-utils";
 
 // ─── File utilities ───
 
-/** Recursively collect all .json file paths under a directory */
-function findJsonFiles(dir: string): string[] {
-  return walkFiles(dir, ".json");
+/**
+ * Recursively collect project-*source* `.json` file paths under `objectTypesDir`,
+ * excluding every `EDITOR_LOCAL_EXCLUSIONS` dimension (a `uistate/`/`ts-defs/`
+ * directory segment, a `*.uistate.json` basename, or an exact `tsconfig.json`
+ * basename) via the shared segment-wise classifier `isEditorLocalPathUnder`.
+ *
+ * This private helper is deliberately named to avoid the name it used to
+ * share with `generators.ts`'s barrel-exported, deliberately *unfiltered*
+ * file-JSON collector (see `generators.ts:540`; ADR 0016 §3 declined changing
+ * that one). That byte-identical name is the documented cause of #149's
+ * original wrong premise ("a second private copy to dedup" — corrected at
+ * triage); the rename below removes the collision. This helper is NOT the
+ * same function as that barrel-exported one.
+ *
+ * Deliberately stays on mcp-utils' `walkFiles` rather than a c3source named
+ * collector (e.g. `find_all_objectTypes_path`): callers' contract is a bare
+ * directory and both callers are barrel-exported at 1.0.0, so they depend on
+ * `walkFiles`' missing-dir → `[]` degrade — `find_all_objectTypes_path` has no
+ * `existsSync` guard and would newly *throw*. See ADR
+ * `docs/decisions/0019-two-walk-primitives-one-classification-rule.md`.
+ *
+ * The predicate alone (not a `descend` rule) does the whole job: `walkFiles`
+ * passes the *full path* to the predicate, so `walkFiles` still *enters*
+ * `uistate/`/`ts-defs/` but classification is complete regardless — ADR 0016's
+ * "reachability is not classification" lesson cuts the *other* way for a
+ * path-predicate walk like this one.
+ */
+function findSourceJsonFiles(dir: string): string[] {
+  return walkFiles(dir, (p) => p.endsWith(".json") && !isEditorLocalPathUnder(dir, p));
 }
 
 // ─── SID collection from objectTypes ───
@@ -60,7 +87,7 @@ function collectObjectTypeSids(obj: unknown, sids: Set<number>): void {
  * Returns a Set of all SIDs found.
  */
 export function collectAllObjectTypeSids(objectTypesDir: string): Set<number> {
-  const files = findJsonFiles(objectTypesDir);
+  const files = findSourceJsonFiles(objectTypesDir);
   const sids = new Set<number>();
   for (const file of files) {
     const content = readFileSync(file, "utf-8");
@@ -75,7 +102,7 @@ export function collectAllObjectTypeSids(objectTypesDir: string): Set<number> {
  * Returns the maximum imageSpriteId found, or 0 if none exist.
  */
 export function collectMaxImageSpriteId(objectTypesDir: string): number {
-  const files = findJsonFiles(objectTypesDir);
+  const files = findSourceJsonFiles(objectTypesDir);
   const ids = new Set<number>();
   for (const file of files) {
     const content = readFileSync(file, "utf-8");
@@ -91,6 +118,16 @@ export function collectMaxImageSpriteId(objectTypesDir: string): number {
  * Discover all image files associated with a source objectType by naming convention.
  * Images follow the pattern: <sourcename-lowercase>-*.png (case-insensitive glob).
  * Returns an array of { sourcePath, targetPath } pairs.
+ *
+ * Deliberately left unfiltered for editor-local exclusion (its flat `readdirSync`
+ * below has no `isEditorLocalPathUnder` check): `images/` is not C3 project
+ * *source* — it's absent from `sourceWatcher.SOURCE_DIRS` and `SID_SOURCE_DIRS`,
+ * and c3source models it separately via `C3Project.imagesDir`/`detectImageDrift`.
+ * Every `EDITOR_LOCAL_EXCLUSIONS` dimension is also structurally unreachable
+ * through the `startsWith(prefix + "-") && endsWith(".png")` filter below:
+ * `.uistate.json` and `tsconfig.json` basenames both fail the `.png` suffix
+ * check, and the `dirs` dimension would need recursion this flat walk doesn't
+ * have. See ADR `docs/decisions/0019-two-walk-primitives-one-classification-rule.md`.
  */
 export function discoverAndPlanImageCopies(
   imagesDir: string,
