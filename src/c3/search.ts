@@ -125,7 +125,12 @@ export function search(config: SearchConfig, options: SearchOptions): SearchResu
   const isExtracted = typeEntry.baseDir === "extracted";
   const baseRoot = isExtracted ? config.extractedDir : config.projectRoot;
 
-  // Walk predicate shared by all four walkFiles() call sites below.
+  // Shared filter predicate. Applied at ALL SIX sites that populate
+  // filesToSearch: the four walkFiles() calls below, AND the two single-file
+  // branches ([inSubDir] and [candidatePath]), which bypass walkFiles
+  // entirely. The count is spelled out because those two branches are the
+  // bypass this filter originally missed — leaving the same file excluded via
+  // a directory walk but returned when addressed by exact stem.
   //
   // Anchored at baseRoot, not the walked dir: relativizing against the
   // walked dir leaves a hole for e.g. `path: "layouts/uistate"`, where the
