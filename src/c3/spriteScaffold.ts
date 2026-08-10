@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { mintUniqueSid } from "./sidUtils.js";
 import { walkFiles } from "@genvidtech/mcp-utils";
@@ -128,6 +128,22 @@ export function collectMaxImageSpriteId(objectTypesDir: string): number {
  * `.uistate.json` and `tsconfig.json` basenames both fail the `.png` suffix
  * check, and the `dirs` dimension would need recursion this flat walk doesn't
  * have. See ADR `docs/decisions/0019-two-walk-primitives-one-classification-rule.md`.
+ *
+ * Name-matched entries are additionally confirmed to be regular files via
+ * `statSync(...).isFile()` (which follows symlinks) before being planned as a
+ * copy source, because a directory or junction that happens to match the glob
+ * (e.g. a directory literally named `storybookicon-anything.png`) would
+ * otherwise reach `copyFileSync` and crash with a raw `EISDIR`. This is
+ * deliberately NOT `entry.isFile()` off a `{ withFileTypes: true }` dirent —
+ * that silently *drops* a symlink pointing at a real `.png`, which copies
+ * fine today — and NOT `!entry.isDirectory()` (the form mcp-utils' `walkFiles`
+ * uses) — that lets a junction pointing at a directory through, since a
+ * junction dirent reports `isSymbolicLink(): true` with *both* `isDirectory()`
+ * and `isFile()` false, so `!isDirectory()` admits it and `copyFileSync` still
+ * hits `EISDIR`. Only a resolved `statSync` answers the question that actually
+ * matters — "will `copyFileSync` succeed on this path?". The stat clause is
+ * ordered last in the filter so it only runs against entries that already
+ * matched the cheap name check.
  */
 export function discoverAndPlanImageCopies(
   imagesDir: string,
@@ -138,7 +154,10 @@ export function discoverAndPlanImageCopies(
   const targetPrefix = targetName.toLowerCase();
 
   const matches = readdirSync(imagesDir).filter(
-    (f) => f.toLowerCase().startsWith(sourcePrefix + "-") && f.toLowerCase().endsWith(".png"),
+    (f) =>
+      f.toLowerCase().startsWith(sourcePrefix + "-") &&
+      f.toLowerCase().endsWith(".png") &&
+      statSync(path.join(imagesDir, f), { throwIfNoEntry: false })?.isFile() === true,
   );
   return matches.map((basename) => {
     const suffix = basename.slice(sourcePrefix.length); // e.g., "-animation 1-000.png"
