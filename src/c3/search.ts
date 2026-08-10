@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { walkFiles, toPosixPath } from "@genvidtech/mcp-utils";
+import { isEditorLocalPathUnder } from "./editorLocal.js";
 
 /** File category for search operations. */
 export type SearchType = "dsl" | "ts" | "layout" | "md" | "json" | "idx";
@@ -114,6 +115,36 @@ export function search(config: SearchConfig, options: SearchOptions): SearchResu
   const isExtracted = typeEntry.baseDir === "extracted";
   const baseRoot = isExtracted ? config.extractedDir : config.projectRoot;
 
+  // Walk predicate shared by all four walkFiles() call sites below.
+  //
+  // Anchored at baseRoot, not the walked dir: relativizing against the
+  // walked dir leaves a hole for e.g. `path: "layouts/uistate"`, where the
+  // walked dir IS the editor-local directory — path.relative then yields a
+  // bare "Main.json", no segment is classified, and every editor-local file
+  // is returned. baseRoot is uniform across both branches (extracted vs
+  // project) and all six SearchTypes, and is immune to that ancestor-segment
+  // hazard because relativizing against it strips every segment above it.
+  //
+  // statSync (not readdir's Dirent.isFile()) because a directory junction /
+  // dangling symlink can appear as a walk candidate; try/catch (not
+  // statSync(p, { throwIfNoEntry: false })) because that option suppresses
+  // only ENOENT — ELOOP (symlink cycle) and EACCES still propagate, which
+  // would convert a walk that returns a bad path into a walk that throws.
+  // See GenvidTechnologies/mcp-utils#10, whose own Correction section
+  // records this. statSync deliberately follows symlinks: a symlink
+  // pointing at a real file must still be returned (Dirent.isFile() would
+  // wrongly drop it). This clause becomes redundant once mcp-utils#10 lands
+  // upstream, and can be dropped then.
+  const keep = (root: string) => (p: string) => {
+    if (!p.endsWith(typeEntry.ext)) return false;
+    if (isEditorLocalPathUnder(root, p)) return false;
+    try {
+      return fs.statSync(p).isFile();
+    } catch {
+      return false;
+    }
+  };
+
   // json type validation: path must start with eventSheets/ or layouts/
   if (searchType === "json") {
     if (options.path === undefined) {
@@ -144,12 +175,15 @@ export function search(config: SearchConfig, options: SearchOptions): SearchResu
       const inSubDir = path.join(baseRoot, typeSubDir, options.path + typeEntry.ext);
       const asDir = path.join(baseRoot, typeSubDir, options.path);
       if (fs.existsSync(inSubDir)) {
-        filesToSearch = [inSubDir];
+        // Filtered too: an exact-stem hit bypasses walkFiles, so without this
+        // the same file would be excluded via a directory walk yet returned
+        // when addressed directly. See the single-file note below.
+        filesToSearch = [inSubDir].filter(keep(baseRoot));
       } else if (fs.existsSync(asDir) && fs.statSync(asDir).isDirectory()) {
-        filesToSearch = walkFiles(asDir, typeEntry.ext);
+        filesToSearch = walkFiles(asDir, keep(baseRoot));
       } else {
         // Fallback: treat path as directory prefix within subDir
-        filesToSearch = walkFiles(asDir, typeEntry.ext);
+        filesToSearch = walkFiles(asDir, keep(baseRoot));
       }
       // Early assignment done above in if/else, skip normal candidatePath logic
       candidatePath = "";
@@ -160,17 +194,23 @@ export function search(config: SearchConfig, options: SearchOptions): SearchResu
     // If we haven't assigned filesToSearch yet (json case and non-subDir case)
     if (!filesToSearch!) {
       if (candidatePath && fs.existsSync(candidatePath)) {
-        filesToSearch = [candidatePath];
+        // Single-file branch: `keep` applies here as well as to the walks.
+        // Otherwise `path: "layouts/Main.uistate"` returns the editor-local
+        // file that `path: "layouts/"` correctly filters out, and
+        // `path: "layouts/uistate/Deep"` returns a file inside a directory
+        // that `path: "layouts/uistate"` reports as empty — the filter would
+        // contradict itself depending on how the same file was addressed.
+        filesToSearch = [candidatePath].filter(keep(baseRoot));
       } else {
         // Treat path as directory prefix
         const dirPath = path.join(baseRoot, typeEntry.subDir, options.path);
-        filesToSearch = walkFiles(dirPath, typeEntry.ext);
+        filesToSearch = walkFiles(dirPath, keep(baseRoot));
       }
     }
   } else {
     // No path: walk entire subDir
     const searchRoot = path.join(baseRoot, typeEntry.subDir);
-    filesToSearch = walkFiles(searchRoot, typeEntry.ext);
+    filesToSearch = walkFiles(searchRoot, keep(baseRoot));
   }
 
   // Perform search

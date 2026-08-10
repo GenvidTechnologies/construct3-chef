@@ -1,8 +1,10 @@
 import { expect } from "chai";
+import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { fileURLToPath } from "node:url";
 import { search } from "../../src/c3/search.js";
-import type { SearchConfig } from "../../src/c3/search.js";
+import type { SearchConfig, SearchResult } from "../../src/c3/search.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = path.join(__dirname, "..", "fixtures", "search");
@@ -228,5 +230,217 @@ describe("search", () => {
       path: "eventSheets/TestSheet",
     });
     expect(result.isExtracted).to.be.false;
+  });
+});
+
+// ── #159: editor-local filtering + EISDIR guard ────────────────────────────
+//
+// The fixture-backed suite above never seeds an editor-local path (uistate/,
+// *.uistate.json, ts-defs/) or a dangling/junction entry, so it can't exercise
+// either gap. These use synthetic mkdtempSync temp dirs — the canonical
+// fixture tracks zero editor-local files at every tag, so an assertion
+// against it would pass vacuously.
+describe("search — editor-local filtering and dangling entries (#159)", () => {
+  const tmpDirs: string[] = [];
+
+  afterEach(() => {
+    while (tmpDirs.length > 0) {
+      const dir = tmpDirs.pop()!;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function makeProject(): { config: SearchConfig; projectRoot: string; extractedDir: string } {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "chef-search-159-"));
+    tmpDirs.push(root);
+    const projectRoot = path.join(root, "project");
+    const extractedDir = path.join(root, "extracted");
+    fs.mkdirSync(projectRoot, { recursive: true });
+    fs.mkdirSync(extractedDir, { recursive: true });
+    return { config: { projectRoot, extractedDir }, projectRoot, extractedDir };
+  }
+
+  // ── Group A: editor-local filtering — currently absent, must FAIL ─────────
+
+  it("filters a *.uistate.json sibling file out of a layouts/ json search", () => {
+    const { config, projectRoot } = makeProject();
+    const layoutsDir = path.join(projectRoot, "layouts");
+    fs.mkdirSync(layoutsDir, { recursive: true });
+    fs.writeFileSync(path.join(layoutsDir, "Main.json"), '{"needle": true}', "utf-8");
+    fs.writeFileSync(path.join(layoutsDir, "Main.uistate.json"), '{"needle": true}', "utf-8");
+
+    const result = search(config, { pattern: "needle", type: "json", path: "layouts/" });
+
+    expect(result.lines.some((l) => l.includes("Main.uistate.json"))).to.be.false;
+    // Positive control: proves the walk had the opportunity to find both files.
+    expect(result.lines.some((l) => l.includes("layouts/Main.json"))).to.be.true;
+  });
+
+  it("filters files under a layouts/uistate/ directory out of a layouts/ json search", () => {
+    const { config, projectRoot } = makeProject();
+    const layoutsDir = path.join(projectRoot, "layouts");
+    const uistateDir = path.join(layoutsDir, "uistate");
+    fs.mkdirSync(uistateDir, { recursive: true });
+    fs.writeFileSync(path.join(uistateDir, "Main.json"), '{"needle": true}', "utf-8");
+    // Positive control, co-located at the top level.
+    fs.writeFileSync(path.join(layoutsDir, "Main.json"), '{"needle": true}', "utf-8");
+
+    const result = search(config, { pattern: "needle", type: "json", path: "layouts/" });
+
+    expect(result.lines.some((l) => l.includes("uistate/Main.json"))).to.be.false;
+    expect(result.lines.some((l) => l.includes("layouts/Main.json"))).to.be.true;
+  });
+
+  it("filters a *.uistate.json sibling file out of an eventSheets/ json search", () => {
+    const { config, projectRoot } = makeProject();
+    const sheetsDir = path.join(projectRoot, "eventSheets");
+    fs.mkdirSync(sheetsDir, { recursive: true });
+    fs.writeFileSync(path.join(sheetsDir, "Sheet.json"), '{"needle": true}', "utf-8");
+    fs.writeFileSync(path.join(sheetsDir, "Sheet.uistate.json"), '{"needle": true}', "utf-8");
+
+    const result = search(config, { pattern: "needle", type: "json", path: "eventSheets/" });
+
+    expect(result.lines.some((l) => l.includes("Sheet.uistate.json"))).to.be.false;
+    // Positive control: proves the walk had the opportunity to find both files.
+    expect(result.lines.some((l) => l.includes("eventSheets/Sheet.json"))).to.be.true;
+  });
+
+  it("returns no results when path targets an editor-local directory directly", () => {
+    // A walked-dir-anchored filter would still recurse into a directory that
+    // IS the walk root; only a baseRoot-anchored check catches this.
+    const { config, projectRoot } = makeProject();
+    const uistateDir = path.join(projectRoot, "layouts", "uistate");
+    fs.mkdirSync(uistateDir, { recursive: true });
+    fs.writeFileSync(path.join(uistateDir, "Main.json"), '{"needle": true}', "utf-8");
+
+    const result = search(config, { pattern: "needle", type: "json", path: "layouts/uistate" });
+
+    expect(result.lines.length).to.equal(0);
+  });
+
+  it("filters an editor-local file addressed by exact stem, not just via a directory walk", () => {
+    // The single-file branch bypasses walkFiles entirely, so the predicate has
+    // to be applied there too. Otherwise the SAME file is excluded when reached
+    // via `path: "layouts/"` but returned when named directly.
+    const { config, projectRoot } = makeProject();
+    const layoutsDir = path.join(projectRoot, "layouts");
+    fs.mkdirSync(layoutsDir, { recursive: true });
+    fs.writeFileSync(path.join(layoutsDir, "Main.json"), '{"needle": true}', "utf-8");
+    fs.writeFileSync(path.join(layoutsDir, "Main.uistate.json"), '{"needle": true}', "utf-8");
+
+    const editorLocal = search(config, { pattern: "needle", type: "json", path: "layouts/Main.uistate" });
+    expect(editorLocal.lines.length).to.equal(0);
+
+    // Positive control: the same exact-stem addressing still works for a real
+    // project file, so the assertion above is not passing because the branch
+    // is simply broken.
+    const real = search(config, { pattern: "needle", type: "json", path: "layouts/Main" });
+    expect(real.lines.some((l) => l.includes("layouts/Main.json"))).to.be.true;
+  });
+
+  it("filters a file inside an editor-local directory when addressed by exact stem", () => {
+    // Consistency with the directory case above: `path: "layouts/uistate"`
+    // reports empty, so `path: "layouts/uistate/Deep"` must not return the file
+    // living inside it.
+    const { config, projectRoot } = makeProject();
+    const uistateDir = path.join(projectRoot, "layouts", "uistate");
+    fs.mkdirSync(uistateDir, { recursive: true });
+    fs.writeFileSync(path.join(uistateDir, "Deep.json"), '{"needle": true}', "utf-8");
+
+    const result = search(config, { pattern: "needle", type: "json", path: "layouts/uistate/Deep" });
+
+    expect(result.lines.length).to.equal(0);
+  });
+
+  // ── Group B: unreachable dimensions — these already PASS. They document ──
+  // the prefix rule's blast radius (ts-defs/ and root-level tsconfig.json are
+  // unaddressable by json search at all), not filtering behavior.
+
+  it("[documents unreachability] json path 'scripts/' is rejected by the eventSheets/layouts prefix guard", () => {
+    expect(() => search(config, { pattern: "test", type: "json", path: "scripts/" })).to.throw(/eventSheets|layouts/i);
+  });
+
+  it("[documents unreachability] json search with no path is rejected, so root-level files (e.g. tsconfig.json) are unaddressable", () => {
+    expect(() => search(config, { pattern: "test", type: "json" })).to.throw(/path.*required/i);
+  });
+
+  // ── Group C: EISDIR / dangling-entry guard — currently absent, must FAIL ──
+
+  it("does not throw EISDIR when a directory junction sits under layouts/", () => {
+    const { config, projectRoot } = makeProject();
+    const layoutsDir = path.join(projectRoot, "layouts");
+    fs.mkdirSync(layoutsDir, { recursive: true });
+    fs.writeFileSync(path.join(layoutsDir, "Real.json"), '{"needle": true}', "utf-8");
+
+    const realTargetDir = path.join(projectRoot, "real-target-dir");
+    fs.mkdirSync(realTargetDir, { recursive: true });
+    fs.symlinkSync(realTargetDir, path.join(layoutsDir, "JunctionDir.json"), "junction");
+
+    let result: SearchResult | undefined;
+    expect(() => {
+      result = search(config, { pattern: "needle", type: "json", path: "layouts/" });
+    }).to.not.throw();
+
+    expect(result!.lines.some((l) => l.includes("JunctionDir.json"))).to.be.false;
+    expect(result!.lines.some((l) => l.includes("Real.json"))).to.be.true;
+  });
+
+  it("skips a dangling directory junction under layouts/ without throwing", function () {
+    const { config, projectRoot } = makeProject();
+    const layoutsDir = path.join(projectRoot, "layouts");
+    fs.mkdirSync(layoutsDir, { recursive: true });
+    fs.writeFileSync(path.join(layoutsDir, "Real.json"), '{"needle": true}', "utf-8");
+
+    const realTargetDir = path.join(projectRoot, "real-target-dir");
+    fs.mkdirSync(realTargetDir, { recursive: true });
+    const brokenLink = path.join(layoutsDir, "Broken.json");
+    try {
+      fs.symlinkSync(realTargetDir, brokenLink, "junction");
+    } catch {
+      this.skip();
+    }
+    fs.rmSync(realTargetDir, { recursive: true, force: true }); // dangle the link
+
+    let result: SearchResult | undefined;
+    expect(() => {
+      result = search(config, { pattern: "needle", type: "json", path: "layouts/" });
+    }).to.not.throw();
+
+    expect(result!.lines.some((l) => l.includes("Broken.json"))).to.be.false;
+    expect(result!.lines.some((l) => l.includes("Real.json"))).to.be.true;
+  });
+
+  it("still finds a file symlink pointing at a real .json (no regression)", function () {
+    const { config, projectRoot } = makeProject();
+    const layoutsDir = path.join(projectRoot, "layouts");
+    fs.mkdirSync(layoutsDir, { recursive: true });
+    const realPath = path.join(layoutsDir, "Real.json");
+    fs.writeFileSync(realPath, '{"needle": true}', "utf-8");
+    const linkPath = path.join(layoutsDir, "Linked.json");
+    // File-type symlinks require elevation/Developer Mode on Windows; skip
+    // rather than fail when the test environment can't create one.
+    try {
+      fs.symlinkSync(realPath, linkPath, "file");
+    } catch {
+      this.skip();
+    }
+
+    const result = search(config, { pattern: "needle", type: "json", path: "layouts/" });
+
+    expect(result.lines.some((l) => l.includes("Real.json"))).to.be.true;
+    expect(result.lines.some((l) => l.includes("Linked.json"))).to.be.true;
+  });
+
+  // ── Group D: no-op regression — extracted/-rooted types are unaffected ────
+
+  it("extracted/-rooted dsl search is unaffected (no-op regression)", () => {
+    const { config, extractedDir } = makeProject();
+    const sheetsDir = path.join(extractedDir, "eventSheets");
+    fs.mkdirSync(sheetsDir, { recursive: true });
+    fs.writeFileSync(path.join(sheetsDir, "X.dsl.txt"), "needle line\n", "utf-8");
+
+    const result = search(config, { pattern: "needle", type: "dsl" });
+
+    expect(result.lines.some((l) => l.includes("X.dsl.txt"))).to.be.true;
   });
 });
