@@ -1,6 +1,6 @@
 import { describe, it, after } from "mocha";
 import { assert } from "chai";
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, existsSync, rmSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import {
@@ -328,6 +328,76 @@ describe("scaffoldSprite", () => {
 
       assert.equal(copies.length, 1, "should only match exact prefix with hyphen separator");
       assert.equal(copies[0].sourceBasename, "storybookicon-animation 1-000.png");
+    });
+
+    it("skips a directory that happens to match the glob (co-located with a real image)", () => {
+      const dir = makeTmpDir();
+      // Co-located deliberately: both a directory and a real file match the same glob in the
+      // same directory, so the walk clearly had the opportunity to return the directory and
+      // chose not to (rather than passing vacuously because nothing else was there to find).
+      mkdirSync(path.join(dir, "storybookicon-anything.png"));
+      const realBasename = "storybookicon-animation 1-000.png";
+      writeFileSync(path.join(dir, realBasename), "data", "utf-8");
+
+      const copies = discoverAndPlanImageCopies(dir, "StoryBookIcon", "VideosIcon");
+
+      assert.equal(copies.length, 1, "the directory must not be planned as a copy source");
+      assert.equal(copies[0].sourceBasename, realBasename);
+    });
+
+    it("skips a junction pointing at a directory", () => {
+      const dir = makeTmpDir();
+      const realDir = path.join(dir, "real-target-dir");
+      mkdirSync(realDir);
+      symlinkSync(realDir, path.join(dir, "storybookicon-link.png"), "junction");
+      // Positive control, co-located.
+      const realBasename = "storybookicon-animation 1-000.png";
+      writeFileSync(path.join(dir, realBasename), "data", "utf-8");
+
+      const copies = discoverAndPlanImageCopies(dir, "StoryBookIcon", "VideosIcon");
+
+      assert.equal(copies.length, 1, "the junction must not be planned as a copy source");
+      assert.equal(copies[0].sourceBasename, realBasename);
+    });
+
+    it("still discovers a symlink pointing at a real .png (no regression)", function () {
+      const dir = makeTmpDir();
+      const realBasename = "storybookicon-animation 1-000.png";
+      const realPath = path.join(dir, realBasename);
+      writeFileSync(realPath, "data", "utf-8");
+      const linkBasename = "storybookicon-link.png";
+      // File-type symlinks require elevation/Developer Mode on Windows; skip rather than
+      // fail when the test environment can't create one.
+      try {
+        symlinkSync(realPath, path.join(dir, linkBasename), "file");
+      } catch {
+        this.skip();
+      }
+
+      const copies = discoverAndPlanImageCopies(dir, "StoryBookIcon", "VideosIcon");
+
+      assert.equal(copies.length, 2, "both the real file and the symlink to it should be discovered");
+    });
+
+    it("skips a broken (dangling) symlink", function () {
+      const dir = makeTmpDir();
+      const realDir = path.join(dir, "real-target-dir");
+      mkdirSync(realDir);
+      const linkBasename = "storybookicon-link.png";
+      try {
+        symlinkSync(realDir, path.join(dir, linkBasename), "junction");
+      } catch {
+        this.skip();
+      }
+      rmSync(realDir, { recursive: true, force: true }); // dangle the link
+      // Positive control, co-located.
+      const realBasename = "storybookicon-animation 1-000.png";
+      writeFileSync(path.join(dir, realBasename), "data", "utf-8");
+
+      const copies = discoverAndPlanImageCopies(dir, "StoryBookIcon", "VideosIcon");
+
+      assert.equal(copies.length, 1, "the broken symlink must not be planned as a copy source");
+      assert.equal(copies[0].sourceBasename, realBasename);
     });
   });
 
