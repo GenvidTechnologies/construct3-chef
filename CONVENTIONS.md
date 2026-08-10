@@ -106,7 +106,7 @@ A third example is the `wiki` block, configuring the LLM-wiki compounding-memory
 
 `wikiDir` and `rawDir` are declared `required: false` in both the `maintain-wiki` skill's and the `wiki-librarian` agent's `metadata.expects`. Both are optional because the wiki practice is opt-in — a repo that doesn't maintain a wiki must never fail the aggregated audit over it, the same reasoning behind the `package.json` expectation in `publish-npm-package`.
 
-`plan-task` reuses the existing `bugTracker` block — `readOne` to fetch the current issue body, plus the host-native issue-edit command (e.g. `gh issue edit --body-file`) — to read and write the plan's pre-committed `## Acceptance Criteria` checklist in the issue body. No new config block is introduced. For issue-less runs, the checklist falls back to a committed `docs/acceptance/<slug>.md` file. See ADR-0017.
+`plan-task` reuses the existing `bugTracker` block — `readOne` to fetch the current issue body, plus the host-native issue-edit command (e.g. `gh issue edit --body-file`) — to read and write the plan's pre-committed `## Acceptance Criteria` checklist in the issue body. No new config block is introduced. For issue-less runs, the checklist falls back to a committed `docs/acceptance/<slug>.md` file. See ADR-0017. For a plan targeting more than one issue, only the **canonical** target (the lowest issue number among them) gets the checklist via that same `readOne` + issue-edit round-trip; each **sibling** target instead gets a pointer to the canonical issue via the host-native comment command (e.g. `gh issue comment {id} --body …` for `bugTracker.kind: github`) — no second checklist copy, and no new `bugTracker` field.
 
 ## How `/gvt-dev:audit-conventions` works
 
@@ -160,6 +160,25 @@ Three axes — `files`, `config`, `tools` — plus a mandatory `reason` on every
 Under `files`, a **trailing slash marks a directory expectation** — `docs/decisions/` is satisfied by a directory, `docs/TOC.md` by a file, and the two are checked differently. Write the slash only when you mean a directory: a file path given a trailing slash will look for a directory of that name and report `directory not found`, and a directory path *without* one will never be satisfied no matter what is on disk. `create-adr`, `plan-task`, and `tech-writer` all declare `docs/decisions/` this way.
 
 Because `audit-conventions` aggregates every installed skill's **required** expectations into one repo-wide check, a prerequisite that only one skill needs — and that isn't one of the four contract files — should be `required: false`. Otherwise every consuming repo's audit fails even when that skill is never used. (Same principle as the `commands.*` rule above: "required if the corresponding skill is used.") The `package.json` expectation in `publish-npm-package` is the canonical example.
+
+### Practice-layer pillar declaration
+
+A component's frontmatter can also carry `metadata.pillar`, a sibling of `expects:` naming which of the practice layer's four pillars — `spec`, `verify`, `environment`, `moldable` — the component serves:
+
+```yaml
+---
+name: build-probe
+description: Scaffold a throwaway probe to answer a moldable-development question
+metadata:
+  pillar: moldable
+---
+```
+
+This is opt-in, the same principle as `expects:` above — "a skill with no prerequisites omits `expects:` entirely." Absence means the component is not a practice-layer component; it serves repo mechanics instead. Don't declare a pillar just to have one: the census records coverage, and a manufactured entry would make imbalance measure decomposition granularity rather than coverage.
+
+A component genuinely serving two pillars uses a comma-delimited scalar (`pillar: spec,verify`), not a YAML list — the frontmatter parser is deliberately minimal and doesn't read YAML scalar sequences, so a comma-delimited scalar covers the multi-pillar case with zero parser or schema change.
+
+The declared value feeds `audit-conventions`'s `### Practice Coverage` report section, which is advisory and carries no findings — it can never affect the audit's exit code.
 
 ## Forking and adapting
 
