@@ -93,6 +93,28 @@ backlog-wide cost. It is to keep the boundary legible in both directions:
   issue body in the same PR when it turns out wrong, so the correction is inherited
   rather than rediscovered.
 
+Two further shapes, both from **#159** (2026-08-10):
+
+- **Your own correction pass is not verification.** #159 was corrected at triage —
+  four real defects fixed (wrong `area:` label, a miscounted call-site list, a CLI
+  framing for a surface that isn't on the CLI, a stale "last one outstanding"). That
+  pass raised confidence *without adding verification*: the issue's central mechanism
+  claim — that the walk covered the entire project root — was carried forward into
+  planning as a "verified premise" and was **false** (`search()` guards the `json`
+  type so `path` is mandatory and prefixed, making that branch unreachable). Fixing N
+  defects in a body produces the felt sense of having audited it. When you correct the
+  periphery, **re-derive the central mechanism explicitly** — that is exactly when you
+  are least likely to.
+- **A cross-repo issue's *discouraging* claim fails silently.** `mcp-utils#10` asserted
+  that a predicate could not fix an `EISDIR` crash "because `walkFiles` decides
+  file-vs-directory before the predicate runs." A probe disproved it, and believing it
+  would have shipped #159 while leaving a live crash. Note the asymmetry against the
+  prescription case above: acting on a wrong *prescription* fails loudly (a test
+  breaks), while acting on a wrong *discouragement* produces no failing test at all —
+  nothing ever surfaces it. So a claim about what your code **cannot** do deserves
+  more scrutiny than one about what it should. When you disprove one, comment the
+  evidence on the upstream issue so the next reader doesn't inherit it.
+
 ## Splitting
 
 Split when one issue bundles unrelated work, or when an umbrella tracks several

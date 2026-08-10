@@ -43,6 +43,16 @@ const TYPE_MAP: Record<SearchType, TypeEntry> = {
   layout: { baseDir: "extracted", subDir: "layouts", ext: ".layout.txt" },
   md: { baseDir: "extracted", subDir: "domain-index", ext: ".md" },
   idx: { baseDir: "extracted", subDir: "eventSheets", ext: ".dsl.idx.txt" },
+  // ⚠️ `subDir: ""` does NOT mean "walks the whole project root". `json` is
+  // guarded in search() below: `path` is MANDATORY and must start with
+  // "eventSheets/" or "layouts/" (the trailing slash is load-bearing — plain
+  // "layouts" throws). So the no-path walk is unreachable for this type, and
+  // the reachable surface is only those two subtrees.
+  //
+  // Reading this entry in isolation has produced the same wrong inference
+  // three separate times (see #159, whose body asserted the whole-project-root
+  // walk twice before a probe disproved it). Keep this pointer next to the
+  // entry — the guard is ~70 lines away and easy to miss.
   json: { baseDir: "project", subDir: "", ext: ".json" },
 };
 
