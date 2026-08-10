@@ -443,4 +443,29 @@ describe("search — editor-local filtering and dangling entries (#159)", () => 
 
     expect(result.lines.some((l) => l.includes("X.dsl.txt"))).to.be.true;
   });
+
+  it("is immune to an editor-local segment in an ANCESTOR of the base root", () => {
+    // Locks the claim ADR 0020 makes for anchoring at baseRoot rather than the
+    // project root: relativizing against baseRoot strips every segment above
+    // it, so a project that merely LIVES under a directory named `uistate` (or
+    // an extractedDir under one named `ts-defs`) is not self-filtering. A
+    // project-root-anchored check would be fine here too; a naive
+    // classification of the absolute path would wrongly return nothing.
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), "search-ancestor-"));
+    try {
+      const projectRoot = path.join(base, "uistate", "myproject");
+      const extractedDir = path.join(projectRoot, "ts-defs", "extracted");
+      fs.mkdirSync(path.join(extractedDir, "eventSheets"), { recursive: true });
+      fs.mkdirSync(path.join(projectRoot, "layouts"), { recursive: true });
+      fs.writeFileSync(path.join(extractedDir, "eventSheets", "X.dsl.txt"), "needle line\n", "utf-8");
+      fs.writeFileSync(path.join(projectRoot, "layouts", "Main.json"), '{"needle": true}', "utf-8");
+
+      const config: SearchConfig = { projectRoot, extractedDir, maxMatches: 1000, maxPatternLength: 500 };
+
+      expect(search(config, { pattern: "needle", type: "dsl" }).lines.length).to.be.greaterThan(0);
+      expect(search(config, { pattern: "needle", type: "json", path: "layouts/" }).lines.length).to.be.greaterThan(0);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
 });
