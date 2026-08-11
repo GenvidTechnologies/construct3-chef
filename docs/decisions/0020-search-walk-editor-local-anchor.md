@@ -106,13 +106,35 @@ silent drop.
   #159's body got the reachable call-site count wrong twice while scoping
   this. Filtering unconditionally means no future `SearchType` addition
   needs to re-derive which sites it reaches.
-- **The `statSync` clause is deliberately temporary.** It duplicates work
-  `walkFiles` will do once mcp-utils#10 lands, at which point it becomes
-  redundant and should be dropped — recorded so a future reader doesn't
-  mistake it for permanent defensive code. The upstream fix is still wanted
-  even after this local patch, since it covers all of chef's `walkFiles`
-  call sites plus the sibling `c3-domain-manager` project in one place,
-  where this clause covers only `search()`.
+- **The `statSync` clause is partly, but not wholly, superseded by
+  mcp-utils 0.6.0.** ⚠️ **Corrected 2026-08-10 — this bullet previously said
+  the clause "becomes redundant and should be dropped" once mcp-utils#10
+  landed. Following that verbatim would ship a regression.** mcp-utils 0.6.0
+  makes `walkFiles` guarantee every returned path is a regular file, so the
+  clause is now redundant for the **four `walkFiles` sites** — but it remains
+  **load-bearing for the two single-file branches**, which never call
+  `walkFiles` and reach `readFileSync` through a bare `existsSync()` that
+  reports `true` for a directory. The original wording was written when
+  `keep()` had only the four walk callers, and was falsified by the two
+  single-file branches added later in the same change — the same sentence
+  block, and the same later edit, that also left its site count reading
+  "four" instead of six.
+
+  Verified by probe: with 0.6.0 installed, deleting the clause makes
+  `path: "layouts/DirNamed"` (a `.json`-suffixed **directory**, addressed by
+  exact stem) throw `EISDIR` again. The dangerous part is that **every other
+  test stayed green** — the bump silently converted a guarded clause into an
+  unguarded one, because the pre-existing junction tests all reach the walk
+  path that upstream now filters. The regression test
+  *"does not throw EISDIR when an exact stem names a .json-suffixed
+  directory"* was added for exactly this and is the only test that fails if
+  the clause is removed.
+
+  The upstream fix was still worth having: it covers chef's other three
+  `walkFiles` call sites (`generators.findJsonFiles`, `spriteScaffold`,
+  `cli.ts`'s `search-dsl`) plus the sibling `c3-domain-manager` in one place,
+  with no local change. Those inherited fixes are locked by their own tests,
+  each verified to fail on 0.5.1 and pass on 0.6.0.
 - **Coverage is synthetic temp-dir with positive controls, not the
   canonical fixture** — the fixture tracks zero editor-local files at every
   tag, so a fixture-based assertion would pass vacuously, the same trap ADR

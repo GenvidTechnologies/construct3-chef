@@ -1,9 +1,9 @@
 import { describe, it, after } from "mocha";
 import { assert } from "chai";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { generateSidRegistry } from "../../src/c3/generators.js";
+import { generateSidRegistry, findJsonFiles } from "../../src/c3/generators.js";
 import { openProject } from "@genvidtech/c3source";
 import { fileURLToPath } from "node:url";
 
@@ -311,5 +311,40 @@ describe("openProject field equality", () => {
   it("scriptsDir equals path.join(root, 'scripts')", () => {
     const r = path.resolve("some-proj");
     assert.strictEqual(openProject(r).scriptsDir, path.join(r, "scripts"));
+  });
+});
+
+// Inherited from @genvidtech/mcp-utils 0.6.0 (mcp-utils#10): walkFiles now
+// guarantees every returned path is a regular file. `findJsonFiles` passes a
+// bare ".json" suffix, so before 0.6.0 a .json-NAMED DIRECTORY JUNCTION was
+// returned as though it were a file and callers hit EISDIR on read. No local
+// code change produced the fix — this locks the upstream behaviour so a
+// regression, or a dependency-range downgrade, fails here.
+describe("findJsonFiles — non-regular entries", () => {
+  const tmpDirs: string[] = [];
+
+  after(() => {
+    for (const d of tmpDirs) rmSync(d, { recursive: true, force: true });
+  });
+
+  it("does not return a .json-named directory junction", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "findJsonFiles-"));
+    tmpDirs.push(dir);
+
+    writeFileSync(path.join(dir, "Real.json"), "{}", "utf-8");
+    const target = path.join(dir, "sometree");
+    mkdirSync(target);
+    writeFileSync(path.join(target, "inner.json"), "{}", "utf-8");
+    symlinkSync(target, path.join(dir, "JunctionDir.json"), "junction");
+
+    const found = findJsonFiles(dir).map((p) => path.basename(p));
+
+    assert.notInclude(found, "JunctionDir.json", "a directory junction must not be returned as a file");
+    // Positive control: the walk ran and reached this directory's entries.
+    assert.include(found, "Real.json", "the real sibling must still be found");
+    // Every returned path must be readable as a file — the guarantee 0.6.0 adds.
+    for (const p of findJsonFiles(dir)) {
+      assert.doesNotThrow(() => readFileSync(p, "utf-8"), `returned path must be readable: ${p}`);
+    }
   });
 });

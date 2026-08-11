@@ -229,6 +229,28 @@ describe("scaffoldSprite", () => {
         "only ObjA.json's three sids should have been collected; tsconfig.json must be excluded, not parsed",
       );
     });
+
+    // Inherited from @genvidtech/mcp-utils 0.6.0 (mcp-utils#10): walkFiles now
+    // guarantees every returned path is a regular file, so a .json-NAMED
+    // DIRECTORY JUNCTION is no longer emitted as a candidate and never reaches
+    // readFileSync. No local code change produced this — the test locks the
+    // upstream behaviour so a regression or a range downgrade is caught here
+    // rather than as an EISDIR crash in the field.
+    it("skips a .json-named directory junction instead of trying to parse it", () => {
+      const dir = makeTmpDir();
+      writeObjectTypeFile(dir, "ObjA.json", makeObjectType("ObjA", { sid: 111111111111111 }));
+
+      const realTargetDir = path.join(dir, "sometree");
+      mkdirSync(realTargetDir);
+      writeFileSync(path.join(realTargetDir, "inner.json"), "{}", "utf-8");
+      symlinkSync(realTargetDir, path.join(dir, "JunctionDir.json"), "junction");
+
+      const sids = collectAllObjectTypeSids(dir);
+
+      // Positive control: the real sibling was collected, so the walk ran and
+      // had the opportunity to reach the junction.
+      assert.isTrue(sids.has(111111111111111), "ObjA.json's sid must still be collected");
+    });
   });
 
   // ─── collectMaxImageSpriteId ───
