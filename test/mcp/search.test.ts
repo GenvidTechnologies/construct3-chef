@@ -338,6 +338,35 @@ describe("search — editor-local filtering and dangling entries (#159)", () => 
     expect(real.lines.some((l) => l.includes("layouts/Main.json"))).to.be.true;
   });
 
+  // ⚠️ THE test that keeps `keep`'s statSync clause honest after the
+  // @genvidtech/mcp-utils 0.6.0 bump. Upstream now guarantees walkFiles returns
+  // only regular files, which makes the clause redundant for the four walk
+  // sites — but the two SINGLE-FILE branches never call walkFiles, so it stays
+  // load-bearing there. Verified 2026-08-10: with 0.6.0 installed, deleting the
+  // clause leaves every other test in this file green while this one fails with
+  // EISDIR. Without it, ADR 0020's "becomes redundant and should be dropped"
+  // would ship a regression through a fully green gate.
+  it("does not throw EISDIR when an exact stem names a .json-suffixed directory", () => {
+    const { config, projectRoot } = makeProject();
+    const layoutsDir = path.join(projectRoot, "layouts");
+    fs.mkdirSync(layoutsDir, { recursive: true });
+    fs.writeFileSync(path.join(layoutsDir, "Real.json"), '{"needle": true}', "utf-8");
+    // A real DIRECTORY whose name ends .json. existsSync() reports true for it,
+    // so the single-file branch reaches it without ever consulting walkFiles.
+    fs.mkdirSync(path.join(layoutsDir, "DirNamed.json"));
+
+    let result: SearchResult | undefined;
+    expect(() => {
+      result = search(config, { pattern: "needle", type: "json", path: "layouts/DirNamed" });
+    }).to.not.throw();
+    expect(result!.lines.length).to.equal(0);
+
+    // Positive control: exact-stem addressing still resolves a real file, so
+    // the assertion above is not passing because the branch is simply broken.
+    const real = search(config, { pattern: "needle", type: "json", path: "layouts/Real" });
+    expect(real.lines.some((l) => l.includes("layouts/Real.json"))).to.be.true;
+  });
+
   it("filters a file inside an editor-local directory when addressed by exact stem", () => {
     // Consistency with the directory case above: `path: "layouts/uistate"`
     // reports empty, so `path: "layouts/uistate/Deep"` must not return the file

@@ -140,16 +140,27 @@ export function search(config: SearchConfig, options: SearchOptions): SearchResu
   // project) and all six SearchTypes, and is immune to that ancestor-segment
   // hazard because relativizing against it strips every segment above it.
   //
-  // statSync (not readdir's Dirent.isFile()) because a directory junction /
-  // dangling symlink can appear as a walk candidate; try/catch (not
-  // statSync(p, { throwIfNoEntry: false })) because that option suppresses
-  // only ENOENT — ELOOP (symlink cycle) and EACCES still propagate, which
-  // would convert a walk that returns a bad path into a walk that throws.
-  // See GenvidTechnologies/mcp-utils#10, whose own Correction section
-  // records this. statSync deliberately follows symlinks: a symlink
-  // pointing at a real file must still be returned (Dirent.isFile() would
-  // wrongly drop it). This clause becomes redundant once mcp-utils#10 lands
-  // upstream, and can be dropped then.
+  // The statSync clause rejects anything that is not provably a regular file
+  // (directory junction, dangling symlink). try/catch rather than
+  // statSync(p, { throwIfNoEntry: false }) because that option suppresses only
+  // ENOENT — ELOOP (symlink cycle) and EACCES still propagate, which would turn
+  // a walk that returns a bad path into a walk that throws. statSync
+  // deliberately follows symlinks: a symlink pointing at a real file must still
+  // be returned (Dirent.isFile() would wrongly drop it).
+  //
+  // ⚠️ DO NOT DELETE THIS CLAUSE. mcp-utils 0.6.0 (mcp-utils#10) made walkFiles
+  // guarantee every returned path is a regular file, so the clause IS now
+  // redundant for the four walkFiles sites — but it is still LOAD-BEARING for
+  // the two single-file branches, which never call walkFiles and reach
+  // readFileSync via a bare existsSync() that reports true for a directory.
+  // An earlier revision of this comment (and ADR 0020) said the clause
+  // "becomes redundant and should be dropped" once upstream landed. That was
+  // written when keep() had only the four walk callers and was falsified by
+  // the two single-file branches added later in the same change. Verified by
+  // probe on 2026-08-10: dropping it makes `path: "layouts/DirNamed"` throw
+  // EISDIR again, while every other test in search.test.ts stays green —
+  // see "does not throw EISDIR when an exact stem names a .json-suffixed
+  // directory", which exists precisely to fail if this is removed.
   const keep = (root: string) => (p: string) => {
     if (!p.endsWith(typeEntry.ext)) return false;
     if (isEditorLocalPathUnder(root, p)) return false;
