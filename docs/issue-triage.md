@@ -115,6 +115,30 @@ Two further shapes, both from **#159** (2026-08-10):
   more scrutiny than one about what it should. When you disprove one, comment the
   evidence on the upstream issue so the next reader doesn't inherit it.
 
+Two more, from **#169** and **#172** (2026-08-12) — both filed by the maintainer
+and *untriaged*, so neither had a `triaged` label to over-trust. The gap this
+section describes is not created by the label; the label only hides it:
+
+- **An issue offering two alternative fixes makes a third claim — that either one
+  works.** #169's *primary* proposed fix was correct. Its *alternative* ("ADR
+  0016's **two** walk declines") was wrong: ADR 0016 has **three** DECLINE
+  sections, and `docs/TOC.md` and `CLAUDE.md` both already say three, so adopting
+  it would have created a fresh count inconsistency across three documents — the
+  exact drift class the issue existed to fix. The body presented both as
+  equivalent ("Either fix closes the defect"). Under planning's *"issue is already
+  a full proposal"* shortcut either may be adopted, so **verify each alternative
+  independently, and treat "either works" as itself a premise.** Note this is the
+  inverse of the usual worry: the *headline* claim was sound and the *escape
+  hatch* was defective, which is the half a confident reader skims.
+- **A cited commit can be impossible.** #172 anchored a table of measurements to a
+  SHA whose content *predates the edit being measured* — it cannot have produced
+  the quoted figures, which were evidently taken from a dirty working tree. A SHA
+  reads as evidence and buys the surrounding numbers unearned credibility, so when
+  an issue reports figures *with* a commit, spend the one command that checks it
+  (`git show <sha>:<file> | wc -c`). Here the headline (29%) survived and only a
+  supporting figure was wrong — which is the reason to say so explicitly when
+  correcting it, or the correction reads as though it undermined the issue.
+
 ## Splitting
 
 Split when one issue bundles unrelated work, or when an umbrella tracks several
