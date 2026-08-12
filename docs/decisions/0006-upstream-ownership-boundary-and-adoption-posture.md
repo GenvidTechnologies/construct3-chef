@@ -21,7 +21,7 @@ The boundary runs as follows:
 
 **Young-package adoption posture**: while a `@genvid` package is young / pre-1.0, **prefer adopting upstream + accepting a local contract break** over entrenching a local workaround. When a needed primitive's *shape* doesn't fit the consuming operation, **request the right shape upstream and gate the local issue on it** rather than forcing a partial fit. The `#42 → c3source#21` case (a detection-only flat `detectManifestDrift` that couldn't back a mutating nested op; waited for the path-bearing `SectionDrift`/`DriftEntry` API) is the canonical "request the right shape, wait" precedent.
 
-See [CLAUDE.md](../../CLAUDE.md) § "Leaf dependencies" and § "Adoption posture" for the full history and specific adoption decisions.
+See [CLAUDE.md](../../CLAUDE.md) § "Leaf dependencies" (which also carries the adoption posture) for the full history and specific adoption decisions.
 
 ## Compromise
 
@@ -38,4 +38,4 @@ The forced-partial-fit anti-pattern (adopting an upstream primitive whose shape 
 - Governs the whole adoption issue stream (#25, #26, #27, #28, #42, #47, #94, and future issues).
 - Barrel-breaking removals (symbols deleted from re-exported modules) are semver-breaking at any version; they are noted in commit bodies and flagged at release tags.
 - ADR 0007 is itself an instance of this posture: `resolveRootFolder` (plumbing) moved to `mcp-utils`, `openProject`/`C3Project` (domain handle) moved to `c3source`, rendering stayed local.
-- When an upstream primitive is missing, file an intent request on the upstream repo rather than re-rolling it locally. See CLAUDE.md § "Adoption posture" for the `c3source` vs. `mcp-utils` routing guidance.
+- When an upstream primitive is missing, file an intent request on the upstream repo rather than re-rolling it locally. See CLAUDE.md § "Leaf dependencies" for the `c3source` vs. `mcp-utils` routing guidance.
