@@ -38,6 +38,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Bumped `@genvidtech/c3source` to `^2.0.0`, adopting its `.json` item policy — the
+  layout and objectType finders now return only `.json` section items. This fixes
+  **ten** unguarded `JSON.parse` sites with no code change: each would have thrown
+  `SyntaxError` the first time a stray non-`.json` file appeared under `layouts/` or
+  `objectTypes/`. The release's other breaking change (dotted extensions) was audited
+  and is a verified non-event here — no `src/` module imports any affected symbol.
+  ([#175](https://github.com/GenvidTechnologies/construct3-chef/issues/175), ADR 0021)
+- **Behavior change on the `list-layouts` MCP tool:** a stray non-`.json` file under
+  `layouts/` no longer appears in the tool's response. `list-layouts` renders finder
+  output without parsing it, so it is the one consumer where the otherwise
+  crash-fixing item policy is visible as an output change rather than a fix. Almost
+  certainly the intended behavior — the tool's own description says "List all C3
+  layout JSON files" — but it is user-visible. No CLI counterpart exists.
+  ([#175](https://github.com/GenvidTechnologies/construct3-chef/issues/175))
 - Bumped `@genvidtech/mcp-utils` to `^0.6.0`, adopting its `walkFiles` fix — which
   now guarantees every returned path is a regular file. ([#168](https://github.com/GenvidTechnologies/construct3-chef/issues/168), ADR 0020)
 - Bumped the canonical `construct3-sample` fixture pin to `v0.7.0`. ([#147](https://github.com/GenvidTechnologies/construct3-chef/issues/147))
