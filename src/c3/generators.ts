@@ -455,6 +455,7 @@ export function generateTemplateScope(rootDir: string, outDir: string, log: Logg
     lines.push("");
   }
 
+  mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "template-scope.txt");
   writeFileSync(outPath, lines.join("\n"));
   log(`Generated template-scope.txt (${results.length} templates across ${byLayout.size} layouts)`);
@@ -612,10 +613,15 @@ export interface GeneratorEntry {
 }
 
 /**
- * Single source of truth for the six generators, in run order (order is
- * currently load-bearing — `extractScripts` runs first and is what creates
- * `outDir` today). Consumed by both `cli.ts`'s `runGenerators` and
- * `server.ts`'s `GENERATOR_STEPS`.
+ * Single source of truth for the six generators, in run order. Consumed by
+ * both `cli.ts`'s `runGenerators` and `server.ts`'s `GENERATOR_STEPS`.
+ *
+ * Every entry creates its own `outDir` — no entry depends on an earlier one
+ * having created it (#178). Order is therefore presentational (progress
+ * labels, log sequence), not a correctness constraint, which is what makes
+ * `--only <name>` safe for any single entry. `test/c3/generatorOutDir.test.ts`
+ * enforces this across the whole inventory, so a seventh entry added here is
+ * covered automatically.
  */
 export const GENERATORS: readonly GeneratorEntry[] = [
   { name: "scripts", label: "Extracting scripts", run: extractScripts },
