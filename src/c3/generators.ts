@@ -597,3 +597,31 @@ export function generateSidRegistry(projectRoot: string, outDir: string, log: Lo
 
   log(`Generated sid-registry.txt (${allEntries.length} SID entries from ${allFiles.length} files)`);
 }
+
+// ─── Generator inventory ───
+
+export const GENERATOR_NAMES = ["scripts", "dsl", "layouts", "templates", "sid-registry", "global-layers"] as const;
+export type GeneratorName = (typeof GENERATOR_NAMES)[number];
+
+export interface GeneratorEntry {
+  /** CLI `--only` value. */
+  name: GeneratorName;
+  /** Human-readable label used for MCP progress notifications. */
+  label: string;
+  run(rootDir: string, outDir: string, log: Logger): void;
+}
+
+/**
+ * Single source of truth for the six generators, in run order (order is
+ * currently load-bearing — `extractScripts` runs first and is what creates
+ * `outDir` today). Consumed by both `cli.ts`'s `runGenerators` and
+ * `server.ts`'s `GENERATOR_STEPS`.
+ */
+export const GENERATORS: readonly GeneratorEntry[] = [
+  { name: "scripts", label: "Extracting scripts", run: extractScripts },
+  { name: "dsl", label: "Generating DSL", run: generateDSL },
+  { name: "layouts", label: "Generating layout summaries", run: generateLayoutSummaries },
+  { name: "templates", label: "Generating template scope", run: generateTemplateScope },
+  { name: "sid-registry", label: "Generating SID registry", run: generateSidRegistry },
+  { name: "global-layers", label: "Generating global layers", run: generateGlobalLayers },
+];
