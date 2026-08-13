@@ -28,16 +28,7 @@ import {
 import type { Logger } from "@genvidtech/mcp-utils";
 import { applyParsed } from "../c3/recipeApplier.js";
 import { validateRecipe, type Recipe } from "../c3/recipeInterpreter.js";
-import {
-  extractScripts,
-  generateDSL,
-  generateLayoutSummaries,
-  generateTemplateScope,
-  generateSidRegistry,
-  generateGlobalLayers,
-  findJsonFiles,
-  SID_SOURCE_DIRS,
-} from "../c3/generators.js";
+import { GENERATORS, findJsonFiles, SID_SOURCE_DIRS } from "../c3/generators.js";
 import { runSync, reportImageDrift } from "../c3/projectSync.js";
 import { isEditorLocalPathUnder } from "../c3/editorLocal.js";
 import { readRegistryFile, mintUniqueSid } from "../c3/sidUtils.js";
@@ -155,17 +146,14 @@ async function sendProgress(extra: Extra, progress: number, total: number, messa
   });
 }
 
-const GENERATOR_STEPS = [
-  { name: "Extracting scripts", fn: (log: Logger) => extractScripts(PROJECT_ROOT, EXTRACTED_DIR, log) },
-  { name: "Generating DSL", fn: (log: Logger) => generateDSL(PROJECT_ROOT, EXTRACTED_DIR, log) },
-  {
-    name: "Generating layout summaries",
-    fn: (log: Logger) => generateLayoutSummaries(PROJECT_ROOT, EXTRACTED_DIR, log),
-  },
-  { name: "Generating template scope", fn: (log: Logger) => generateTemplateScope(PROJECT_ROOT, EXTRACTED_DIR, log) },
-  { name: "Generating SID registry", fn: (log: Logger) => generateSidRegistry(PROJECT_ROOT, EXTRACTED_DIR, log) },
-  { name: "Generating global layers", fn: (log: Logger) => generateGlobalLayers(PROJECT_ROOT, EXTRACTED_DIR, log) },
-] as const;
+// Derived from the shared GENERATORS inventory. The `fn` closures must read
+// PROJECT_ROOT/EXTRACTED_DIR at call time (not capture them eagerly) — both
+// are module-level mutable and reassigned by startServer and the
+// __setProjectRoot/__resetTestState test seams.
+const GENERATOR_STEPS = GENERATORS.map((g) => ({
+  name: g.label,
+  fn: (log: Logger) => g.run(PROJECT_ROOT, EXTRACTED_DIR, log),
+}));
 
 class CancelledError extends Error {
   constructor() {

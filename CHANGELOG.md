@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read-only. A mandatory `--direction` (`manifest-from-package` |
   `package-from-manifest`) names the source of truth; only `manifest-from-package`
   writes, since chef has no `.c3addon` writer. ([#153](https://github.com/GenvidTechnologies/construct3-chef/issues/153), ADR 0017)
+- `GENERATORS`, `GeneratorEntry`, `GENERATOR_NAMES`, and `GeneratorName` are now
+  exported from `src/c3/generators.ts` — a single source of truth for the six
+  generators, replacing a module-private list in `cli.ts` and a hand-written one in
+  `server.ts`. Additive, so not breaking, but note these are barrel-exported and
+  therefore permanently supported. Consumers can now iterate the generator set
+  rather than hard-coding it. ([#178](https://github.com/GenvidTechnologies/construct3-chef/issues/178), ADR 0022)
 
 ### Changed
 
@@ -62,6 +68,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `generate --only templates` no longer throws `ENOENT` on a project whose
+  `extracted/` directory does not already exist. `generateTemplateScope` was the one
+  generator of six that wrote its output file without first creating the output
+  directory, so it worked only because `extractScripts` happened to run before it and
+  created the directory as a side effect. The same applied to calling the
+  barrel-exported `generateTemplateScope` directly. Every generator is now
+  self-sufficient, so run order is presentational rather than a correctness
+  constraint. ([#178](https://github.com/GenvidTechnologies/construct3-chef/issues/178), ADR 0022)
 - Editor-local writes are no longer treated as source changes. An external edit to
   a `uistate/`/`ts-defs/` directory, a `*.uistate.json` sibling, or `tsconfig.json`
   no longer bumps `txId` or marks `extracted/` dirty. Filtered at the watcher

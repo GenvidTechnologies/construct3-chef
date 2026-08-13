@@ -74,10 +74,17 @@ describe("stray-file tolerance in chef's consumers (#175)", () => {
     writeFileSync(path.join(objectTypesDir, "Hero.json"), JSON.stringify({ name: "Hero", "plugin-id": "Sprite" }));
     writeFileSync(path.join(objectTypesDir, "README.md"), "# Notes\nThis is a stray readme, not JSON.\n");
 
-    // The generators write into `extracted/` but do not all create it themselves
-    // (`generateTemplateScope` writes its single output file directly). Pre-create
-    // it so a missing output dir cannot be mistaken for the stray-file failure this
-    // test exists to detect.
+    // Pre-create `extracted/` so a missing output dir cannot be mistaken for the
+    // stray-file failure this test exists to detect.
+    //
+    // This is now belt-and-braces rather than load-bearing: as of #178 every
+    // generator creates its own `outDir`, so these passes would survive without
+    // it. Keeping it deliberately — it leaves this suite independent of that
+    // behaviour, so a regression in outDir self-sufficiency surfaces in its own
+    // guard (`generatorOutDir.test.ts`) instead of failing here as an ambiguous
+    // ENOENT that looks like a stray-file problem. (Before #178 the comment here
+    // read that the generators "do not all create it themselves" — true at the
+    // time, and the observation that led to filing #178.)
     mkdirSync(path.join(root, "extracted"), { recursive: true });
 
     return root;

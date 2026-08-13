@@ -455,6 +455,7 @@ export function generateTemplateScope(rootDir: string, outDir: string, log: Logg
     lines.push("");
   }
 
+  mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "template-scope.txt");
   writeFileSync(outPath, lines.join("\n"));
   log(`Generated template-scope.txt (${results.length} templates across ${byLayout.size} layouts)`);
@@ -597,3 +598,36 @@ export function generateSidRegistry(projectRoot: string, outDir: string, log: Lo
 
   log(`Generated sid-registry.txt (${allEntries.length} SID entries from ${allFiles.length} files)`);
 }
+
+// ─── Generator inventory ───
+
+export const GENERATOR_NAMES = ["scripts", "dsl", "layouts", "templates", "sid-registry", "global-layers"] as const;
+export type GeneratorName = (typeof GENERATOR_NAMES)[number];
+
+export interface GeneratorEntry {
+  /** CLI `--only` value. */
+  name: GeneratorName;
+  /** Human-readable label used for MCP progress notifications. */
+  label: string;
+  run(rootDir: string, outDir: string, log: Logger): void;
+}
+
+/**
+ * Single source of truth for the six generators, in run order. Consumed by
+ * both `cli.ts`'s `runGenerators` and `server.ts`'s `GENERATOR_STEPS`.
+ *
+ * Every entry creates its own `outDir` — no entry depends on an earlier one
+ * having created it (#178). Order is therefore presentational (progress
+ * labels, log sequence), not a correctness constraint, which is what makes
+ * `--only <name>` safe for any single entry. `test/c3/generatorOutDir.test.ts`
+ * enforces this across the whole inventory, so a seventh entry added here is
+ * covered automatically.
+ */
+export const GENERATORS: readonly GeneratorEntry[] = [
+  { name: "scripts", label: "Extracting scripts", run: extractScripts },
+  { name: "dsl", label: "Generating DSL", run: generateDSL },
+  { name: "layouts", label: "Generating layout summaries", run: generateLayoutSummaries },
+  { name: "templates", label: "Generating template scope", run: generateTemplateScope },
+  { name: "sid-registry", label: "Generating SID registry", run: generateSidRegistry },
+  { name: "global-layers", label: "Generating global layers", run: generateGlobalLayers },
+];

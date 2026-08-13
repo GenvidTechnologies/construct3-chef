@@ -7,14 +7,7 @@ import { hideBin } from "yargs/helpers";
 import { walkFiles, toPosixPath } from "@genvidtech/mcp-utils";
 import { openProject } from "@genvidtech/c3source";
 import { loadChefConfig, resolveOpsDir } from "./c3/chefConfig.js";
-import {
-  extractScripts,
-  generateDSL,
-  generateLayoutSummaries,
-  generateTemplateScope,
-  generateSidRegistry,
-  generateGlobalLayers,
-} from "./c3/generators.js";
+import { GENERATORS, GENERATOR_NAMES, type GeneratorName } from "./c3/generators.js";
 import { applyParsed, renameSymbols } from "./c3/recipeApplier.js";
 import type { Recipe } from "./c3/recipeInterpreter.js";
 import { ALL_SECTION_KEYS, runSync, reportImageDrift } from "./c3/projectSync.js";
@@ -44,9 +37,6 @@ import { diffAddonAces, formatAceDiff, resolveAceSource } from "./c3/addonAceDif
 import { scanAddonUsage, formatAddonUsage } from "./c3/addonAceUsage.js";
 import { syncAddonMetadata, formatAddonMetadataSync, type SyncDirection } from "./c3/addonMetadataSync.js";
 
-const GENERATOR_NAMES = ["scripts", "dsl", "layouts", "templates", "sid-registry", "global-layers"] as const;
-type GeneratorName = (typeof GENERATOR_NAMES)[number];
-
 // Resolve the package version for `--version`. The URL is relative to this
 // module file, so it resolves correctly from both dist/cli.js (→ dist/../package.json)
 // and src/cli.ts under tsx (→ src/../package.json).
@@ -65,21 +55,12 @@ async function resolveExtractedDir(rootDir: string): Promise<string> {
 function runGenerators(rootDir: string, extractedDir: string, only?: GeneratorName): void {
   const outDir = path.join(rootDir, extractedDir);
 
-  const generators: Array<{ name: GeneratorName; run: () => void }> = [
-    { name: "scripts", run: () => extractScripts(rootDir, outDir, console.log) },
-    { name: "dsl", run: () => generateDSL(rootDir, outDir, console.log) },
-    { name: "layouts", run: () => generateLayoutSummaries(rootDir, outDir, console.log) },
-    { name: "templates", run: () => generateTemplateScope(rootDir, outDir, console.log) },
-    { name: "sid-registry", run: () => generateSidRegistry(rootDir, outDir, console.log) },
-    { name: "global-layers", run: () => generateGlobalLayers(rootDir, outDir, console.log) },
-  ];
-
-  const toRun = only ? generators.filter((g) => g.name === only) : generators;
+  const toRun = only ? GENERATORS.filter((g) => g.name === only) : GENERATORS;
 
   console.log("=== Generating C3 extracted files ===\n");
   for (let i = 0; i < toRun.length; i++) {
     if (i > 0) console.log("");
-    toRun[i].run();
+    toRun[i].run(rootDir, outDir, console.log);
   }
   console.log("\n=== Done ===");
 }
