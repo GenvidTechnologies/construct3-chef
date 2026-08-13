@@ -74,6 +74,12 @@ describe("stray-file tolerance in chef's consumers (#175)", () => {
     writeFileSync(path.join(objectTypesDir, "Hero.json"), JSON.stringify({ name: "Hero", "plugin-id": "Sprite" }));
     writeFileSync(path.join(objectTypesDir, "README.md"), "# Notes\nThis is a stray readme, not JSON.\n");
 
+    // The generators write into `extracted/` but do not all create it themselves
+    // (`generateTemplateScope` writes its single output file directly). Pre-create
+    // it so a missing output dir cannot be mistaken for the stray-file failure this
+    // test exists to detect.
+    mkdirSync(path.join(root, "extracted"), { recursive: true });
+
     return root;
   }
 
