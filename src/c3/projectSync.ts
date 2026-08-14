@@ -1,7 +1,13 @@
 import { writeFileSync, readdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import type { Logger } from "@genvidtech/mcp-utils";
-import { readProjectManifest, detectImageDrift, detectManifestDrift, type DriftEntry } from "@genvidtech/c3source";
+import {
+  readProjectManifest,
+  detectImageDrift,
+  detectManifestDrift,
+  detectStrayFiles,
+  type DriftEntry,
+} from "@genvidtech/c3source";
 import { mintUniqueSid } from "./sidUtils.js";
 
 // ---------------------------------------------------------------------------
@@ -638,5 +644,76 @@ export function reportImageDrift(rootDir: string, log: Logger = console.log): vo
           ? "untracked (on disk, unreferenced)"
           : e.kind;
     log(`[images]`.padEnd(16) + `! ${e.name} — ${label}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stray files (detection-only report)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cap on the number of `! ` stray rows emitted before the `… and N more` tail.
+ * Neither MCP tool that surfaces this report paginates — both return a single
+ * content block — so an uncapped report on a badly misfiled project would bury
+ * the drift output it sits beside.
+ */
+const STRAY_REPORT_LIMIT = 20;
+
+/**
+ * Report stray files (detection-only). A stray is a file under one of the seven
+ * name-section roots that is neither a `.json` section item nor editor-local —
+ * e.g. `layouts/notes.txt`. That gloss is for orientation only — c3source's
+ * `StrayFile` owns the authoritative definition and the item/stray partition
+ * guarantee. Point at it rather than growing a fuller copy here, which would
+ * drift from upstream's silently.
+ *
+ * Emits `[strays]` lines via `log`, always at least one (`(no strays)` when the
+ * project is clean), mirroring `reportImageDrift`'s shape.
+ *
+ * **Detection-only.** Like `reportImageDrift`, this NEVER mutates and is NOT a
+ * sync-project write-back target: a stray has no manifest position and can never
+ * acquire one, so there is nothing to write back. It does not influence
+ * `SyncResult.clean`, nor upstream's `ManifestDrift.inSync`, nor the CLI exit
+ * code — the report is informational at every surface that emits it.
+ *
+ * **No try/catch — deliberately, and upstream forbids adding one.** The guard on
+ * `detectImageDrift` directly above exists because that detector has a
+ * *domain-level* throw: an absent/unmapped image `fileType` (c3source#29 / #63)
+ * makes it throw on data a `validate-project` run could otherwise survive, so
+ * degrading to an `[images] error:` line is right there. That rationale does not
+ * transfer. `detectStrayFiles` only classifies basenames the walk already read,
+ * so it has no domain-level throw at all; any failure would be a filesystem
+ * failure (`find_all_files_path` itself throwing) that the surrounding drift run
+ * could not have survived either. Upstream's JSDoc is explicit: "Do not add a
+ * try/catch around this call; it would silently hide a real failure rather than
+ * degrade a best-effort sub-detector."
+ *
+ * **`ManifestDrift.strays` is knowingly left unread.** `runSync` already receives
+ * it from `detectManifestDrift` and drops it on the floor; this function calls
+ * `detectStrayFiles` directly instead. That duplication is deliberate — do not
+ * "fix" it by routing through the drift result. Doing so would force either
+ * emission inside `runSync`, whose eight call sites include the
+ * scaffold-layout/scaffold-sprite paths that must stay silent, or a permanent
+ * widening of the barrel-exported `SyncResult`. Calling directly also keeps the
+ * report manifest-independent, which `runSync` (it parses `project.c3proj` first)
+ * is not. See ADR 0023.
+ *
+ * **All seven upstream name sections are reported, including `models3d`**, which
+ * chef's `NAME_SECTIONS` deliberately excludes from *sync* — reporting is not
+ * syncing, and a misfiled file under `models3d/` is worth seeing even where chef
+ * will never touch the manifest entry. Upstream's seven: layouts, eventSheets,
+ * objectTypes, timelines, flowcharts, families, models3d.
+ */
+export function reportStrayFiles(rootDir: string, log: Logger = console.log): void {
+  const strays = detectStrayFiles(rootDir);
+  if (strays.length === 0) {
+    log(`[strays]`.padEnd(16) + "(no strays)");
+    return;
+  }
+  for (const s of strays.slice(0, STRAY_REPORT_LIMIT)) {
+    log(`[strays]`.padEnd(16) + `! ${[s.folder, ...s.diskPath, s.name].join("/")}`);
+  }
+  if (strays.length > STRAY_REPORT_LIMIT) {
+    log(`[strays]`.padEnd(16) + `… and ${strays.length - STRAY_REPORT_LIMIT} more (${strays.length} total)`);
   }
 }

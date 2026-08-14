@@ -174,6 +174,14 @@ It additionally reports **image drift** as `[images]` lines: image files expecte
 
 The derivation covers structural name-match drift only — single-image plugins (`<name>.<ext>`) and `animations` frames (`<name>-<anim>-NNN.<ext>`, extension from each member's `fileType`). It intentionally does **not** cover spritesheet/texture-atlas packing or collision-polygon / image-point sidecar files. That non-coverage is **moot for a C3 source project**: animation frames are stored as individual files on disk (atlas packing is an export-time transform), and collision/image-point data lives inline in the frame JSON, not as separate sidecar files — so neither case can appear in `images/`. Were packed atlases ever to become a target, the derivation change would belong upstream in `@genvidtech/c3source` (`deriveExpectedImageNames`), not here.
 
+It also reports **stray files** as `[strays]` lines. A stray is a file under one of the seven name-section roots that is neither a `.json` section item nor editor-local — e.g. `layouts/notes.txt`, or a `Level1.json.bak` left beside the layout it was copied from; `@genvidtech/c3source`'s `detectStrayFiles`/`StrayFile` own the authoritative definition. Like image drift, the stray report is **detection-only** — informational output that does **not** affect the exit code or `sync-project`'s write-back. A stray has no position in `project.c3proj` and can never acquire one, so there is nothing for a sync to write back. Exactly one line is emitted on a clean project: `[strays]        (no strays)`. The same `[strays]` report is also emitted by `sync-project` (see below).
+
+The report is **project-wide and is not narrowed by `--section`**: `--section` scopes the sync write-back, and a stray is never a write-back target — the same reason `[images]` already ignores `--section` today. It covers all seven upstream name sections — `layouts`, `eventSheets`, `objectTypes`, `timelines`, `flowcharts`, `families`, and `models3d`. `models3d` is included even though chef's own sync deliberately excludes it: reporting is not syncing, and a misfiled file there is still worth seeing. `scripts/` and `images/` are out of scope upstream, so files under them are never reported as strays.
+
+One consequence worth planning around: an `extractedDir` configured *inside* one of those seven roots (e.g. `"layouts/extracted"` in `construct3-chef.config.json`) will have its own generated files reported as strays — `layouts/extracted/Foo.dsl.txt` is a stray by upstream's definition, and nothing filters it. Keep `extractedDir` **outside** the seven section roots. The default `extracted/` sits at the project root, so only a non-default configuration is affected.
+
+At most 20 `! ` rows are printed; past that the report ends with a `… and N more (M total)` tail rather than burying the drift output it sits beside.
+
 ```bash
 npx construct3-chef validate-project [--section <section>] [--project-dir <path>]
 ```
@@ -199,6 +207,8 @@ npx construct3-chef sync-project [--section <section>] [--project-dir <path>]
 Run this after adding or removing files in tracked C3 directories (event sheets, layouts, object types, scripts, etc.).
 
 Like `validate-project`, it emits the detection-only `[images]` drift report after syncing — so a direct sync (without a prior validate) still surfaces image drift. Sync never *acts* on image drift; images aren't a manifest section.
+
+The detection-only `[strays]` report is emitted after syncing too: files under one of the seven name-section roots that are neither `.json` section items nor editor-local (e.g. `layouts/notes.txt`). Sync never *acts* on a stray — it has no position in `project.c3proj` and can never acquire one — and the report does **not** affect the exit code. It is **project-wide**: `--section` scopes the write-back, not the report, exactly as with `[images]`. All seven upstream sections are covered, including `models3d`, which chef's own sync excludes (reporting is not syncing); `scripts/` and `images/` are out of scope upstream. One line is always emitted — `[strays]        (no strays)` when there are none — and at most 20 `! ` rows, followed by a `… and N more (M total)` tail. See `validate-project` above for the full definition and the `extractedDir` caveat.
 
 ---
 

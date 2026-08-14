@@ -28,6 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `[strays]` — a detection-only stray-file report on `validate-project` and
+  `sync-project`, both CLI and MCP. A stray is a file under one of the seven
+  name-section roots that is neither a `.json` section item nor editor-local
+  (e.g. `layouts/notes.txt`, a leftover `Level1.json.bak`). It is
+  **informational**: it never affects the exit code, and sync never acts on it —
+  a stray has no position in `project.c3proj` and can never acquire one. The
+  report is project-wide and is **not** narrowed by `--section`, matching
+  `[images]`. This offsets the quieting introduced by the c3source 2.0.0 item
+  policy below, which made the section finders skip a stray where they used to
+  crash on it. Adds one barrel-exported symbol, `reportStrayFiles`.
+  ([#177](https://github.com/GenvidTechnologies/construct3-chef/issues/177), ADR 0023)
 - `sync-addon-metadata` — align `project.c3proj`'s `usedAddons` `version`/`author`
   with the bundled `.c3addon` packages. Ships as a CLI subcommand plus a dual MCP
   tool pair (`preview-addon-metadata-sync`, read-only; `sync-addon-metadata`,
