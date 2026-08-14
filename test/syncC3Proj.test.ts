@@ -623,11 +623,11 @@ describe("syncC3Proj", () => {
       assert.equal(result.clean, true);
     });
 
-    it("R6 section filter: eventSheets stray only surfaces when that section is requested", () => {
+    it("R6 section filter: eventSheets untracked item only surfaces when that section is requested", () => {
       const tmpDir = createTmpDir();
       cpSync(sampleProjectDir, tmpDir, { recursive: true });
-      // Add a stray eventSheet on disk
-      touchFile(tmpDir, "eventSheets", "Stray.json");
+      // Add an untracked eventSheet on disk
+      touchFile(tmpDir, "eventSheets", "Untracked.json");
 
       const layoutsResult = runSync(tmpDir, true, () => {}, "layouts");
       const esInLayouts = layoutsResult.changes.filter((c) => c.section === "eventSheets");
@@ -636,8 +636,8 @@ describe("syncC3Proj", () => {
       const esResult = runSync(tmpDir, true, () => {}, "eventSheets");
       const esChanges = esResult.changes.filter((c) => c.section === "eventSheets");
       assert.isTrue(
-        esChanges.some((c) => c.action === "+" && c.detail.includes("Stray")),
-        "eventSheets-only run should report Stray as untracked",
+        esChanges.some((c) => c.action === "+" && c.detail.includes("Untracked")),
+        "eventSheets-only run should report Untracked as untracked",
       );
     });
 
