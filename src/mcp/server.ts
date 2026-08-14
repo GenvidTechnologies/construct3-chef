@@ -993,7 +993,7 @@ reg(
   {
     title: "Validate project.c3proj",
     description:
-      "Dry-run sync of project.c3proj against disk. Reports any drift (missing or extra file entries) without modifying the file. Returns output and current txId.",
+      "Dry-run sync of project.c3proj against disk. Reports any drift (missing or extra file entries) without modifying the file. Also reports stray files — files under a section root that are neither .json section items nor editor-local (e.g. layouts/notes.txt) — as a detection-only note that never affects the result. Returns output and current txId.",
     annotations: READ_ONLY,
     inputSchema: {},
   },
@@ -1017,7 +1017,7 @@ reg(
   {
     title: "Sync project.c3proj",
     description:
-      "Sync project.c3proj to match files on disk. Adds missing entries and removes stale ones. Pass txId for optimistic concurrency. Returns output and new txId.",
+      "Sync project.c3proj to match files on disk. Adds missing entries and removes stale ones. Stray files — files under a section root that are neither .json section items nor editor-local (e.g. layouts/notes.txt) — are reported detection-only; sync never acts on them. Pass txId for optimistic concurrency. Returns output and new txId.",
     annotations: MUTATE,
     inputSchema: {
       txId: z.number().optional().describe("Expected txId — if stale, sync is rejected"),

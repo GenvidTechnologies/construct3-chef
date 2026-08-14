@@ -932,5 +932,13 @@ describe("MCP server handler response shaping", () => {
       // reporter, so their `[strays]` output must not drift.
       expect(strayLinesOf(validated.content[0].text)).to.deep.equal(expected);
     });
+
+    it("R16: both tools that emit [strays] lines document the report in their description", () => {
+      for (const name of ["validate-project", "sync-project"]) {
+        const config = __getToolConfig(name);
+        expect(config, `${name} should be registered`).to.exist;
+        expect(config!.description, `${name} description should mention the stray report`).to.match(/stray/i);
+      }
+    });
   });
 });
