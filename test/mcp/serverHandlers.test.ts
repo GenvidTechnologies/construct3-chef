@@ -18,6 +18,7 @@ import { validateAddons, formatAddonValidation } from "../../src/c3/addonValidat
 import { listAddons, formatAddonInventory } from "../../src/c3/addonInventory.js";
 import { syncAddonMetadata, formatAddonMetadataSync, type AddonSyncResult } from "../../src/c3/addonMetadataSync.js";
 import { SID_SOURCE_DIRS } from "../../src/c3/generators.js";
+import { reportStrayFiles } from "../../src/c3/projectSync.js";
 import { seedManifestDrift } from "../helpers/seedManifestDrift.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -814,6 +815,122 @@ describe("MCP server handler response shaping", () => {
       expect(result.content[0].text).to.include(STALE_WARNING);
       expect(__getExtractedDirty()).to.equal(true);
       expect(watcher.bumped).to.equal(1);
+    });
+  });
+
+  // ── 15. [strays] detection-only report at the MCP surfaces (#177) ───────────
+  // KNOWN-RED at the commit that introduces these two rows: nothing in
+  // `server.ts` emits a `[strays]` line until the wiring task lands. Their red
+  // state is the structural revert-confirm that the wiring is load-bearing.
+  //
+  // Both rows re-point PROJECT_ROOT at their OWN synthetic temp-dir project
+  // rather than the fixture copy the outer beforeEach seeds: `detectStrayFiles`
+  // returns `[]` on `construct3-chef-sample` and `verify-fixture-parity.mjs`
+  // forbids adding a stray there, so a fixture-based assertion here would pass
+  // vacuously (the #149/#175 shape). The reporter-behaviour rows live in
+  // `test/c3/strayFileReport.test.ts`; these two exist only for the MCP wiring.
+
+  describe("[strays] report (#177)", () => {
+    let strayRoot: string;
+
+    /**
+     * A shape-valid, in-sync project. Two traps encoded here: each section's
+     * `items` is a `string[]` of BARE NAMES (not objects carrying a `sid`), and
+     * the `rootFileFolders` key for the general file folder is `general`, NOT
+     * `file`. Getting either wrong throws `Could not parse … as JSON` out of
+     * `readProjectManifest` — a seeding failure, not the missing-`[strays]`-line
+     * failure these rows are meant to produce.
+     */
+    function seedStrayProject(): string {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "c3chef-strays-"));
+      const empty = () => ({ items: [] as string[], subfolders: [] as unknown[] });
+      const manifest = {
+        projectFormatVersion: 1,
+        savedWithRelease: 49500,
+        name: "StrayReportProbe",
+        runtime: "c3",
+        usedAddons: [],
+        containers: [],
+        layouts: { items: ["MainLayout"], subfolders: [] },
+        eventSheets: empty(),
+        families: empty(),
+        objectTypes: empty(),
+        timelines: empty(),
+        flowcharts: empty(),
+        rootFileFolders: {
+          script: empty(),
+          sound: empty(),
+          music: empty(),
+          video: empty(),
+          font: empty(),
+          icon: empty(),
+          general: empty(),
+        },
+      };
+      fs.writeFileSync(path.join(root, "project.c3proj"), JSON.stringify(manifest, undefined, "\t"));
+      fs.mkdirSync(path.join(root, "layouts"), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, "layouts", "MainLayout.json"),
+        JSON.stringify({ name: "MainLayout", layers: [] }, null, "\t"),
+      );
+      fs.writeFileSync(path.join(root, "layouts", "notes.txt"), "a stray note\n");
+      return root;
+    }
+
+    function strayLinesOf(text: string): string[] {
+      return text.split("\n").filter((l) => l.startsWith("[strays]"));
+    }
+
+    beforeEach(() => {
+      strayRoot = seedStrayProject();
+      __setProjectRoot(strayRoot);
+    });
+
+    afterEach(() => {
+      fs.rmSync(strayRoot, { recursive: true, force: true });
+    });
+
+    it("R2: scaffold-layout emits no [strays] lines, while validate-project on the same project does", async () => {
+      const scaffold = __getHandler("scaffold-layout")!;
+      expect(scaffold).to.exist;
+
+      const scaffolded = (await scaffold(
+        {
+          source: "MainLayout.json",
+          name: "ClonedLayout",
+          path: "ClonedLayout.json",
+          eventSheet: "MainEvents",
+          regenerate: false,
+        },
+        makeExtra(),
+      )) as any;
+
+      // The scaffold must actually SUCCEED — an error response would contain no
+      // `[strays]` line for the wrong reason, making the assertion below vacuous.
+      expect(scaffolded.isError, scaffolded.content[0].text).to.be.undefined;
+      expect(strayLinesOf(scaffolded.content[0].text)).to.deep.equal([]);
+
+      // Positive control on the SAME project: validate-project does report it,
+      // so the absence above is a deliberate scope boundary and not an artifact
+      // of the seed carrying no stray at all.
+      const validate = __getHandler("validate-project")!;
+      const validated = (await validate({}, makeExtra())) as any;
+      expect(validated.content[0].text).to.include("! layouts/notes.txt");
+    });
+
+    it("R15: the MCP validate-project block's [strays] lines are byte-identical to the reporter's", async () => {
+      fs.writeFileSync(path.join(strayRoot, "layouts", "another.md"), "# also stray\n");
+
+      const expected: string[] = [];
+      reportStrayFiles(strayRoot, (m) => expected.push(m));
+      expect(expected.length, "seed must produce at least two stray rows for order to be meaningful").to.be.at.least(2);
+
+      const validate = __getHandler("validate-project")!;
+      const validated = (await validate({}, makeExtra())) as any;
+
+      // Order included — the CLI and MCP surfaces render through the same
+      // reporter, so their `[strays]` output must not drift.
+      expect(strayLinesOf(validated.content[0].text)).to.deep.equal(expected);
     });
   });
 });
