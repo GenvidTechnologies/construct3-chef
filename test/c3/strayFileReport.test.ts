@@ -3,7 +3,7 @@ import { assert } from "chai";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { reportStrayFiles, runSync } from "../../src/c3/projectSync.js";
+import { reportStrayFiles, NAME_SECTIONS } from "../../src/c3/projectSync.js";
 import { runCli } from "../helpers/runCli.js";
 
 /**
@@ -29,7 +29,6 @@ import { runCli } from "../helpers/runCli.js";
  * positive assertion would pass vacuously (the #149/#175 shape).
  */
 describe("[strays] detection-only report (#177)", () => {
-  const noop = () => {};
   const created: string[] = [];
 
   afterEach(() => {
@@ -193,10 +192,18 @@ describe("[strays] detection-only report (#177)", () => {
     const lines = capture(root);
     assert.include(lines, "[strays]".padEnd(16) + "! models3d/mesh.obj");
 
-    const result = runSync(root, true, noop, "layouts");
-    assert.deepEqual(
-      result.changes.filter((c) => c.section === "models3d"),
-      [],
+    // The "did not become a sync target" half is pinned STRUCTURALLY, against
+    // NAME_SECTIONS itself. Asserting it behaviourally — e.g. that
+    // `runSync(root, true, noop, "layouts").changes` carries no models3d entry —
+    // is unfalsifiable three times over: the section filter already excludes
+    // every section but layouts, the seed manifest has no models3d key to drift
+    // against, and upstream partitions items from strays so a stray can never
+    // surface as a DriftEntry at all. That assertion passes just as happily
+    // WITH models3d added to NAME_SECTIONS, which is precisely the state it
+    // claims to forbid. This one fails in that state.
+    assert.notInclude(
+      NAME_SECTIONS.map((s) => s.key),
+      "models3d",
       "reporting a models3d stray must not turn models3d into a sync target",
     );
   });

@@ -662,9 +662,10 @@ const STRAY_REPORT_LIMIT = 20;
 /**
  * Report stray files (detection-only). A stray is a file under one of the seven
  * name-section roots that is neither a `.json` section item nor editor-local —
- * e.g. `layouts/notes.txt`. See c3source's `StrayFile` for the authoritative
- * definition and its partition guarantee; do not restate those semantics here,
- * or chef's copy will drift from upstream's.
+ * e.g. `layouts/notes.txt`. That gloss is for orientation only — c3source's
+ * `StrayFile` owns the authoritative definition and the item/stray partition
+ * guarantee. Point at it rather than growing a fuller copy here, which would
+ * drift from upstream's silently.
  *
  * Emits `[strays]` lines via `log`, always at least one (`(no strays)` when the
  * project is clean), mirroring `reportImageDrift`'s shape.

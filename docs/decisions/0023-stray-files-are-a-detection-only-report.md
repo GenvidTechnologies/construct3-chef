@@ -80,10 +80,14 @@ a stray is not. An opt-in gate for teams that do want one is
 One line is always printed. The decisive reason is not symmetry with
 `reportImageDrift` (though it matches): **silence would render "no strays"
 and "the reporter is absent" identically.** That is the unfalsifiable-green
-failure this repo has shipped twice and corrected twice (ADR
-[0019](0019-two-walk-primitives-one-classification-rule.md)'s vacuous uistate
-assertions; #175's fixture-based item-policy coverage). A report you cannot
-distinguish from a missing report is not evidence.
+failure this repo has actually shipped: the vacuous `uistate` assertions that
+sat green in `serverHandlers.test.ts` until [#149](https://github.com/GenvidTechnologies/construct3-chef/issues/149)
+replaced them, recorded in ADR
+[0019](0019-two-walk-primitives-one-classification-rule.md). #175 is the
+counter-example rather than a second instance — it *anticipated* the same shape
+and designed around it, committing its synthetic `strayFileTolerance` suite red
+at the old floor instead of asserting against a fixture that cannot hold a
+stray. A report you cannot distinguish from a missing report is not evidence.
 
 **This contradicted an acceptance criterion #177 originally carried** — "a
 clean project's `validate-project` output is unchanged (no empty `[strays]`
