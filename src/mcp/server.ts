@@ -29,7 +29,7 @@ import type { Logger } from "@genvidtech/mcp-utils";
 import { applyParsed } from "../c3/recipeApplier.js";
 import { validateRecipe, type Recipe } from "../c3/recipeInterpreter.js";
 import { GENERATORS, findJsonFiles, SID_SOURCE_DIRS } from "../c3/generators.js";
-import { runSync, reportImageDrift } from "../c3/projectSync.js";
+import { runSync, reportImageDrift, reportStrayFiles } from "../c3/projectSync.js";
 import { isEditorLocalPathUnder } from "../c3/editorLocal.js";
 import { readRegistryFile, mintUniqueSid } from "../c3/sidUtils.js";
 import { filterIndex, buildShallowSidMap, type SidMapEntry } from "../c3/dslFormatter.js";
@@ -1004,6 +1004,7 @@ reg(
           const { log, text } = bufferingLogger();
           runSync(PROJECT_ROOT, true, log);
           reportImageDrift(PROJECT_ROOT, log);
+          reportStrayFiles(PROJECT_ROOT, log);
           return mcpContent(text(), txIdLine());
         },
         { prefix: "Error:", extraLines: () => [txIdLine()] },
@@ -1042,6 +1043,7 @@ reg(
           // image drift, but surface it (read-only) so a direct sync still shows it,
           // mirroring validate-project (#52).
           reportImageDrift(PROJECT_ROOT, log);
+          reportStrayFiles(PROJECT_ROOT, log);
           return mcpContent(text(), txIdLine());
         },
         { prefix: "Error:", extraLines: () => [txIdLine()] },

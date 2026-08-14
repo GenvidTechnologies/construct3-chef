@@ -10,7 +10,7 @@ import { loadChefConfig, resolveOpsDir } from "./c3/chefConfig.js";
 import { GENERATORS, GENERATOR_NAMES, type GeneratorName } from "./c3/generators.js";
 import { applyParsed, renameSymbols } from "./c3/recipeApplier.js";
 import type { Recipe } from "./c3/recipeInterpreter.js";
-import { ALL_SECTION_KEYS, runSync, reportImageDrift } from "./c3/projectSync.js";
+import { ALL_SECTION_KEYS, runSync, reportImageDrift, reportStrayFiles } from "./c3/projectSync.js";
 import { collectAllUids, cloneLayout } from "./c3/layoutScaffold.js";
 import { readRegistryFile } from "./c3/sidUtils.js";
 import {
@@ -170,6 +170,7 @@ yargs(hideBin(process.argv))
       const rootDir = resolveProjectDir(argv);
       const result = runSync(rootDir, true, console.log, argv.section);
       reportImageDrift(rootDir, console.log);
+      reportStrayFiles(rootDir, console.log);
       if (!result.clean) process.exit(1);
     },
   )
@@ -189,6 +190,7 @@ yargs(hideBin(process.argv))
       // surface it (detection-only) so a direct sync, without a prior validate, still
       // shows it. Reported unconditionally, mirroring validate-project (#52).
       reportImageDrift(rootDir, console.log);
+      reportStrayFiles(rootDir, console.log);
     },
   )
   .command(
