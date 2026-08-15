@@ -4,7 +4,14 @@ import tmp from "tmp";
 import { mkdirSync, writeFileSync, readFileSync, cpSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { detectManifestDrift, detectImageDrift, deriveExpectedImageNames, type DriftEntry } from "@genvidtech/c3source";
+import {
+  detectManifestDrift,
+  detectImageDrift,
+  deriveExpectedImageNames,
+  readProjectManifest,
+  serializeProjectManifest,
+  type DriftEntry,
+} from "@genvidtech/c3source";
 import {
   inferMimeType,
   collectAllSids,
@@ -651,6 +658,54 @@ describe("syncC3Proj", () => {
       // No change should be emitted for the images section
       const imageChanges = result.changes.filter((c) => c.section === "images");
       assert.deepEqual(imageChanges, [], "images drift should not produce sync changes");
+    });
+  });
+
+  describe("runSync manifest write (dryRun=false)", () => {
+    // R4/R5/R7: the first non-dry-run runSync test. Seeds drift in the REMOVAL
+    // direction — a manifest entry naming an eventSheet that does not exist on
+    // disk — so runSync deletes it and the write restores the manifest to its
+    // pristine (byte-identical) content. The additive direction can't be used
+    // for this: an added entry mints a fresh random SID via mintUniqueSid, so
+    // the result could never be byte-identical to the pristine fixture.
+    it("removes a spurious eventSheets entry and writes project.c3proj byte-identical to pristine", () => {
+      const tmpDir = createTmpDir();
+      cpSync(sampleProjectDir, tmpDir, { recursive: true });
+
+      const manifestPath = path.join(tmpDir, "project.c3proj");
+      const pristineText = readFileSync(path.join(sampleProjectDir, "project.c3proj"), "utf-8");
+
+      // Mutate the parsed manifest IN PLACE (never rebuild via spread) and write
+      // it back through the same serializer runSync uses, so the only
+      // difference from pristine is the one seeded entry.
+      const manifest = readProjectManifest(manifestPath);
+      manifest.eventSheets.items.push("SpuriousGhostSheet");
+      writeFileSync(manifestPath, serializeProjectManifest(manifest));
+
+      const result = runSync(tmpDir, false, () => {});
+
+      assert.isAbove(result.changes.length, 0, "seeding bug: sync reported no changes");
+      assert.equal(result.clean, false);
+
+      const writtenText = readFileSync(manifestPath, "utf-8");
+
+      // R5.1: the write is byte-identical to the pristine fixture's project.c3proj.
+      assert.equal(writtenText, pristineText);
+
+      // R5.2: no trailing newline — project.c3proj's write form is distinct from
+      // the event-sheet/layout `+ "\n"` form (see CLAUDE.md's write-form note).
+      assert.isFalse(writtenText.endsWith("\n"));
+
+      // R5.3: pins the equivalence #154 rests on — upstream's serializer still
+      // produces exactly what the removed hand-rolled `JSON.stringify(parsed, null,
+      // "\t")` produced. It is correlated with R5.1, not independent of it (a
+      // serializer divergence breaks both), but it is the row that says WHY: R5.1
+      // goes red for any reason at all — a drift-logic change, a seeding bug, a
+      // regenerated fixture — whereas this one goes red only when the serializer
+      // stops matching the form chef used to own. Keep it: without it, whoever
+      // finds R5.1 red has no way to tell an upstream byte-form change from a
+      // local regression.
+      assert.equal(writtenText, JSON.stringify(readProjectManifest(manifestPath), null, "\t"));
     });
   });
 });

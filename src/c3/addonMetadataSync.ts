@@ -329,9 +329,9 @@ export interface AddonSyncApplyResult {
  * Writes via c3source's `writeProjectManifest` (→ `serializeProjectManifest` →
  * `JSON.stringify(m, undefined, "\t")`, **no trailing newline** — do not append `"\n"`;
  * `project.c3proj` is NOT event-sheet/layout JSON, which does get one). See the
- * matching cross-reference comment at `projectSync.ts`'s `writeFileSync(projectPath,
- * …)` call site — `project.c3proj` now has two writers, and both rely on this same
- * parse-by-identity/mutate-in-place/serialize discipline to avoid clobbering each
+ * matching cross-reference comment at `projectSync.ts`'s `runSync` write site —
+ * `project.c3proj` has two writers sharing this one serializer, and both still rely
+ * on the same parse-by-identity/mutate-in-place discipline to avoid clobbering each
  * other's unmodeled fields.
  *
  * If no row is applicable (no `would-change` rows, or `opts.addon` scoped the plan to
