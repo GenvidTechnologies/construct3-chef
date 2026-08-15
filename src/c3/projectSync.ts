@@ -1,8 +1,9 @@
-import { writeFileSync, readdirSync, existsSync } from "node:fs";
+import { readdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import type { Logger } from "@genvidtech/mcp-utils";
 import {
   readProjectManifest,
+  writeProjectManifest,
   detectImageDrift,
   detectManifestDrift,
   detectStrayFiles,
@@ -584,12 +585,13 @@ export function runSync(rootDir: string, dryRun: boolean, log: Logger = console.
 
   // Write updated project.c3proj
   // `project.c3proj` also has a second writer: `applyAddonMetadataSync` in
-  // `addonMetadataSync.ts`. Both rely on the SAME discipline for byte fidelity —
-  // `project` here was parsed by identity (readProjectManifest, above) and every drift
-  // fix mutates it in place; never rebuild it via spread, or this write and that one
-  // will silently clobber each other's unmodeled fields.
+  // `addonMetadataSync.ts`. Serialization is now shared (writeProjectManifest), but byte
+  // fidelity still depends on a convention nothing enforces: `project` was parsed by
+  // identity (readProjectManifest, above) and every drift fix mutates it in place. Never
+  // rebuild it via spread, or this write and that one will silently clobber each other's
+  // unmodeled fields.
   if (!dryRun && totalChanges > 0) {
-    writeFileSync(projectPath, JSON.stringify(project, null, "\t"));
+    writeProjectManifest(projectPath, project);
     log(`Updated ${projectPath}`);
   }
 
