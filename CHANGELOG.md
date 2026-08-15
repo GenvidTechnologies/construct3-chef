@@ -32,13 +32,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `sync-project`, both CLI and MCP. A stray is a file under one of the seven
   name-section roots that is neither a `.json` section item nor editor-local
   (e.g. `layouts/notes.txt`, a leftover `Level1.json.bak`). It is
-  **informational**: it never affects the exit code, and sync never acts on it —
-  a stray has no position in `project.c3proj` and can never acquire one. The
-  report is project-wide and is **not** narrowed by `--section`, matching
-  `[images]`. This offsets the quieting introduced by the c3source 2.0.0 item
-  policy below, which made the section finders skip a stray where they used to
-  crash on it. Adds one barrel-exported symbol, `reportStrayFiles`.
+  **informational by default** — the exit code is untouched unless the CLI's
+  `validate-project` opts into `--fail-on-strays` (see below) — and sync never
+  acts on it either way — a stray has no position in `project.c3proj` and can
+  never acquire one. The report is project-wide and is **not** narrowed by
+  `--section`, matching `[images]`. This offsets the quieting introduced by the
+  c3source 2.0.0 item policy below, which made the section finders skip a stray
+  where they used to crash on it. Adds one barrel-exported symbol,
+  `reportStrayFiles`.
   ([#177](https://github.com/GenvidTechnologies/construct3-chef/issues/177), ADR 0023)
+- `--fail-on-strays` — opt-in flag on the CLI's `validate-project` command that
+  turns a non-empty `[strays]` set into a failing exit code. Off by default, so
+  the report above stays informational until a project opts in. Composes with
+  drift failure as two independent `process.exitCode = 1` statements rather
+  than distinct exit codes. MCP `validate-project` gets no gating counterpart —
+  exit-code gating is a CLI-only concern; `isError` is reserved for genuine
+  tool failure, the same asymmetry `validate-addons` already had undocumented.
+  `sync-project` is never gated on either surface, since a stray has no
+  manifest position to clear.
+  ([#183](https://github.com/GenvidTechnologies/construct3-chef/issues/183), ADR 0025)
 - `sync-addon-metadata` — align `project.c3proj`'s `usedAddons` `version`/`author`
   with the bundled `.c3addon` packages. Ships as a CLI subcommand plus a dual MCP
   tool pair (`preview-addon-metadata-sync`, read-only; `sync-addon-metadata`,
@@ -76,9 +88,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entries (directories, and directory junctions on Windows), which were previously
   emitted and then crashed on use. Not semver-breaking — the old path threw
   `EISDIR`, so nothing could depend on it.
+- `reportStrayFiles`' return type widened from `void` to `StrayFile[]`, carrying
+  the full detected set alongside the rendering it already logged (which stays
+  capped at 20 rows). Additive for the two realistic consumer shapes in this
+  repo — call-and-discard, and assignment to a `(root: string) => void`-typed
+  slot. ([#183](https://github.com/GenvidTechnologies/construct3-chef/issues/183), ADR 0025)
 
 ### Fixed
 
+- `validate-project`, on both CLI and MCP, no longer surfaces a raw uncaught
+  stack trace when `project.c3proj` cannot be read or parsed — that failure
+  previously escaped uncaught, with no `[images]`/`[strays]` output at all. The
+  CLI now prints the underlying error message to stderr and still reports
+  `[images]`/`[strays]` (both manifest-independent) to stdout before exiting 1;
+  the MCP tool folds the same reports into its `isError: true` response.
+  ([#184](https://github.com/GenvidTechnologies/construct3-chef/issues/184), ADR 0025)
 - `generate --only templates` no longer throws `ENOENT` on a project whose
   `extracted/` directory does not already exist. `generateTemplateScope` was the one
   generator of six that wrote its output file without first creating the output
