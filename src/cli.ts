@@ -161,17 +161,38 @@ yargs(hideBin(process.argv))
     "validate-project",
     "Validate project.c3proj matches disk (dry-run)",
     (y) =>
-      y.option("section", {
-        type: "string",
-        choices: ALL_SECTION_KEYS,
-        describe: "Only validate one section",
-      }),
+      y
+        .option("section", {
+          type: "string",
+          choices: ALL_SECTION_KEYS,
+          describe: "Only validate one section",
+        })
+        .option("fail-on-strays", {
+          type: "boolean",
+          default: false,
+          describe: "Exit 1 when any stray file is reported (opt-in CI gate)",
+        }),
     (argv) => {
       const rootDir = resolveProjectDir(argv);
-      const result = runSync(rootDir, true, console.log, argv.section);
+      // #184: reportImageDrift and reportStrayFiles are both manifest-INDEPENDENT
+      // (they classify basenames under the section roots and never read the
+      // manifest), so a project.c3proj that will not parse is exactly where they
+      // help most. Caught at the CALL SITE — runSync's own fail-fast contract, and
+      // the three rows in syncC3Proj.test.ts that pin it, stay untouched.
+      let driftFailed = false;
+      try {
+        driftFailed = !runSync(rootDir, true, console.log, argv.section).clean;
+      } catch (err) {
+        // err.message verbatim: runSync stays the single source of the
+        // "Could not read" / "Could not parse ... as JSON" wording. stderr, so
+        // the reports below stay on stdout and each stream can be asserted alone.
+        console.error(err instanceof Error ? err.message : String(err));
+        driftFailed = true;
+      }
       reportImageDrift(rootDir, console.log);
-      reportStrayFiles(rootDir, console.log);
-      if (!result.clean) process.exit(1);
+      const strays = reportStrayFiles(rootDir, console.log);
+      if (driftFailed) process.exitCode = 1;
+      if (argv.failOnStrays && strays.length > 0) process.exitCode = 1;
     },
   )
   .command(

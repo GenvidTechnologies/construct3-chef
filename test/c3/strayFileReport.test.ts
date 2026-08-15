@@ -1,10 +1,14 @@
 import { describe, it, afterEach } from "mocha";
 import { assert } from "chai";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { reportStrayFiles, NAME_SECTIONS } from "../../src/c3/projectSync.js";
 import { runCli } from "../helpers/runCli.js";
+
+// Convention shared with test/readmeCommandInventory.test.ts: resolve the
+// repo root once and read a src/ file as text for a structural source pin.
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");
 
 /**
  * #177. Pins the `[strays]` detection-only report: `reportStrayFiles`'s rendered
@@ -28,7 +32,15 @@ import { runCli } from "../helpers/runCli.js";
  * `scripts/verify-fixture-parity.mjs` forbids adding a stray, so a fixture-based
  * positive assertion would pass vacuously (the #149/#175 shape).
  */
-describe("[strays] detection-only report (#177)", () => {
+describe("[strays] detection-only report (#177)", function () {
+  // Thirteen rows here spawn the real CLI through tsx (~0.5-2s each) — see
+  // test/helpers/runCli.ts. A generous suite-level timeout avoids flaking on a
+  // loaded CI runner without per-test overrides, matching the precedent set by
+  // test/c3/syncAddonMetadataCli.test.ts. Not precautionary: T1 spawns TWO
+  // subprocesses (the with-flag and without-flag halves must run against the
+  // same seeded root) and measured 4988ms against mocha's 5000ms default.
+  this.timeout(30_000);
+
   const created: string[] = [];
 
   afterEach(() => {
@@ -107,6 +119,35 @@ describe("[strays] detection-only report (#177)", () => {
       path.join("layouts", "MainLayout.json"),
       JSON.stringify({ name: "MainLayout", layers: [] }, null, "\t"),
     );
+    return root;
+  }
+
+  /**
+   * `runSync`-unreachable seed: a `project.c3proj` that fails `JSON.parse` (not
+   * a shape violation, a literal syntax error), plus a stray so the reporters
+   * below have something to find. `detectStrayFiles`/`reportImageDrift` are
+   * both manifest-independent (see the file-level docstring above), so the
+   * only thing this seed exists to break is `readProjectManifest`'s
+   * `JSON.parse` — the `runSync` call at the very top of `validate-project`'s
+   * handler (#184).
+   */
+  function seedUnparseableProject(): string {
+    const root = tmpRoot();
+    writeFileSync(path.join(root, "project.c3proj"), "{ NOT JSON");
+    write(root, path.join("layouts", "notes.txt"), "a stray note\n");
+    return root;
+  }
+
+  /**
+   * Same shape as `seedUnparseableProject`, but `project.c3proj` is absent
+   * entirely — the ENOENT branch of `readProjectManifest`'s failure, which
+   * `runSync` discriminates from a parse failure via the error's errno `code`
+   * (see `projectSync.ts`'s `runSync`) and reports with a different message.
+   */
+  function seedMissingManifestProject(): string {
+    const root = tmpRoot();
+    mkdirSync(root, { recursive: true });
+    write(root, path.join("layouts", "notes.txt"), "a stray note\n");
     return root;
   }
 
@@ -242,6 +283,34 @@ describe("[strays] detection-only report (#177)", () => {
     assert.include(lines, "[strays]".padEnd(16) + "! layouts/extracted/Foo.dsl.txt");
   });
 
+  // ── T5 — KNOWN-RED at the commit that introduces this row ───────────────────
+  // `reportStrayFiles` is currently declared `: void` and returns `undefined` at
+  // runtime, so `strays.length` throws a `TypeError`. That red state is the
+  // structural revert-confirm that widening the return type is genuinely
+  // load-bearing — the same committed-red discipline as
+  // `strayFileTolerance.test.ts`'s R-rows above. A later task widens the return
+  // type to `StrayFile[]`, at which point this row goes green with no edit here.
+
+  it("T5: reportStrayFiles returns the full detected set, not the capped rendering", () => {
+    const root = seedReporterProject();
+    for (let i = 1; i <= 25; i++) {
+      write(root, path.join("layouts", `stray-${String(i).padStart(2, "0")}.txt`), "x");
+    }
+
+    const lines: string[] = [];
+    const strays = reportStrayFiles(root, (m) => lines.push(m));
+
+    // Raw `.length` access (not `assert.lengthOf`, which would intercept an
+    // undefined target with its own "Target cannot be null or undefined."
+    // AssertionError) so the RED failure is the actual runtime `TypeError`
+    // this row exists to prove: `reportStrayFiles` is currently `: void` and
+    // returns `undefined`.
+    // The full detected set, uncapped.
+    assert.equal(strays.length, 25);
+    // The rendering stays capped: 20 rows + 1 "… and N more" tail line.
+    assert.equal(lines.length, 21);
+  });
+
   // ── R3 / R4 / R10 — CLI process boundary (RED until the wiring lands) ───────
   // These three use the real-subprocess `runCli` helper because they assert on a
   // real process exit code, which no in-process unit test can reach. Per that
@@ -260,7 +329,7 @@ describe("[strays] detection-only report (#177)", () => {
     assert.match(result.stdout, /^\[strays\]\s+! layouts\/notes\.txt$/m);
   });
 
-  it("R4: the report is emitted before validate-project's terminal process.exit(1)", () => {
+  it("R4: the [strays] report survives a run that exits non-zero", () => {
     const root = seedSyncCleanProject();
     // Real manifest drift → validate-project exits 1.
     write(root, path.join("eventSheets", "Untracked.json"), JSON.stringify({ name: "Untracked", events: [] }));
@@ -269,7 +338,10 @@ describe("[strays] detection-only report (#177)", () => {
     const result = runCli(["validate-project", "--project-dir", root]);
 
     assert.equal(result.exitCode, 1, `expected exit 1; stderr: ${result.stderr}`);
-    // The only row that catches appending the report AFTER the terminal exit.
+    // Regression guard: validate-project sets `process.exitCode` rather than
+    // calling a terminal `process.exit(1)`, so nothing can truncate the report
+    // before it prints — but this row still pins that the report survives a
+    // non-zero exit, in case that ever changes back.
     assert.match(result.stdout, /^\[strays\]\s+! layouts\/notes\.txt$/m);
   });
 
@@ -282,5 +354,171 @@ describe("[strays] detection-only report (#177)", () => {
     // The report is project-wide, exactly as `[images]` already is.
     assert.match(result.stdout, /^\[strays\]\s+! objectTypes\/README\.md$/m);
     assert.equal(result.exitCode, 0, `expected exit 0; stderr: ${result.stderr}`);
+  });
+
+  // ── T1 / T2 / T3 / T4 — `--fail-on-strays` (#183, KNOWN-RED) ────────────────
+  // `--fail-on-strays` is not yet registered on `validate-project`, and the CLI's
+  // yargs chain calls `.strict()`, so passing it is an UNKNOWN ARGUMENT: yargs
+  // rejects the whole invocation, exits non-zero, and prints an "Unknown
+  // argument" message to stderr — with NO `[strays]` report line on stdout at
+  // all, because the CLI never reaches `reportStrayFiles`. A later task
+  // registers the flag and adds the independent exit statement; these rows go
+  // green with no edit here.
+
+  it("T1: --fail-on-strays gates the exit code, and its absence does not", () => {
+    const root = seedSyncCleanProject();
+    write(root, path.join("layouts", "notes.txt"), "a stray note\n");
+
+    const withFlag = runCli(["validate-project", "--fail-on-strays", "--project-dir", root]);
+    // KNOWN-RED, and for a specific reason: today `--fail-on-strays` is an
+    // unknown yargs argument, so `.strict()` rejects the invocation and exits
+    // non-zero for a reason that has NOTHING to do with the feature — the
+    // stray never gets detected, let alone gates anything. The stdout match
+    // is what makes this assertion non-vacuous: without it, this half would
+    // pass today (exit 1) for the wrong reason, and would keep passing even
+    // if the flag were wired to always fail regardless of strays.
+    assert.equal(withFlag.exitCode, 1, `expected exit 1; stderr: ${withFlag.stderr}`);
+    assert.match(withFlag.stdout, /^\[strays\]\s+! layouts\/notes\.txt$/m);
+
+    const withoutFlag = runCli(["validate-project", "--project-dir", root]);
+    assert.equal(withoutFlag.exitCode, 0, `expected exit 0; stderr: ${withoutFlag.stderr}`);
+    assert.match(withoutFlag.stdout, /^\[strays\]\s+! layouts\/notes\.txt$/m);
+  });
+
+  it("T2: drift and strays together, flag on", () => {
+    const root = seedSyncCleanProject();
+    write(root, path.join("eventSheets", "Untracked.json"), JSON.stringify({ name: "Untracked", events: [] }));
+    write(root, path.join("layouts", "notes.txt"), "a stray note\n");
+
+    const result = runCli(["validate-project", "--fail-on-strays", "--project-dir", root]);
+
+    assert.equal(result.exitCode, 1, `expected exit 1; stderr: ${result.stderr}`);
+    assert.match(result.stdout, /^\[strays\]\s+! layouts\/notes\.txt$/m);
+    assert.include(result.stdout, "Untracked");
+  });
+
+  it("T3: drift with no strays, flag on — the flag changes nothing", () => {
+    const root = seedSyncCleanProject();
+    write(root, path.join("eventSheets", "Untracked.json"), JSON.stringify({ name: "Untracked", events: [] }));
+
+    const result = runCli(["validate-project", "--fail-on-strays", "--project-dir", root]);
+
+    assert.equal(result.exitCode, 1, `expected exit 1; stderr: ${result.stderr}`);
+    assert.match(result.stdout, /^\[strays\]\s+\(no strays\)$/m);
+  });
+
+  it("T4: a clean project with the flag still exits 0", () => {
+    // Catches the gate being implemented as "flag ⇒ fail" instead of
+    // "flag ⇒ fail only when strays exist": a naive implementation that always
+    // sets a non-zero exit code when the flag is present would fail this row.
+    const root = seedSyncCleanProject();
+
+    const result = runCli(["validate-project", "--fail-on-strays", "--project-dir", root]);
+
+    assert.equal(result.exitCode, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.match(result.stdout, /^\[strays\]\s+\(no strays\)$/m);
+  });
+
+  // ── T8 / T9 / T11 — manifest-independent reporting (#184, KNOWN-RED) ────────
+  // `validate-project`'s handler is synchronous with no `.fail()` handler, and
+  // `runSync` parses `project.c3proj` at its very top and throws on a missing
+  // or unparseable manifest. That throw escapes the handler completely
+  // uncaught: stdout is empty (the `[strays]`/`[images]` reporters below it in
+  // the handler never run) and stderr carries a raw Node stack trace instead
+  // of a clean message, with exit 1 coming from Node's default
+  // uncaught-exception handling rather than the CLI's own logic. A later task
+  // wraps only the `runSync` call in a try/catch, printing `err.message` to
+  // stderr and letting both reporters still run to stdout. These rows go
+  // green with no edit here.
+
+  it("T8: strays and images are reported past an unparseable manifest", () => {
+    const root = seedUnparseableProject();
+
+    const result = runCli(["validate-project", "--project-dir", root]);
+
+    assert.match(result.stdout, /^\[strays\]\s+! layouts\/notes\.txt$/m);
+    // The free finding: `reportImageDrift` is manifest-independent too, so it
+    // rides along past the same unparseable manifest.
+    assert.match(result.stdout, /^\[images\]\s+\(no drift\)$/m);
+    assert.match(result.stderr, /Could not parse .*project\.c3proj as JSON/);
+    assert.equal(result.exitCode, 1);
+  });
+
+  it("T9: strays are reported past a missing manifest (the other branch, the other message)", () => {
+    const root = seedMissingManifestProject();
+
+    const result = runCli(["validate-project", "--project-dir", root]);
+
+    assert.match(result.stdout, /^\[strays\]\s+! layouts\/notes\.txt$/m);
+    assert.match(result.stdout, /^\[images\]\s+\(no drift\)$/m);
+    // `runSync` discriminates on whether the error carries an errno `code`,
+    // producing a DIFFERENT message than T8's — this row exists to cover that
+    // branch too, not just the parse-failure one.
+    assert.match(result.stderr, /Could not read .*project\.c3proj/);
+    assert.equal(result.exitCode, 1);
+  });
+
+  it("T11: the raw stack trace is replaced by a clean one-line message", () => {
+    const root = seedUnparseableProject();
+
+    const result = runCli(["validate-project", "--project-dir", root]);
+
+    // Positive control: proves the stderr corpus is non-empty and the pattern
+    // CAN match, so the zero-hit assertion below cannot pass merely because
+    // stderr is empty.
+    assert.match(result.stderr, /Could not parse/);
+    // No stack frames — a raw Node uncaught-exception dump prints one or more
+    // `    at ...` lines; a clean one-line message never does.
+    assert.notMatch(result.stderr, /^\s+at /m);
+  });
+
+  // ── T18 ────────────────────────────────────────────────────────────────────
+  // `--fail-on-strays` is deliberately scoped to `validate-project` only: a
+  // stray has no manifest position, so `sync-project` can never clear one — a
+  // CI gate you cannot satisfy by running the tool it is attached to is a bad
+  // gate (ADR 0025 decision 5). `sync-project`'s yargs chain never registers
+  // the option and calls `.strict()`, so passing it must be rejected as an
+  // unknown argument. Mutates `project.c3proj`, so this seeds a throwaway
+  // synthetic temp-dir root via `seedSyncCleanProject()` — never
+  // `test/fixtures/`, which the golden test byte-diffs.
+
+  it("T18: CLI sync-project gains no --fail-on-strays flag", () => {
+    const root = seedSyncCleanProject();
+
+    const withFlag = runCli(["sync-project", "--fail-on-strays", "--project-dir", root]);
+    assert.notEqual(withFlag.exitCode, 0, `expected non-zero exit; stdout: ${withFlag.stdout}`);
+    assert.match(withFlag.stderr, /Unknown argument/i);
+
+    // Positive control, same row. Without this, the assertion above would pass
+    // for ANY reason the command fails — a bad seed, a missing directory, a
+    // path typo — rather than because the flag is specifically unregistered.
+    // The identical invocation minus the flag must succeed against the same seed.
+    const withoutFlag = runCli(["sync-project", "--project-dir", root]);
+    assert.equal(withoutFlag.exitCode, 0, `expected exit 0; stderr: ${withoutFlag.stderr}`);
+  });
+
+  // ── T19 ────────────────────────────────────────────────────────────────────
+  // Structural pin on `reportStrayFiles`'s own source: upstream's JSDoc forbids
+  // wrapping `detectStrayFiles` in a try/catch verbatim, and ADR 0023 decision 1
+  // depends on the call staying unguarded. The occurrence count alone couldn't
+  // detect a `try {` inserted between the signature and the call (the count
+  // wouldn't move) — the preceding-line check is the assertion that actually
+  // settles it; the count is only the supporting one.
+
+  it("T19: no try/catch is introduced around detectStrayFiles", () => {
+    const source = readFileSync(path.join(REPO_ROOT, "src", "c3", "projectSync.ts"), "utf-8");
+    const lines = source.split("\n");
+
+    const callIndexes = lines.reduce<number[]>((acc, line, i) => {
+      if (line.includes("detectStrayFiles(")) acc.push(i);
+      return acc;
+    }, []);
+    assert.lengthOf(callIndexes, 1, "expected exactly one detectStrayFiles( occurrence in projectSync.ts");
+
+    const precedingLine = lines[callIndexes[0] - 1];
+    assert.equal(
+      precedingLine,
+      "export function reportStrayFiles(rootDir: string, log: Logger = console.log): StrayFile[] {",
+    );
   });
 });

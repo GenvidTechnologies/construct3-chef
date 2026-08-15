@@ -881,6 +881,24 @@ describe("MCP server handler response shaping", () => {
       return text.split("\n").filter((l) => l.startsWith("[strays]"));
     }
 
+    /**
+     * Mirrors `seedStrayProject()`, but `project.c3proj` is the literal
+     * `{ NOT JSON` — unparseable — so `runSync`'s top-of-function
+     * `readProjectManifest` throws. Seeds TWO stray files under `layouts/`
+     * (not one) so T13's order assertion below is meaningful. Callers own
+     * cleanup: this does not participate in the `strayRoot`/`afterEach` pair
+     * above, since T12/T13 need a distinct root from the shape-valid seed the
+     * other rows in this block use.
+     */
+    function seedUnparseableStrayProject(): string {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "c3chef-strays-unparseable-"));
+      fs.mkdirSync(path.join(root, "layouts"), { recursive: true });
+      fs.writeFileSync(path.join(root, "project.c3proj"), "{ NOT JSON");
+      fs.writeFileSync(path.join(root, "layouts", "notes.txt"), "a stray note\n");
+      fs.writeFileSync(path.join(root, "layouts", "scratch.txt"), "another stray note\n");
+      return root;
+    }
+
     beforeEach(() => {
       strayRoot = seedStrayProject();
       __setProjectRoot(strayRoot);
@@ -938,6 +956,82 @@ describe("MCP server handler response shaping", () => {
         const config = __getToolConfig(name);
         expect(config, `${name} should be registered`).to.exist;
         expect(config!.description, `${name} description should mention the stray report`).to.match(/stray/i);
+      }
+    });
+
+    it("T17: MCP validate-project gains no stray-gating input", () => {
+      // Exit-code gating is CLI-only (--fail-on-strays); MCP reports findings in
+      // the text block and reserves isError for genuine tool failure (ADR 0025
+      // decision 4), so validate-project's inputSchema must stay free of any
+      // stray-gating key. The sync-project/txId assertion below is a MANDATORY
+      // positive control: without it, the zero-hit check on validate-project
+      // would pass just as happily if __getToolConfig returned undefined, an
+      // empty object, or the wrong tool entirely — the vacuous-negative shape
+      // this repo has shipped twice.
+      const validateConfig = __getToolConfig("validate-project");
+      expect(validateConfig, "validate-project should be registered").to.exist;
+      const validateKeys = Object.keys(validateConfig!.inputSchema as Record<string, z.ZodTypeAny>);
+      expect(
+        validateKeys.some((key) => /strays?/i.test(key)),
+        `validate-project inputSchema keys: ${validateKeys.join(", ")}`,
+      ).to.equal(false);
+
+      const syncConfig = __getToolConfig("sync-project");
+      expect(syncConfig, "sync-project should be registered").to.exist;
+      const syncKeys = Object.keys(syncConfig!.inputSchema as Record<string, z.ZodTypeAny>);
+      expect(syncKeys, `sync-project inputSchema keys: ${syncKeys.join(", ")}`).to.include("txId");
+    });
+
+    // ── T12/T13 — [strays] survives a manifest failure (#184) ─────────────────
+    // KNOWN-RED at the commit that introduces these two rows: `runSync` parses
+    // `project.c3proj` at the very top and throws on unparseable JSON, and the
+    // outer `withMcpErrors` catches that and returns `mcpError(...)` BEFORE
+    // `reportImageDrift`/`reportStrayFiles` ever run — so the response text
+    // carries no `[strays]` line at all. The later wiring task (not this one)
+    // moves the throw into an inner try/catch so both reporters still run
+    // alongside the error. This red state is the structural revert-confirm
+    // that the wiring is genuinely load-bearing, matching the committed-red
+    // discipline `test/c3/strayFileTolerance.test.ts` already uses.
+
+    it("T12: MCP validate-project reports strays past a manifest failure", async () => {
+      const unparseableRoot = seedUnparseableStrayProject();
+      __setProjectRoot(unparseableRoot);
+      try {
+        const validate = __getHandler("validate-project")!;
+        const result = (await validate({}, makeExtra())) as any;
+
+        // The contract is DELIBERATELY UNCHANGED here: the tool genuinely
+        // failed to parse the manifest, so the response must still be
+        // isError — the diagnostics ride ALONGSIDE the failure, they do not
+        // turn it into a success. A reader seeing [strays] lines below might
+        // otherwise assume the fix flips this to a success response; it does
+        // not.
+        expect(result.isError).to.equal(true);
+        expect(result.content[0].text).to.include("Could not parse");
+        expect(result.content[0].text).to.include("! layouts/notes.txt");
+      } finally {
+        fs.rmSync(unparseableRoot, { recursive: true, force: true });
+      }
+    });
+
+    it("T13: the MCP error block's [strays] lines are byte-identical to the reporter's", async () => {
+      const unparseableRoot = seedUnparseableStrayProject();
+      __setProjectRoot(unparseableRoot);
+      try {
+        const expected: string[] = [];
+        reportStrayFiles(unparseableRoot, (m) => expected.push(m));
+        expect(expected.length, "seed must produce at least two stray rows for order to be meaningful").to.be.at.least(
+          2,
+        );
+
+        const validate = __getHandler("validate-project")!;
+        const result = (await validate({}, makeExtra())) as any;
+
+        // Order included — the error block must render the SAME reporter
+        // output the success path does, just alongside the failure text.
+        expect(strayLinesOf(result.content[0].text)).to.deep.equal(expected);
+      } finally {
+        fs.rmSync(unparseableRoot, { recursive: true, force: true });
       }
     });
   });
