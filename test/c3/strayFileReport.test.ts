@@ -314,4 +314,67 @@ describe("[strays] detection-only report (#177)", () => {
     assert.match(result.stdout, /^\[strays\]\s+! objectTypes\/README\.md$/m);
     assert.equal(result.exitCode, 0, `expected exit 0; stderr: ${result.stderr}`);
   });
+
+  // ── T1 / T2 / T3 / T4 — `--fail-on-strays` (#183, KNOWN-RED) ────────────────
+  // `--fail-on-strays` is not yet registered on `validate-project`, and the CLI's
+  // yargs chain calls `.strict()`, so passing it is an UNKNOWN ARGUMENT: yargs
+  // rejects the whole invocation, exits non-zero, and prints an "Unknown
+  // argument" message to stderr — with NO `[strays]` report line on stdout at
+  // all, because the CLI never reaches `reportStrayFiles`. A later task
+  // registers the flag and adds the independent exit statement; these rows go
+  // green with no edit here.
+
+  it("T1: --fail-on-strays gates the exit code, and its absence does not", () => {
+    const root = seedSyncCleanProject();
+    write(root, path.join("layouts", "notes.txt"), "a stray note\n");
+
+    const withFlag = runCli(["validate-project", "--fail-on-strays", "--project-dir", root]);
+    // KNOWN-RED, and for a specific reason: today `--fail-on-strays` is an
+    // unknown yargs argument, so `.strict()` rejects the invocation and exits
+    // non-zero for a reason that has NOTHING to do with the feature — the
+    // stray never gets detected, let alone gates anything. The stdout match
+    // is what makes this assertion non-vacuous: without it, this half would
+    // pass today (exit 1) for the wrong reason, and would keep passing even
+    // if the flag were wired to always fail regardless of strays.
+    assert.equal(withFlag.exitCode, 1, `expected exit 1; stderr: ${withFlag.stderr}`);
+    assert.match(withFlag.stdout, /^\[strays\]\s+! layouts\/notes\.txt$/m);
+
+    const withoutFlag = runCli(["validate-project", "--project-dir", root]);
+    assert.equal(withoutFlag.exitCode, 0, `expected exit 0; stderr: ${withoutFlag.stderr}`);
+    assert.match(withoutFlag.stdout, /^\[strays\]\s+! layouts\/notes\.txt$/m);
+  });
+
+  it("T2: drift and strays together, flag on", () => {
+    const root = seedSyncCleanProject();
+    write(root, path.join("eventSheets", "Untracked.json"), JSON.stringify({ name: "Untracked", events: [] }));
+    write(root, path.join("layouts", "notes.txt"), "a stray note\n");
+
+    const result = runCli(["validate-project", "--fail-on-strays", "--project-dir", root]);
+
+    assert.equal(result.exitCode, 1, `expected exit 1; stderr: ${result.stderr}`);
+    assert.match(result.stdout, /^\[strays\]\s+! layouts\/notes\.txt$/m);
+    assert.include(result.stdout, "Untracked");
+  });
+
+  it("T3: drift with no strays, flag on — the flag changes nothing", () => {
+    const root = seedSyncCleanProject();
+    write(root, path.join("eventSheets", "Untracked.json"), JSON.stringify({ name: "Untracked", events: [] }));
+
+    const result = runCli(["validate-project", "--fail-on-strays", "--project-dir", root]);
+
+    assert.equal(result.exitCode, 1, `expected exit 1; stderr: ${result.stderr}`);
+    assert.match(result.stdout, /^\[strays\]\s+\(no strays\)$/m);
+  });
+
+  it("T4: a clean project with the flag still exits 0", () => {
+    // Catches the gate being implemented as "flag ⇒ fail" instead of
+    // "flag ⇒ fail only when strays exist": a naive implementation that always
+    // sets a non-zero exit code when the flag is present would fail this row.
+    const root = seedSyncCleanProject();
+
+    const result = runCli(["validate-project", "--fail-on-strays", "--project-dir", root]);
+
+    assert.equal(result.exitCode, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.match(result.stdout, /^\[strays\]\s+\(no strays\)$/m);
+  });
 });
