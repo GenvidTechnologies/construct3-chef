@@ -1002,9 +1002,24 @@ reg(
       withMcpErrors(
         async () => {
           const { log, text } = bufferingLogger();
-          runSync(PROJECT_ROOT, true, log);
+          // #184: reportImageDrift and reportStrayFiles are both manifest-INDEPENDENT
+          // (they classify basenames under the section roots and never read the
+          // manifest), so a project.c3proj that will not parse is exactly where they
+          // help most. Caught at the CALL SITE — runSync's own fail-fast contract, and
+          // the three rows in syncC3Proj.test.ts that pin it, stay untouched.
+          let failure: unknown;
+          try {
+            runSync(PROJECT_ROOT, true, log);
+          } catch (err) {
+            failure = err;
+          }
           reportImageDrift(PROJECT_ROOT, log);
           reportStrayFiles(PROJECT_ROOT, log);
+          if (failure !== undefined) {
+            // The response stays isError — the tool DID fail. The diagnostics ride
+            // along rather than converting a real failure into a success response.
+            return mcpError(failure, { prefix: "Error:", extraLines: [text(), txIdLine()] });
+          }
           return mcpContent(text(), txIdLine());
         },
         { prefix: "Error:", extraLines: () => [txIdLine()] },
