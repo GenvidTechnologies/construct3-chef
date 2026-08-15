@@ -171,7 +171,7 @@ yargs(hideBin(process.argv))
       const result = runSync(rootDir, true, console.log, argv.section);
       reportImageDrift(rootDir, console.log);
       reportStrayFiles(rootDir, console.log);
-      if (!result.clean) process.exit(1);
+      if (!result.clean) process.exitCode = 1;
     },
   )
   .command(

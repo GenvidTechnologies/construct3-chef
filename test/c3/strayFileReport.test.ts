@@ -260,7 +260,7 @@ describe("[strays] detection-only report (#177)", () => {
     assert.match(result.stdout, /^\[strays\]\s+! layouts\/notes\.txt$/m);
   });
 
-  it("R4: the report is emitted before validate-project's terminal process.exit(1)", () => {
+  it("R4: the [strays] report survives a run that exits non-zero", () => {
     const root = seedSyncCleanProject();
     // Real manifest drift → validate-project exits 1.
     write(root, path.join("eventSheets", "Untracked.json"), JSON.stringify({ name: "Untracked", events: [] }));
@@ -269,7 +269,10 @@ describe("[strays] detection-only report (#177)", () => {
     const result = runCli(["validate-project", "--project-dir", root]);
 
     assert.equal(result.exitCode, 1, `expected exit 1; stderr: ${result.stderr}`);
-    // The only row that catches appending the report AFTER the terminal exit.
+    // Regression guard: validate-project sets `process.exitCode` rather than
+    // calling a terminal `process.exit(1)`, so nothing can truncate the report
+    // before it prints — but this row still pins that the report survives a
+    // non-zero exit, in case that ever changes back.
     assert.match(result.stdout, /^\[strays\]\s+! layouts\/notes\.txt$/m);
   });
 
