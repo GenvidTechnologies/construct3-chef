@@ -1,10 +1,14 @@
 import { describe, it, afterEach } from "mocha";
 import { assert } from "chai";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { reportStrayFiles, NAME_SECTIONS } from "../../src/c3/projectSync.js";
 import { runCli } from "../helpers/runCli.js";
+
+// Convention shared with test/readmeCommandInventory.test.ts: resolve the
+// repo root once and read a src/ file as text for a structural source pin.
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");
 
 /**
  * #177. Pins the `[strays]` detection-only report: `reportStrayFiles`'s rendered
@@ -28,7 +32,15 @@ import { runCli } from "../helpers/runCli.js";
  * `scripts/verify-fixture-parity.mjs` forbids adding a stray, so a fixture-based
  * positive assertion would pass vacuously (the #149/#175 shape).
  */
-describe("[strays] detection-only report (#177)", () => {
+describe("[strays] detection-only report (#177)", function () {
+  // Thirteen rows here spawn the real CLI through tsx (~0.5-2s each) — see
+  // test/helpers/runCli.ts. A generous suite-level timeout avoids flaking on a
+  // loaded CI runner without per-test overrides, matching the precedent set by
+  // test/c3/syncAddonMetadataCli.test.ts. Not precautionary: T1 spawns TWO
+  // subprocesses (the with-flag and without-flag halves must run against the
+  // same seeded root) and measured 4988ms against mocha's 5000ms default.
+  this.timeout(30_000);
+
   const created: string[] = [];
 
   afterEach(() => {
@@ -458,5 +470,55 @@ describe("[strays] detection-only report (#177)", () => {
     // No stack frames — a raw Node uncaught-exception dump prints one or more
     // `    at ...` lines; a clean one-line message never does.
     assert.notMatch(result.stderr, /^\s+at /m);
+  });
+
+  // ── T18 ────────────────────────────────────────────────────────────────────
+  // `--fail-on-strays` is deliberately scoped to `validate-project` only: a
+  // stray has no manifest position, so `sync-project` can never clear one — a
+  // CI gate you cannot satisfy by running the tool it is attached to is a bad
+  // gate (ADR 0025 decision 5). `sync-project`'s yargs chain never registers
+  // the option and calls `.strict()`, so passing it must be rejected as an
+  // unknown argument. Mutates `project.c3proj`, so this seeds a throwaway
+  // synthetic temp-dir root via `seedSyncCleanProject()` — never
+  // `test/fixtures/`, which the golden test byte-diffs.
+
+  it("T18: CLI sync-project gains no --fail-on-strays flag", () => {
+    const root = seedSyncCleanProject();
+
+    const withFlag = runCli(["sync-project", "--fail-on-strays", "--project-dir", root]);
+    assert.notEqual(withFlag.exitCode, 0, `expected non-zero exit; stdout: ${withFlag.stdout}`);
+    assert.match(withFlag.stderr, /Unknown argument/i);
+
+    // Positive control, same row. Without this, the assertion above would pass
+    // for ANY reason the command fails — a bad seed, a missing directory, a
+    // path typo — rather than because the flag is specifically unregistered.
+    // The identical invocation minus the flag must succeed against the same seed.
+    const withoutFlag = runCli(["sync-project", "--project-dir", root]);
+    assert.equal(withoutFlag.exitCode, 0, `expected exit 0; stderr: ${withoutFlag.stderr}`);
+  });
+
+  // ── T19 ────────────────────────────────────────────────────────────────────
+  // Structural pin on `reportStrayFiles`'s own source: upstream's JSDoc forbids
+  // wrapping `detectStrayFiles` in a try/catch verbatim, and ADR 0023 decision 1
+  // depends on the call staying unguarded. The occurrence count alone couldn't
+  // detect a `try {` inserted between the signature and the call (the count
+  // wouldn't move) — the preceding-line check is the assertion that actually
+  // settles it; the count is only the supporting one.
+
+  it("T19: no try/catch is introduced around detectStrayFiles", () => {
+    const source = readFileSync(path.join(REPO_ROOT, "src", "c3", "projectSync.ts"), "utf-8");
+    const lines = source.split("\n");
+
+    const callIndexes = lines.reduce<number[]>((acc, line, i) => {
+      if (line.includes("detectStrayFiles(")) acc.push(i);
+      return acc;
+    }, []);
+    assert.lengthOf(callIndexes, 1, "expected exactly one detectStrayFiles( occurrence in projectSync.ts");
+
+    const precedingLine = lines[callIndexes[0] - 1];
+    assert.equal(
+      precedingLine,
+      "export function reportStrayFiles(rootDir: string, log: Logger = console.log): StrayFile[] {",
+    );
   });
 });

@@ -959,6 +959,29 @@ describe("MCP server handler response shaping", () => {
       }
     });
 
+    it("T17: MCP validate-project gains no stray-gating input", () => {
+      // Exit-code gating is CLI-only (--fail-on-strays); MCP reports findings in
+      // the text block and reserves isError for genuine tool failure (ADR 0025
+      // decision 4), so validate-project's inputSchema must stay free of any
+      // stray-gating key. The sync-project/txId assertion below is a MANDATORY
+      // positive control: without it, the zero-hit check on validate-project
+      // would pass just as happily if __getToolConfig returned undefined, an
+      // empty object, or the wrong tool entirely — the vacuous-negative shape
+      // this repo has shipped twice.
+      const validateConfig = __getToolConfig("validate-project");
+      expect(validateConfig, "validate-project should be registered").to.exist;
+      const validateKeys = Object.keys(validateConfig!.inputSchema as Record<string, z.ZodTypeAny>);
+      expect(
+        validateKeys.some((key) => /strays?/i.test(key)),
+        `validate-project inputSchema keys: ${validateKeys.join(", ")}`,
+      ).to.equal(false);
+
+      const syncConfig = __getToolConfig("sync-project");
+      expect(syncConfig, "sync-project should be registered").to.exist;
+      const syncKeys = Object.keys(syncConfig!.inputSchema as Record<string, z.ZodTypeAny>);
+      expect(syncKeys, `sync-project inputSchema keys: ${syncKeys.join(", ")}`).to.include("txId");
+    });
+
     // ── T12/T13 — [strays] survives a manifest failure (#184) ─────────────────
     // KNOWN-RED at the commit that introduces these two rows: `runSync` parses
     // `project.c3proj` at the very top and throws on unparseable JSON, and the
