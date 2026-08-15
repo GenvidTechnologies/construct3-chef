@@ -242,6 +242,34 @@ describe("[strays] detection-only report (#177)", () => {
     assert.include(lines, "[strays]".padEnd(16) + "! layouts/extracted/Foo.dsl.txt");
   });
 
+  // ── T5 — KNOWN-RED at the commit that introduces this row ───────────────────
+  // `reportStrayFiles` is currently declared `: void` and returns `undefined` at
+  // runtime, so `strays.length` throws a `TypeError`. That red state is the
+  // structural revert-confirm that widening the return type is genuinely
+  // load-bearing — the same committed-red discipline as
+  // `strayFileTolerance.test.ts`'s R-rows above. A later task widens the return
+  // type to `StrayFile[]`, at which point this row goes green with no edit here.
+
+  it("T5: reportStrayFiles returns the full detected set, not the capped rendering", () => {
+    const root = seedReporterProject();
+    for (let i = 1; i <= 25; i++) {
+      write(root, path.join("layouts", `stray-${String(i).padStart(2, "0")}.txt`), "x");
+    }
+
+    const lines: string[] = [];
+    const strays = reportStrayFiles(root, (m) => lines.push(m));
+
+    // Raw `.length` access (not `assert.lengthOf`, which would intercept an
+    // undefined target with its own "Target cannot be null or undefined."
+    // AssertionError) so the RED failure is the actual runtime `TypeError`
+    // this row exists to prove: `reportStrayFiles` is currently `: void` and
+    // returns `undefined`.
+    // The full detected set, uncapped.
+    assert.equal(strays.length, 25);
+    // The rendering stays capped: 20 rows + 1 "… and N more" tail line.
+    assert.equal(lines.length, 21);
+  });
+
   // ── R3 / R4 / R10 — CLI process boundary (RED until the wiring lands) ───────
   // These three use the real-subprocess `runCli` helper because they assert on a
   // real process exit code, which no in-process unit test can reach. Per that
