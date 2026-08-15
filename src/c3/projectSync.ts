@@ -8,6 +8,7 @@ import {
   detectManifestDrift,
   detectStrayFiles,
   type DriftEntry,
+  type StrayFile,
 } from "@genvidtech/c3source";
 import { mintUniqueSid } from "./sidUtils.js";
 
@@ -675,8 +676,15 @@ const STRAY_REPORT_LIMIT = 20;
  * **Detection-only.** Like `reportImageDrift`, this NEVER mutates and is NOT a
  * sync-project write-back target: a stray has no manifest position and can never
  * acquire one, so there is nothing to write back. It does not influence
- * `SyncResult.clean`, nor upstream's `ManifestDrift.inSync`, nor the CLI exit
- * code — the report is informational at every surface that emits it.
+ * `SyncResult.clean`, nor `ManifestDrift.inSync`. It influences the CLI exit
+ * code only where a caller opts in (`validate-project --fail-on-strays`, #183)
+ * — that is the caller's decision; this function never exits and never fails
+ * on its own.
+ *
+ * Returns the **full detected set, not the capped rendering**.
+ * `STRAY_REPORT_LIMIT` bounds what is printed; the return carries every stray
+ * so an opt-in gate fires on strays past the cap. Callers wanting only the
+ * report may discard it.
  *
  * **No try/catch — deliberately, and upstream forbids adding one.** The guard on
  * `detectImageDrift` directly above exists because that detector has a
@@ -706,11 +714,11 @@ const STRAY_REPORT_LIMIT = 20;
  * will never touch the manifest entry. Upstream's seven: layouts, eventSheets,
  * objectTypes, timelines, flowcharts, families, models3d.
  */
-export function reportStrayFiles(rootDir: string, log: Logger = console.log): void {
+export function reportStrayFiles(rootDir: string, log: Logger = console.log): StrayFile[] {
   const strays = detectStrayFiles(rootDir);
   if (strays.length === 0) {
     log(`[strays]`.padEnd(16) + "(no strays)");
-    return;
+    return strays;
   }
   for (const s of strays.slice(0, STRAY_REPORT_LIMIT)) {
     log(`[strays]`.padEnd(16) + `! ${[s.folder, ...s.diskPath, s.name].join("/")}`);
@@ -718,4 +726,5 @@ export function reportStrayFiles(rootDir: string, log: Logger = console.log): vo
   if (strays.length > STRAY_REPORT_LIMIT) {
     log(`[strays]`.padEnd(16) + `… and ${strays.length - STRAY_REPORT_LIMIT} more (${strays.length} total)`);
   }
+  return strays;
 }
