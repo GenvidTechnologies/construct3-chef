@@ -98,13 +98,15 @@ silently left for a future reader to rediscover.
   can pass for the wrong reason, so the test was mutation-checked rather than
   trusted on inspection: appending `"\n"` to the write turns the
   no-trailing-newline assertion red (47 passing / 1 failing in that file),
-  and reverting restores the full suite to green (1555 passing). This record
-  is the standard's only home today — no repo-wide convention doc describes
-  the mutation check, so cite this ADR rather than an assumed CLAUDE.md
-  habit. The narrower point worth carrying forward: a revert-and-confirm-red
-  pass proves only the rows that *were* red. A row green from the start is
-  invisible to it, which is precisely where a vacuous assertion survives —
-  so force the state such a row forbids and confirm it fails.
+  and reverting restores the full suite to green (1555 passing). The point
+  worth carrying forward: a revert-and-confirm-red pass proves only the rows
+  that *were* red. A row green from the start is invisible to it, which is
+  precisely where a vacuous assertion survives — so force the state such a
+  row forbids and confirm it fails, and confirm the mutation actually landed
+  before reading the run (one that silently no-ops returns green, which reads
+  as "the row is vacuous"). This was generalized out of this record into
+  `CLAUDE.md`'s Conventions section in the same PR; that bullet is the
+  repo-wide statement, and this record is the worked example behind it.
 - `writeProjectManifest`/`serializeProjectManifest` are barrel-exported
   `@genvidtech/c3source` API `runSync` now depends on directly, alongside
   `readProjectManifest`, `detectImageDrift`, `detectManifestDrift`, and
