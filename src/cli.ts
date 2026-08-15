@@ -161,17 +161,24 @@ yargs(hideBin(process.argv))
     "validate-project",
     "Validate project.c3proj matches disk (dry-run)",
     (y) =>
-      y.option("section", {
-        type: "string",
-        choices: ALL_SECTION_KEYS,
-        describe: "Only validate one section",
-      }),
+      y
+        .option("section", {
+          type: "string",
+          choices: ALL_SECTION_KEYS,
+          describe: "Only validate one section",
+        })
+        .option("fail-on-strays", {
+          type: "boolean",
+          default: false,
+          describe: "Exit 1 when any stray file is reported (opt-in CI gate)",
+        }),
     (argv) => {
       const rootDir = resolveProjectDir(argv);
       const result = runSync(rootDir, true, console.log, argv.section);
       reportImageDrift(rootDir, console.log);
-      reportStrayFiles(rootDir, console.log);
+      const strays = reportStrayFiles(rootDir, console.log);
       if (!result.clean) process.exitCode = 1;
+      if (argv.failOnStrays && strays.length > 0) process.exitCode = 1;
     },
   )
   .command(
