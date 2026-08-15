@@ -110,6 +110,35 @@ describe("[strays] detection-only report (#177)", () => {
     return root;
   }
 
+  /**
+   * `runSync`-unreachable seed: a `project.c3proj` that fails `JSON.parse` (not
+   * a shape violation, a literal syntax error), plus a stray so the reporters
+   * below have something to find. `detectStrayFiles`/`reportImageDrift` are
+   * both manifest-independent (see the file-level docstring above), so the
+   * only thing this seed exists to break is `readProjectManifest`'s
+   * `JSON.parse` — the `runSync` call at the very top of `validate-project`'s
+   * handler (#184).
+   */
+  function seedUnparseableProject(): string {
+    const root = tmpRoot();
+    writeFileSync(path.join(root, "project.c3proj"), "{ NOT JSON");
+    write(root, path.join("layouts", "notes.txt"), "a stray note\n");
+    return root;
+  }
+
+  /**
+   * Same shape as `seedUnparseableProject`, but `project.c3proj` is absent
+   * entirely — the ENOENT branch of `readProjectManifest`'s failure, which
+   * `runSync` discriminates from a parse failure via the error's errno `code`
+   * (see `projectSync.ts`'s `runSync`) and reports with a different message.
+   */
+  function seedMissingManifestProject(): string {
+    const root = tmpRoot();
+    mkdirSync(root, { recursive: true });
+    write(root, path.join("layouts", "notes.txt"), "a stray note\n");
+    return root;
+  }
+
   function capture(root: string): string[] {
     const lines: string[] = [];
     reportStrayFiles(root, (m) => lines.push(m));
@@ -376,5 +405,58 @@ describe("[strays] detection-only report (#177)", () => {
 
     assert.equal(result.exitCode, 0, `expected exit 0; stderr: ${result.stderr}`);
     assert.match(result.stdout, /^\[strays\]\s+\(no strays\)$/m);
+  });
+
+  // ── T8 / T9 / T11 — manifest-independent reporting (#184, KNOWN-RED) ────────
+  // `validate-project`'s handler is synchronous with no `.fail()` handler, and
+  // `runSync` parses `project.c3proj` at its very top and throws on a missing
+  // or unparseable manifest. That throw escapes the handler completely
+  // uncaught: stdout is empty (the `[strays]`/`[images]` reporters below it in
+  // the handler never run) and stderr carries a raw Node stack trace instead
+  // of a clean message, with exit 1 coming from Node's default
+  // uncaught-exception handling rather than the CLI's own logic. A later task
+  // wraps only the `runSync` call in a try/catch, printing `err.message` to
+  // stderr and letting both reporters still run to stdout. These rows go
+  // green with no edit here.
+
+  it("T8: strays and images are reported past an unparseable manifest", () => {
+    const root = seedUnparseableProject();
+
+    const result = runCli(["validate-project", "--project-dir", root]);
+
+    assert.match(result.stdout, /^\[strays\]\s+! layouts\/notes\.txt$/m);
+    // The free finding: `reportImageDrift` is manifest-independent too, so it
+    // rides along past the same unparseable manifest.
+    assert.match(result.stdout, /^\[images\]\s+\(no drift\)$/m);
+    assert.match(result.stderr, /Could not parse .*project\.c3proj as JSON/);
+    assert.equal(result.exitCode, 1);
+  });
+
+  it("T9: strays are reported past a missing manifest (the other branch, the other message)", () => {
+    const root = seedMissingManifestProject();
+
+    const result = runCli(["validate-project", "--project-dir", root]);
+
+    assert.match(result.stdout, /^\[strays\]\s+! layouts\/notes\.txt$/m);
+    assert.match(result.stdout, /^\[images\]\s+\(no drift\)$/m);
+    // `runSync` discriminates on whether the error carries an errno `code`,
+    // producing a DIFFERENT message than T8's — this row exists to cover that
+    // branch too, not just the parse-failure one.
+    assert.match(result.stderr, /Could not read .*project\.c3proj/);
+    assert.equal(result.exitCode, 1);
+  });
+
+  it("T11: the raw stack trace is replaced by a clean one-line message", () => {
+    const root = seedUnparseableProject();
+
+    const result = runCli(["validate-project", "--project-dir", root]);
+
+    // Positive control: proves the stderr corpus is non-empty and the pattern
+    // CAN match, so the zero-hit assertion below cannot pass merely because
+    // stderr is empty.
+    assert.match(result.stderr, /Could not parse/);
+    // No stack frames — a raw Node uncaught-exception dump prints one or more
+    // `    at ...` lines; a clean one-line message never does.
+    assert.notMatch(result.stderr, /^\s+at /m);
   });
 });
