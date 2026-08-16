@@ -137,6 +137,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   long-form sections are single physical lines, recorded c3source 1.9.0 in the
   leaf-dependency ledger, and stopped pinning a model version in the commit
   trailer. ([#167](https://github.com/GenvidTechnologies/construct3-chef/issues/167), [#171](https://github.com/GenvidTechnologies/construct3-chef/issues/171), [#170](https://github.com/GenvidTechnologies/construct3-chef/issues/170), [#158](https://github.com/GenvidTechnologies/construct3-chef/issues/158))
+- Split `CLAUDE.md`'s version-by-version upstream-adoption narrative into `docs/leaf-dependency-ledger.md`, leaving the adoption posture in `CLAUDE.md` § "Leaf dependencies"; added the missing `@genvidtech/mcp-utils` 0.6.0 entry and retired a stale "current pin" claim. ([#172](https://github.com/GenvidTechnologies/construct3-chef/issues/172), ADR 0026)
 
 ## [1.0.0] - 2026-07-28
 
