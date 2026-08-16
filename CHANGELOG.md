@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-16
+
 ### Added
 
 - `[strays]` — a detection-only stray-file report on `validate-project` and
@@ -83,6 +85,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([#175](https://github.com/GenvidTechnologies/construct3-chef/issues/175))
 - Bumped `@genvidtech/mcp-utils` to `^0.6.0`, adopting its `walkFiles` fix — which
   now guarantees every returned path is a regular file. ([#168](https://github.com/GenvidTechnologies/construct3-chef/issues/168), ADR 0020)
+- Bumped `@genvidtech/mcp-utils` to `^0.7.0`, adopting **Layer 3** of
+  `OptimisticWatcher` — a per-path content-fingerprint ledger (`ObservedState`)
+  that collapses duplicate filesystem events for unchanged content. This fixes a
+  **Windows/NTFS** defect where a single `writeFileSync` delivers two `fs.watch`
+  events, so `txId` counted watcher events rather than logical changes; MCP
+  clients using `txId` for optimistic concurrency saw it advance twice per write.
+  Deletions still bump, and genuinely distinct writes still bump once each — only
+  duplicates collapse. Adopted with **no `src/` change**: Layer 3 is on by default
+  when `observed` is omitted, and `createSourceWatcher` omits it. Does not
+  reproduce on Linux (one event per write), so the `ubuntu-latest` gate can
+  neither observe the defect nor confirm the fix — coverage is instead a
+  deterministic stub-factory test, per ADR 0027.
+  ([#191](https://github.com/GenvidTechnologies/construct3-chef/issues/191), ADR 0027)
 - Bumped the canonical `construct3-sample` fixture pin to `v0.7.0`. ([#147](https://github.com/GenvidTechnologies/construct3-chef/issues/147))
 - **Behavior change on barrel-exported API:** file walks no longer return non-file
   entries (directories, and directory junctions on Windows), which were previously
@@ -138,6 +153,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   leaf-dependency ledger, and stopped pinning a model version in the commit
   trailer. ([#167](https://github.com/GenvidTechnologies/construct3-chef/issues/167), [#171](https://github.com/GenvidTechnologies/construct3-chef/issues/171), [#170](https://github.com/GenvidTechnologies/construct3-chef/issues/170), [#158](https://github.com/GenvidTechnologies/construct3-chef/issues/158))
 - Split `CLAUDE.md`'s version-by-version upstream-adoption narrative into `docs/leaf-dependency-ledger.md`, leaving the adoption posture in `CLAUDE.md` § "Leaf dependencies"; added the missing `@genvidtech/mcp-utils` 0.6.0 entry and retired a stale "current pin" claim. ([#172](https://github.com/GenvidTechnologies/construct3-chef/issues/172), ADR 0026)
+- Recorded the `@genvidtech/mcp-utils` 0.7.0 entry in the leaf-dependency ledger —
+  including a revert-confirm that found **no** overlapping local guard (proven by
+  mutation rather than reasoned to) and the accepted gap that stub coverage proves
+  the collapsing behaviour but not the native duplicate-delivery trigger. Added
+  ADR 0027 on covering a Windows-only defect with cross-platform stub coverage,
+  and an eighth grep trap in `CLAUDE.md`: a comment naming a symbol's *absence* is
+  an exact match for it, so `grep -c` over source overcounts call sites.
+  ([#191](https://github.com/GenvidTechnologies/construct3-chef/issues/191), ADR 0027)
 
 ## [1.0.0] - 2026-07-28
 
@@ -403,7 +426,8 @@ Initial public release, extracted from the retired c3-mcp-server initiative.
 - `read-event-sids` matches condition and action content. ([#8](https://github.com/GenvidTechnologies/construct3-chef/issues/8))
 - The DSL extractor marks disabled conditions with `[DISABLED]`. ([#5](https://github.com/GenvidTechnologies/construct3-chef/issues/5))
 
-[Unreleased]: https://github.com/GenvidTechnologies/construct3-chef/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/GenvidTechnologies/construct3-chef/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/GenvidTechnologies/construct3-chef/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/GenvidTechnologies/construct3-chef/compare/v0.11.2...v1.0.0
 [0.11.2]: https://github.com/GenvidTechnologies/construct3-chef/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/GenvidTechnologies/construct3-chef/compare/v0.11.0...v0.11.1
