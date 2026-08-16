@@ -135,4 +135,40 @@ describe("createSourceWatcher", () => {
     w.bump();
     assert.equal(w.txId, 1);
   });
+
+  // mcp-utils 0.7.0 adds Layer 3 to OptimisticWatcher — a per-path
+  // content-fingerprint ledger (ObservedState) that collapses a duplicate
+  // filesystem event for unchanged content, fixing a Windows/NTFS defect
+  // where a single writeFileSync delivers two fs.watch events. Test A below
+  // is expected to FAIL against the currently-installed 0.6.0 (no Layer 3 ->
+  // two events -> txId bumps twice) and is expected to PASS once the floor
+  // bump to ^0.7.0 lands. Test B is a deliberately duplicate-free companion
+  // that passes in BOTH states, guarding against over-collapsing.
+
+  it("a duplicate event for unchanged content bumps txId only once", () => {
+    const target = path.join(root, "eventSheets", "Dup.json");
+    writeFileSync(target, '{"a":1}');
+    const w = build();
+    emit("eventSheets", "Dup.json");
+    assert.equal(w.txId, 1);
+    emit("eventSheets", "Dup.json");
+    assert.equal(w.txId, 1, "duplicate event for unchanged content must not bump again");
+    assert.equal(fired.length, 1);
+  });
+
+  // Deliberately fires no duplicate event: this test must stay green both
+  // before and after the mcp-utils 0.7.0 bump, since it guards against
+  // over-collapsing (a genuinely changed write must still bump). Do not
+  // merge this with the test above — keeping it duplicate-free is what
+  // makes "which assertion went red" unambiguous.
+  it("a genuinely changed write still bumps", () => {
+    const target = path.join(root, "eventSheets", "Changed.json");
+    writeFileSync(target, '{"a":1}');
+    const w = build();
+    emit("eventSheets", "Changed.json");
+    assert.equal(w.txId, 1);
+    writeFileSync(target, '{"a":2}');
+    emit("eventSheets", "Changed.json");
+    assert.equal(w.txId, 2);
+  });
 });
