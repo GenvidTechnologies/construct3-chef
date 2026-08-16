@@ -26,5 +26,9 @@
     "readOne": "gh issue view {id} --json number,title,body,labels,comments",
     "triagedLabel": "triaged",
     "needsInfoLabel": "to refine"
+  },
+  "wiki": {
+    "wikiDir": "wiki",
+    "rawDir": "raw"
   }
 }

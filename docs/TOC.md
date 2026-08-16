@@ -18,6 +18,10 @@ map (§ "Where to read more").
 
 - `issue-triage.md` — backlog-grooming conventions consumed by `/gvt-dev:triage-issues` (types, `priority/*` + `area:*` labels, required fields, split/duplicate/dependency policy, `gh` mutation recipes); pairs with the `bugTracker` block in `.gvt-agent.json`
 
+## Knowledge Base
+
+- `wiki-schema.md` — maintenance schema for the three-tier LLM-wiki (`raw/` immutable captures → `wiki/` OKF v0.2 pages + `index.md`/`log.md`), consumed by `/gvt-dev:maintain-wiki`: page format/frontmatter, create-vs-update lifecycle, `raw/` immutability, staleness policy, wiki-link forms
+
 ## Architecture & design rationale
 
 - `mcp-architecture.md` — MCP server design (stdio transport, file-based model, txId/extractedDirty/watcher concurrency, Logger/ReadWriteLock decisions, security posture, SDK research, prior-art comparison)
