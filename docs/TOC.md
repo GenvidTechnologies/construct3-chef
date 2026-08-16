@@ -22,6 +22,7 @@ map (§ "Where to read more").
 
 - `mcp-architecture.md` — MCP server design (stdio transport, file-based model, txId/extractedDirty/watcher concurrency, Logger/ReadWriteLock decisions, security posture, SDK research, prior-art comparison)
 - `prior-art-construct3-mcp.md` — imported reference/design record from the originating monorepo
+- `leaf-dependency-ledger.md` — version-by-version record of `@genvidtech/c3source` / `@genvidtech/mcp-utils` releases: what each shipped, what chef adopted, and the deliberate declines (adoption *posture* stays in CLAUDE.md § "Leaf dependencies")
 
 ## Decision Records
 
