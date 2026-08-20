@@ -4,14 +4,14 @@ import { isEditorLocalPath } from "@genvidtech/c3source";
 /**
  * Segment-wise editor-local path classification. The classification rule
  * itself is c3source's `isEditorLocalPath` (`dirs`/`fileSuffixes`/
- * `exactNames` — see ADR `docs/decisions/0016-shared-file-walk-adoption-triage.md`),
+ * `exactNames` — see ADR `wiki/decisions/0016-shared-file-walk-adoption-triage.md`),
  * which only classifies a single bare basename; this module applies it to
  * every segment of a path, which is what catches both a `uistate/`
  * *directory* segment and a `Foo.uistate.json` *sibling file* segment.
  *
  * Off-barrel deliberately: not re-exported from `src/index.ts` (repo is at
  * 1.0.0, and a barrel export is a permanent public-API commitment). See ADR
- * `docs/decisions/0018-editor-local-writes-are-not-source-changes.md`.
+ * `wiki/decisions/0018-editor-local-writes-are-not-source-changes.md`.
  */
 
 /**

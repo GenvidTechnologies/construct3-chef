@@ -45,7 +45,7 @@ export interface CustomAceIndex {
  * empty map — this site owns a `C3Project` handle and can afford to fail loudly
  * rather than silently emit false "not a member of family" errors at the #88
  * runtime-resolution chokepoint (`recipeApplier.ts`). See ADR
- * `docs/decisions/0019-two-walk-primitives-one-classification-rule.md`.
+ * `wiki/decisions/0019-two-walk-primitives-one-classification-rule.md`.
  */
 export function buildCustomAceIndex(rootDir: string): CustomAceIndex {
   const project = openProject(rootDir);

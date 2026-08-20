@@ -16,7 +16,7 @@
   },
   "features": {},
   "paths": {
-    "docs": "docs",
+    "docs": "wiki",
     "source": "src"
   },
   "bugTracker": {

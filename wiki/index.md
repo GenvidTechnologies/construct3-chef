@@ -8,17 +8,53 @@ okf_version: "0.2"
 
 # Wiki Index
 
-This is the wiki's table of contents — every page under `wiki/`, grouped under
-section headings, one line each. `/gvt-dev:maintain-wiki` keeps this list
-current: a new page is added here when it's created, and `lint` flags any page
-listed in **no** index — here, or in a subdirectory's own `index.md`. Each
-entry's description is the linked page's frontmatter `description`, so the index
-and the page can't drift. See `docs/wiki-schema.md` for the page format and
-maintenance rules.
+This is construct3-chef's **only** documentation tier: since the `docs/`
+consolidation of 2026-08-20 (ADR
+[0028](decisions/0028-documentation-consolidated-into-the-wiki-tier.md)) the
+reference manuals, architecture and research notes, process docs, and decision
+records all live here, alongside the durable knowledge that has no other repo
+home. `CLAUDE.md` keeps only the always-loaded operating context and routes
+here for everything else.
+
+`/gvt-dev:maintain-wiki` keeps this list current: a new page is added here (or
+to its subdirectory's own `index.md`) when it's created, and `lint` flags any
+page listed in **no** index. Each entry's description is the linked page's
+frontmatter `description`, so the index and the page can't drift. See
+[wiki-schema.md](wiki-schema.md) for the page format and maintenance rules.
+
+## Sections
+
+* [Reference](reference/index.md) -
+  How to drive the tool: every CLI subcommand, the recipe format and its
+  operations, the generator pipeline, and user-defined ops.
+* [Architecture & research](architecture/index.md) -
+  Why the MCP server is shaped the way it is, plus the preserved prior-art
+  comparison it was designed against.
+* [Process & contracts](process/index.md) -
+  How the backlog is groomed, and the version-by-version record of what each
+  upstream leaf-dependency release shipped and what chef did with it.
+* [Decision records](decisions/index.md) -
+  Numbered ADRs, chronological by when the decision landed (earliest first).
+  0001-0005 trace to the 2026-04-03 initial release, ordered by dependency.
+
+## Contract
+
+* [Wiki Maintenance Schema](wiki-schema.md) -
+  Maintenance schema for the three-tier LLM-wiki (`raw/` immutable captures →
+  `wiki/` OKF v0.2 pages + `index.md`/`log.md`), consumed by
+  `/gvt-dev:maintain-wiki`: page format/frontmatter, create-vs-update
+  lifecycle, `raw/` immutability, staleness policy, wiki-link forms
 
 ## Practice
 
-* [Local verification practice](local-verification-practice.md) - How a
-  change is verified locally in construct3-chef — bootstrap, the validate
-  gate and its timing, fixture safety, and the failure modes where a green
-  result proves nothing
+* [Local verification practice](local-verification-practice.md) -
+  How a change is verified locally in construct3-chef — bootstrap, the
+  validate gate and its timing, fixture safety, and the failure modes where a
+  green result proves nothing
+
+## C3 platform reference (the *why* behind the gotchas)
+
+C3 platform reference — event-sheet & layout JSON structure, the scripting API,
+the TS async/concurrency model — lives in the **gvt-construct3** Claude Code
+plugin at `${CLAUDE_PLUGIN_ROOT}/docs/c3/*`, not here. construct3-chef owns the
+*tooling* knowledge above; the plugin owns the *platform* knowledge.

@@ -13,7 +13,7 @@ export interface SourceWatcherOptions {
   /**
    * Invoked for an EXTERNAL change to a watched source directory (not
    * project.c3proj, and not an editor-local path — see ADR
-   * `docs/decisions/0018-editor-local-writes-are-not-source-changes.md`).
+   * `wiki/decisions/0018-editor-local-writes-are-not-source-changes.md`).
    * The watcher has already bumped txId; this is where the consumer marks
    * extracted/ dirty. NOT called for project.c3proj edits (bump txId only)
    * nor for editor-local edits (no bump, no call at all).
@@ -55,7 +55,7 @@ const fsWatchFactory: WatcherFactory = (target, onEvent) => {
  *   basename, or an exact `tsconfig.json` basename) → neither: dropped at the
  *   watcher factory before `OptimisticWatcher.handleEvent` ever sees it, so
  *   it bumps no txId and marks nothing dirty. See ADR
- *   `docs/decisions/0018-editor-local-writes-are-not-source-changes.md`.
+ *   `wiki/decisions/0018-editor-local-writes-are-not-source-changes.md`.
  * - Self-writes are suppressed via `suppress()` (Layer 1) / `expect()` (Layer 2).
  *
  * Only existing targets are watched (missing dirs are skipped, matching the old

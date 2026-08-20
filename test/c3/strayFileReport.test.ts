@@ -271,7 +271,7 @@ describe("[strays] detection-only report (#177)", function () {
   // ── R13 ────────────────────────────────────────────────────────────────────
   // Pins the behaviour (rather than leaving it accidental) for a configured
   // `extractedDir` that lives UNDER one of the seven section roots: its generated
-  // files are strays and are reported. `docs/cli.md` recommends keeping
+  // files are strays and are reported. `wiki/reference/cli.md` recommends keeping
   // `extractedDir` outside the section roots for exactly this reason.
 
   it("R13: an extractedDir nested under a section root is reported", () => {

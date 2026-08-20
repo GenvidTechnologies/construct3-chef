@@ -238,7 +238,7 @@ function checkRegistryFreshness(registryPath: string): void {
     // generateSidRegistry excludes them the same way when building the very
     // registry this scan checks freshness against, so including them here
     // would compare against files the registry never contained. See ADR
-    // docs/decisions/0018-editor-local-writes-are-not-source-changes.md.
+    // wiki/decisions/0018-editor-local-writes-are-not-source-changes.md.
     for (const file of files.filter((f) => !isEditorLocalPathUnder(PROJECT_ROOT, f))) {
       try {
         const m = fs.statSync(file).mtimeMs;

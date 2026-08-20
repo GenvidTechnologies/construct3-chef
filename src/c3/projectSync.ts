@@ -181,7 +181,7 @@ export interface DiskTree {
  *
  * NOT routed through c3source's `find_all_files_path` / `isEditorLocalPath`.
  * That delegation was proposed by #146 and DECLINED on shape-fit grounds — see
- * ADR `docs/decisions/0016-shared-file-walk-adoption-triage.md`. Three
+ * ADR `wiki/decisions/0016-shared-file-walk-adoption-triage.md`. Three
  * independent mismatches, any ONE of which is sufficient:
  *
  * 1. IT RETURNS DIRECTORIES. `syncFileFolder` mirrors the disk folder tree into
@@ -212,7 +212,7 @@ export interface DiskTree {
  * Precedent: the same "owning the fact upstream isn't sufficient — the
  * primitive's SHAPE must fit the consuming operation" call was made for #42 (the
  * flat `detectManifestDrift` that couldn't back a nested mutating sync); see ADR
- * `docs/decisions/0006-upstream-ownership-boundary-and-adoption-posture.md`.
+ * `wiki/decisions/0006-upstream-ownership-boundary-and-adoption-posture.md`.
  */
 export function readDiskDir(
   dirPath: string,
