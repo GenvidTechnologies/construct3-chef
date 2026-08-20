@@ -1,34 +1,34 @@
 {
-  "project": {
-    "name": "@genvidtech/construct3-chef",
-    "description": "CLI + MCP server that mutates Construct 3 projects (event sheets, layouts, objectTypes) stored as on-disk JSON, via SID-addressed recipes and a read-side extracted/ generator pipeline.",
-    "languages": ["typescript"]
-  },
-  "commands": {
-    "test": "npm test",
-    "lint": "npm run lint",
-    "build": "npm run build",
-    "validate": "npm run lint && npm run typecheck && npm test"
-  },
-  "repo": {
-    "default_branch": "main",
-    "host": "github"
-  },
-  "features": {},
-  "paths": {
-    "docs": "wiki",
-    "source": "src"
-  },
-  "bugTracker": {
-    "kind": "github",
-    "actionQuery": "gh issue list --state open -L 200 --json number,title,labels,body,assignees",
-    "comparisonQuery": "gh issue list --state all -L 500 --json number,title,labels,state",
-    "readOne": "gh issue view {id} --json number,title,body,labels,comments",
-    "triagedLabel": "triaged",
-    "needsInfoLabel": "to refine"
-  },
-  "wiki": {
-    "wikiDir": "wiki",
-    "rawDir": "raw"
-  }
+	"project": {
+		"name": "@genvidtech/construct3-chef",
+		"description": "CLI + MCP server that mutates Construct 3 projects (event sheets, layouts, objectTypes) stored as on-disk JSON, via SID-addressed recipes and a read-side extracted/ generator pipeline.",
+		"languages": ["typescript"]
+	},
+	"commands": {
+		"test": "npm test",
+		"lint": "npm run lint",
+		"build": "npm run build",
+		"validate": "npm run lint && npm run typecheck && npm test"
+	},
+	"repo": {
+		"default_branch": "main",
+		"host": "github"
+	},
+	"features": {},
+	"paths": {
+		"docs": "wiki",
+		"source": "src"
+	},
+	"bugTracker": {
+		"kind": "github",
+		"actionQuery": "gh issue list --state open -L 200 --json number,title,labels,body,assignees",
+		"comparisonQuery": "gh issue list --state all -L 500 --json number,title,labels,state",
+		"readOne": "gh issue view {id} --json number,title,body,labels,comments",
+		"triagedLabel": "triaged",
+		"needsInfoLabel": "to refine"
+	},
+	"wiki": {
+		"wikiDir": "wiki",
+		"rawDir": "raw"
+	}
 }
