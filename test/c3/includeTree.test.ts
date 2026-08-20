@@ -54,12 +54,12 @@ describe("buildSheetNameMap", () => {
   // vacuously — asserting nothing about the exclusion. (That trap was live in this
   // repo until #149 closed it — see the K1-K3/L1-L3 seeded synthetic tests under
   // "list-event-sheets"/"list-layouts" in test/mcp/serverHandlers.test.ts, and ADR
-  // docs/decisions/0019.)
+  // wiki/decisions/0019.)
   //
   // One test per dimension, deliberately. EDITOR_LOCAL_EXCLUSIONS has three
   // independent mechanisms — fileSuffixes ([".uistate.json"]), dirs (["uistate",
   // "ts-defs"]) and exactNames (["tsconfig.json"]) — and a single combined test
-  // could not say which one regressed. See ADR docs/decisions/0016.
+  // could not say which one regressed. See ADR wiki/decisions/0016.
   it("excludes *.uistate.json siblings", () => {
     writeSheet("eventSheets/Real.json", []);
     writeSheet("eventSheets/Real.uistate.json", []);

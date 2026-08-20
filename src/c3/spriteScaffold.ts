@@ -30,7 +30,7 @@ import { isEditorLocalPathUnder } from "./editorLocal.js";
  * directory and both callers are barrel-exported at 1.0.0, so they depend on
  * `walkFiles`' missing-dir → `[]` degrade — `find_all_objectTypes_path` has no
  * `existsSync` guard and would newly *throw*. See ADR
- * `docs/decisions/0019-two-walk-primitives-one-classification-rule.md`.
+ * `wiki/decisions/0019-two-walk-primitives-one-classification-rule.md`.
  *
  * The predicate alone (not a `descend` rule) does the whole job: `walkFiles`
  * passes the *full path* to the predicate, so `walkFiles` still *enters*
@@ -127,7 +127,7 @@ export function collectMaxImageSpriteId(objectTypesDir: string): number {
  * through the `startsWith(prefix + "-") && endsWith(".png")` filter below:
  * `.uistate.json` and `tsconfig.json` basenames both fail the `.png` suffix
  * check, and the `dirs` dimension would need recursion this flat walk doesn't
- * have. See ADR `docs/decisions/0019-two-walk-primitives-one-classification-rule.md`.
+ * have. See ADR `wiki/decisions/0019-two-walk-primitives-one-classification-rule.md`.
  *
  * Name-matched entries are additionally confirmed to be regular files via
  * `statSync(...).isFile()` (which follows symlinks) before being planned as a

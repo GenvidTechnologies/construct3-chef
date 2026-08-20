@@ -6,7 +6,7 @@ import { hasEditorLocalSegment, isEditorLocalPathUnder } from "../../src/c3/edit
 // "ts-defs"]), fileSuffixes ([".uistate.json"]), and exactNames
 // (["tsconfig.json"]) — so tests are split one per dimension, following the
 // pattern established in test/c3/includeTree.test.ts. A combined test could
-// not say which mechanism regressed. See ADR docs/decisions/0016.
+// not say which mechanism regressed. See ADR wiki/decisions/0016.
 
 describe("hasEditorLocalSegment", () => {
   it("dirs: flags a uistate/ segment", () => {

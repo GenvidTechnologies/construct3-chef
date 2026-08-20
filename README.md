@@ -67,7 +67,7 @@ If you install globally or add to `package.json` scripts, you can omit `npx`.
 | `list-ops` | List available user-defined ops |
 | `apply-op <name>` | Apply a user-defined op by name |
 
-See [docs/cli.md](docs/cli.md) for full flag documentation (addon-tooling commands — `read-addon`, `validate-addons`, `list-addons`, `diff-addon-aces`, `scan-addon-usage`, `sync-addon-metadata` — are in [docs/cli-addons.md](docs/cli-addons.md)).
+See [wiki/reference/cli.md](./wiki/reference/cli.md) for full flag documentation (addon-tooling commands — `read-addon`, `validate-addons`, `list-addons`, `diff-addon-aces`, `scan-addon-usage`, `sync-addon-metadata` — are in [wiki/reference/cli-addons.md](./wiki/reference/cli-addons.md)).
 
 ## Recipes
 
@@ -84,7 +84,7 @@ npx @genvidtech/construct3-chef apply-recipe my-recipe.json --preview
 npx @genvidtech/construct3-chef apply-recipe my-recipe.json
 ```
 
-See [docs/recipe-reference.md](docs/recipe-reference.md) for the full recipe format, all 15 event sheet operations, all 12 layout operations, and the builder shorthand syntax.
+See [wiki/reference/recipe-reference.md](./wiki/reference/recipe-reference.md) for the full recipe format, all 15 event sheet operations, all 12 layout operations, and the builder shorthand syntax.
 
 ## Generators
 
@@ -101,7 +101,7 @@ The `generate` subcommand produces `extracted/` files that make C3 JSON human-re
 
 It is recommended to commit `extracted/` alongside C3 source files for diffability and code review. Run `generate` after editing event sheets or layouts.
 
-See [docs/generators.md](docs/generators.md) for internals, output format, and cross-reference syntax.
+See [wiki/reference/generators.md](./wiki/reference/generators.md) for internals, output format, and cross-reference syntax.
 
 ## MCP Server
 
@@ -193,7 +193,9 @@ The `extracted/` directory is written by `generate` and read by the MCP server. 
 
 ## Documentation
 
-- [docs/recipe-reference.md](docs/recipe-reference.md) — Complete recipe reference: format, SID addressing, all 15 event sheet operations, all 12 layout operations, builder shorthands, gotchas
-- [docs/generators.md](docs/generators.md) — Generator internals, output format, cross-referencing C3 errors, localVars matching
-- [docs/cli.md](docs/cli.md) — Full CLI flag documentation for all subcommands
-- [docs/cli-addons.md](docs/cli-addons.md) — Addon-tooling commands (`read-addon`, `validate-addons`, `list-addons`, `diff-addon-aces`, `scan-addon-usage`, `sync-addon-metadata`)
+All project documentation lives in the [wiki](./wiki/index.md) — reference manuals, architecture and research notes, process docs, and the decision records. Start at [wiki/index.md](./wiki/index.md); the most-used pages are:
+
+- [wiki/reference/recipe-reference.md](./wiki/reference/recipe-reference.md) — Complete recipe reference: format, SID addressing, all 15 event sheet operations, all 12 layout operations, builder shorthands, gotchas
+- [wiki/reference/generators.md](./wiki/reference/generators.md) — Generator internals, output format, cross-referencing C3 errors, localVars matching
+- [wiki/reference/cli.md](./wiki/reference/cli.md) — Full CLI flag documentation for all subcommands
+- [wiki/reference/cli-addons.md](./wiki/reference/cli-addons.md) — Addon-tooling commands (`read-addon`, `validate-addons`, `list-addons`, `diff-addon-aces`, `scan-addon-usage`, `sync-addon-metadata`)

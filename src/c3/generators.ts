@@ -508,7 +508,7 @@ function rootLocationForFile(relativePath: string): string {
  * does not exist. Exported so other tooling (e.g. staleness checks) can reuse it.
  *
  * **Deliberately stays on mcp-utils' `walkFiles`; do NOT swap in c3source's
- * `find_all_files_path`** (see ADR `docs/decisions/0016-shared-file-walk-adoption-triage.md`).
+ * `find_all_files_path`** (see ADR `wiki/decisions/0016-shared-file-walk-adoption-triage.md`).
  * The two walks differ in two tolerances that both callers depend on:
  *
  * 1. **ENOENT tolerance is load-bearing.** `walkFiles` swallows `ENOENT` *inside*
