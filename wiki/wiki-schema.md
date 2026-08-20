@@ -2,7 +2,7 @@
 type: schema
 title: "Wiki Maintenance Schema"
 description: >-
-  Maintenance schema for the three-tier LLM-wiki (`raw/` immutable captures → `wiki/` OKF v0.2 pages + `index.md`/`log.md`), consumed by `/gvt-dev:maintain-wiki`: page format/frontmatter, create-vs-update lifecycle, `raw/` immutability, staleness policy, wiki-link forms
+  Maintenance schema for the three-tier LLM-wiki (`raw/` immutable captures → `wiki/` OKF v0.2 pages + `index.md`/`log.md`), consumed by `/gvt-dev:maintain-wiki`: page format/frontmatter, create-vs-update lifecycle, generated-index policy, `raw/` immutability, staleness policy, wiki-link forms
 tags: [wiki, schema, okf, contract]
 status: stable
 generated: { by: process:maintain-wiki, at: 2026-08-20T15:29:10Z }
@@ -149,6 +149,29 @@ one topic. Two situations, two different actions:
 When it's ambiguous whether a source is a new topic or a refinement of an
 existing one, prefer updating the closer existing page — a wiki with one
 strong page beats a wiki with two thin overlapping ones.
+
+**The indexes are generated, never hand-edited — local policy, enforced.** Every
+index entry's description IS the linked page's frontmatter `description`, which
+is what makes index and page structurally unable to drift. That is produced by
+`scripts/gen-wiki-index.mjs` (`npm run wiki:index`), and
+`test/wiki/wikiBundle.test.ts` fails the build when a committed index no longer
+matches generator output. So the workflow for "add it to `<wikiDir>/index.md`"
+above is: write the page's `description`, then regenerate. Editing an index by
+hand reintroduces exactly the drift the generation exists to prevent, and the
+suite will catch it.
+
+Two consequences worth stating, because they are easy to get backwards:
+
+- A page therefore **must** carry `title` and `description` — not because OKF
+  requires them (§4.1 requires only `type`), but because this repo's generator
+  reads them. This is a **stricter local policy**, which §11 explicitly permits a
+  consuming repo to adopt; it is not an OKF conformance claim.
+- Nothing else about the bundle gates the build. Dead links, orphans, staleness,
+  a missing `index.md`, an unknown `type` — all are reported advisory-only by
+  `npm run wiki:lint` (`scripts/wiki-lint.mjs`), which **always exits 0**,
+  because §11 forbids an OKF consumer from rejecting a bundle for any of them.
+  Adding a new section directory means adding it to `SECTIONS` in the generator;
+  that is the only edit a new subdirectory needs.
 
 ## The `raw/` immutability convention
 
