@@ -66,7 +66,8 @@
 		"fixture:prep": "node scripts/prep-fixture.mjs",
 		"fixture:verify": "node scripts/verify-fixture-parity.mjs",
 		"wiki:index": "node scripts/gen-wiki-index.mjs",
-		"wiki:lint": "node scripts/wiki-lint.mjs"
+		"wiki:lint": "node scripts/wiki-lint.mjs",
+		"docs:alias": "node scripts/gen-docs-alias.mjs"
 	},
 	"engines": {
 		"node": ">=22"

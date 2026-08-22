@@ -1,5 +1,10 @@
 node_modules/
 dist/
+# Flat docs/ alias, generated at pack time only from wiki/ (see gen-docs-alias.mjs)
+# so the MCP docs:/// resource has a flat surface to scan. Never tracked; see
+# wiki/decisions/0029-*. dist/ above is the existing precedent for a
+# gitignored-but-shipped directory.
+/docs/
 *.tgz
 tsconfig.tsbuildinfo
 # Local Claude Code settings + scheduler state (per-machine, not shared)
