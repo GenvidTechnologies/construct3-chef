@@ -127,9 +127,11 @@ could therefore be enumerable where `exposeDocs` is not; that is the tracked
 — reverting to `exposeDocs` pointed straight at `wiki/` — once upstream
 `@genvidtech/mcp-utils` ships an `exposeDocs` that accepts an optional
 docs-directory argument, walks it recursively, and registers a non-`undefined`
-`list` callback. A request covering all three is intended to be filed
-against `GenvidTechnologies/mcp-utils` as a follow-up from this branch;
-until it lands and ships, this generator is the supported path.
+`list` callback. That request covering all three is filed as
+[mcp-utils#15](https://github.com/GenvidTechnologies/mcp-utils/issues/15);
+until it lands and ships, this generator is the supported path. Note
+consumers pin `^0.7.0`, which excludes `0.8.0` — so adopting the fix will be
+an explicit dependency bump, not a transparent pickup.
 
 **Rejected — (a) a naive, un-generated `wiki/` → `docs/` alias.** See
 Context: a flat, non-recursive scan of `wiki/` itself reaches 4 of 45 pages
@@ -184,12 +186,18 @@ leaving the resource broken in the interim.
   capability named above ships; until then, `scripts/gen-docs-alias.mjs` and
   its `--check` flag are the source of truth for whether the alias matches
   `wiki/`.
-- Three follow-up issues are filed from this branch: an upstream
-  `mcp-utils` request (the retirement path above), a downstream
-  `gvt-construct3` issue correcting its malformed resource scheme and
-  widening its known reference count, and a local tracking issue for Option
-  B. None of the three block this fix; they are recorded here so the
-  decision they follow up on is traceable.
+- Three follow-up issues are filed from this branch, none of them blocking
+  this fix:
+  - [mcp-utils#15](https://github.com/GenvidTechnologies/mcp-utils/issues/15)
+    — the upstream request, and this ADR's retirement path.
+  - [gvt-construct3#86](https://github.com/GenvidTechnologies/claude-code-plugin-gvt-construct3/issues/86)
+    — its `construct3-chef://docs` transposes server and protocol and has
+    never resolved; 23 occurrences across 13 shipped files. Independent of
+    this regression: fixing chef does not make that string resolve.
+  - [#200](https://github.com/GenvidTechnologies/construct3-chef/issues/200)
+    — Option B (local `docs:///{+path}` with an enumerable `list`), tracked
+    rather than discarded, to be picked up only if enumeration or nested
+    addressing is actually needed.
 
 ## Related
 
