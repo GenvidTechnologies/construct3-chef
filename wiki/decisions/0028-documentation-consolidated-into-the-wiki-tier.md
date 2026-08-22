@@ -122,6 +122,24 @@ same exemption `CLAUDE.md` § "Conventions" already grants `docs/decisions/` in
 retired-token sweeps ("an ADR is a historical record") applies here. Live
 pointers *were* rewritten; only narrative references to the past were left.
 
+**The plugin-contract enumeration above missed a fifth breakage, in chef's
+own shipped runtime rather than in gvt-dev tooling.** All four sites named
+above are gvt-dev tooling that *reads* this repo; none is code this repo
+*ships*. The MCP `docs:///{name}` resource (`exposeDocs`, wired in
+`src/mcp/server.ts`) is: it resolves a hardcoded, flat, non-recursive
+`<packageDir>/docs`, so retiring `docs/` into `wiki/`'s nested layout
+silently emptied it, and this same decision's `package.json` change (`files`
+moved from `docs` to `wiki`/`raw`) dropped the directory from the published
+tarball too — a consequence this record did not enumerate at the time. The
+rejected alternative below, "keep `docs/` as a thin shim," was reasoned
+purely as a way to keep the *audit* green; nothing in that reasoning
+accounted for a *runtime product surface* depending on the directory, so the
+rejection was made on an incomplete picture. ADR
+[0029](0029-flat-docs-alias-generated-into-the-tarball.md) revisits this gap
+and lands on a different object than the shim rejected here — a *generated,
+gitignored, tarball-only* `docs/`, never tracked in the working tree — which
+is why 0029 amends rather than reopens this decision.
+
 ## Alternatives rejected
 
 **Migrate only the eligible subset.** Under the old routing rule the eligible
