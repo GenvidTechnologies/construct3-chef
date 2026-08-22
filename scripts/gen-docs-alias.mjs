@@ -181,7 +181,7 @@ function main() {
   if (args.includes("--clean")) {
     const existed = existsSync(resolveDocsDir());
     clean();
-    console.log(existed ? "removed docs/ (generated alias)" : "docs/ already absent, nothing to remove");
+    console.error(existed ? "removed docs/ (generated alias)" : "docs/ already absent, nothing to remove");
     return;
   }
 
@@ -191,13 +191,13 @@ function main() {
       console.error(`docs/ alias is stale (run \`npm run docs:alias\`):\n  ${diffs.join("\n  ")}`);
       process.exitCode = 1;
     } else {
-      console.log("docs/ alias up to date");
+      console.error("docs/ alias up to date");
     }
     return;
   }
 
   const files = generate();
-  console.log(`wrote ${files.size} files to docs/`);
+  console.error(`wrote ${files.size} files to docs/`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

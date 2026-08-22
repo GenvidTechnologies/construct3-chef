@@ -26,6 +26,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The MCP `docs:///{name}` resource served **zero** documents and threw `ENOENT`
+  on every read, from the `docs/` → `wiki/` consolidation
+  ([#197](https://github.com/GenvidTechnologies/construct3-chef/issues/197), ADR
+  [`0028`](wiki/decisions/0028-documentation-consolidated-into-the-wiki-tier.md))
+  until now. `exposeDocs` (upstream `@genvidtech/mcp-utils`) resolves a
+  **hardcoded, flat, non-recursive** `<packageDir>/docs`, so retiring that
+  directory silently emptied the resource; `docs` was dropped from
+  `package.json`'s `files` in the same commit, so the published tarball lost it
+  too. The regression never reached a release — `1.1.0` predates both
+  consolidation commits — but the next tag would have shipped it, and the
+  `gvt-construct3` plugin pins an exact version.
+
+  A new `scripts/gen-docs-alias.mjs` now generates a flat `docs/` from `wiki/`
+  **into the published tarball only**, wired through `prepack`/`postpack` and
+  gitignored, exactly as `dist/` already works. `exposeDocs` itself is untouched.
+  40 pages are served, addressed as `docs:///<name>`, plus a generated
+  `docs:///index` manifest; nine of the ten names served at `1.1.0` return with
+  identical stems, and the tenth (`TOC`) is deliberately renamed to `index`,
+  following ADR 0028's fold. Pages are copied verbatim, so a served document is
+  byte-identical to its `wiki/` source. See ADR
+  [`0029`](wiki/decisions/0029-flat-docs-alias-generated-into-the-tarball.md).
+  ([#198](https://github.com/GenvidTechnologies/construct3-chef/issues/198))
+
+  > Note for consumers referencing these docs: the resolvable form is
+  > `@construct3-chef:docs://<name>` (`@server:protocol://resource`). A bare
+  > `construct3-chef://docs` transposes server and protocol and has never
+  > resolved, independently of this fix.
+
 ## [1.1.0] - 2026-08-16
 
 ### Added

@@ -43,6 +43,7 @@
 	},
 	"files": [
 		"dist",
+		"docs",
 		"wiki",
 		"raw",
 		"CHANGELOG.md",
@@ -53,7 +54,8 @@
 		"access": "public"
 	},
 	"scripts": {
-		"prepack": "npm run build",
+		"prepack": "npm run build && npm run docs:alias",
+		"postpack": "node scripts/gen-docs-alias.mjs --clean",
 		"pretest": "npm run fixture:prep",
 		"pretest:file": "npm run fixture:prep",
 		"build": "tsc && node -e \"const fs=require('fs');const f='dist/cli.js';const c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!')){fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c)}\"",
