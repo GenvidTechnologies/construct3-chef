@@ -15,6 +15,31 @@ before. If a past entry itself needs correcting, add a new entry that says
 so; never edit or remove the old one in place. See `wiki/wiki-schema.md` for
 the full maintenance schema.
 
+## 2026-08-22
+
+* **Creation**: `decisions/0029-flat-docs-alias-generated-into-the-tarball.md`
+  — records the fix for [#198](https://github.com/GenvidTechnologies/construct3-chef/issues/198):
+  the MCP `docs:///{name}` resource, emptied by the 2026-08-20 `docs/` →
+  `wiki/` consolidation because upstream `exposeDocs` hardcodes a flat,
+  non-recursive `<packageDir>/docs` scan, is restored by a new
+  `scripts/gen-docs-alias.mjs` that regenerates a flat `docs/` from `wiki/`
+  at `prepack`/`postpack` time only — gitignored, never committed, serving
+  40 of the bundle's 45 tracked pages. Records the accepted
+  no-link-rewriting and no-`TOC`-compat-alias trade-offs, the corrected
+  41→40 served-count derivation, the `exposeDocs` non-enumerability
+  limitation (confirmed non-structural against the installed MCP SDK), and
+  the retirement condition (an upstream configurable/recursive/enumerable
+  `exposeDocs`).
+* **Update**: `decisions/0028-documentation-consolidated-into-the-wiki-tier.md`
+  — one paragraph added to § Consequences recording the fifth
+  hardcoded-`docs/` breakage the original enumeration missed: `exposeDocs`,
+  reached via `src/mcp/server.ts`, lives in chef's own shipped runtime
+  rather than in gvt-dev tooling, and the same commit's `package.json`
+  change dropped `docs/` from the published tarball's `files` list without
+  that consequence being recorded. Points at ADR 0029, which amends rather
+  than reopens this decision — 0028's decision to retire `docs/` stands;
+  only its impact enumeration was incomplete.
+
 ## 2026-08-20
 
 * **Migration**: the entire `docs/` tree (38 files, ~440 KB) ingested into the

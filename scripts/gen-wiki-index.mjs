@@ -42,7 +42,7 @@ export const SECTIONS = {
 
 // index.md and log.md are reserved at every level (the same exclusion the OKF
 // conformance walk uses), so lint and this generator agree on the page set.
-const RESERVED = /^(index|log)\.md$/;
+export const RESERVED = /^(index|log)\.md$/;
 
 export function resolveWikiDir(repoRoot = REPO_ROOT) {
   const cfgPath = path.join(repoRoot, ".gvt-agent.json");

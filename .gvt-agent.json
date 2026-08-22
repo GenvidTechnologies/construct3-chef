@@ -16,8 +16,13 @@
 	},
 	"features": {},
 	"paths": {
-		"docs": "wiki",
-		"source": "src"
+		"docs/TOC.md": "wiki/index.md",
+		"docs/decisions/": "wiki/decisions/",
+		"docs/issue-triage.md": "wiki/process/issue-triage.md",
+		"docs/wiki-schema.md": "wiki/wiki-schema.md"
+	},
+	"hygiene": {
+		"excludePaths": ["wiki/decisions/"]
 	},
 	"bugTracker": {
 		"kind": "github",
