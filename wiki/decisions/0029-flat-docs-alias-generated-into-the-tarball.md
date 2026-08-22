@@ -6,8 +6,9 @@ description: >-
   `wiki/` consolidation because upstream `exposeDocs` hardcodes a flat,
   non-recursive `<packageDir>/docs` scan it cannot be pointed at `wiki/`; a
   new `scripts/gen-docs-alias.mjs` regenerates a flat `docs/` from `wiki/` at
-  `prepack`/`postpack` time only, gitignored and never committed, serving 40
-  of 45 tracked wiki pages (a naive un-generated alias would serve only the 4
+  `prepack`/`postpack` time only, gitignored and never committed, serving
+  every non-`RESERVED` wiki page plus a generated manifest (a naive
+  un-generated alias would serve only the 4
   bundle-root files); records the accepted no-link-rewriting and
   no-`TOC`-compat-alias trade-offs, the `exposeDocs` non-enumerability
   limitation (confirmed non-structural against the installed MCP SDK), and
@@ -39,10 +40,12 @@ since that consolidation, and the published tarball no longer even carries a
 `docs/` directory for it to find.
 
 The obvious fix — alias `wiki/` to `docs/`, or symlink one to the other —
-does not clear the floor `exposeDocs`'s scan shape imposes. `wiki/` holds 45
+does not clear the floor `exposeDocs`'s scan shape imposes. `wiki/` holds 46
 tracked `.md` files, but a flat, non-recursive read of `wiki/` itself sees
 only the 4 files at the bundle root (`wiki-schema.md`,
-`local-verification-practice.md`, `index.md`, `log.md`) — 4 of 45, 8.9%,
+`local-verification-practice.md`, `index.md`, `log.md`) — 4 of 46, under 9%,
+and the numerator is the stable half: a flat scan reaches bundle-root pages
+and nothing else, whatever the corpus grows to,
 and **zero** of them were ever actually served by the pre-consolidation
 `docs/` (none is `recipe-reference`, `ops`, or `cli`, the three names the
 only known downstream consumer, the `gvt-construct3` plugin, references by
@@ -65,15 +68,27 @@ it through `prepack` (`npm run build && npm run docs:alias`) and `postpack`
 existing `packageDir` argument — this fix works entirely by shaping what
 that argument resolves to at pack time.
 
-**The served set is 40, not 45 or 41.** 45 tracked `wiki/**/*.md`, minus the
-5 `index.md` files (one per section plus the bundle root), minus the 1
-`log.md`, plus the 1 generated `docs/index.md` manifest the alias script
-itself emits (listing every served name in `docs:///<name>` form, so an
-agent has a working map even without `resources/list` — see the limitation
-below). The design's first pass derived **41**, having accounted for the 4
-`index.md` files but not `log.md`; 40 is the corrected figure, recorded here
-because the issue's acceptance criteria for the served count and the
-pack-time assertions were corrected mid-execution to match.
+**The served set is a rule, not a number: every tracked `wiki/**/*.md` whose
+basename does not match `RESERVED`, plus one generated `docs/index.md`
+manifest** (listing every served name in `docs:///<name>` form, so an agent
+has a working map even without `resources/list` — see the limitation below).
+`RESERVED` is `/^(index|log)\.md$/`, imported from `gen-wiki-index.mjs`
+rather than re-derived, so this generator, that one, and the OKF conformance
+walk cannot disagree about what counts as a page. At the time of writing that
+resolves to **41**: 46 tracked pages, minus 5 `index.md`, minus 1 `log.md`,
+plus the manifest.
+
+⚠️ **Do not quote that 41 as a fixed property — it moves with every wiki page
+added, and this record is itself an instance.** The figure was corrected twice
+during the fix, for unrelated reasons. First it was *defective*: the design
+derived 41 as `45 − 5 index.md + 1`, having not accounted for `RESERVED` also
+covering `log.md`; the corrected figure at 45 pages was **40**. Then it
+*decayed*, self-referentially — committing this very ADR took the corpus
+`45 → 46` and the served set back to **41**, the same number as the original
+mistake but for an entirely different reason. The issue's acceptance criteria
+were corrected both times, and now assert a `≥` threshold with
+`gen-docs-alias.mjs --check` as the exact-match oracle, precisely so that
+adding a wiki page cannot falsify them.
 
 Three consequences are accepted rather than engineered around:
 
@@ -134,8 +149,9 @@ consumers pin `^0.7.0`, which excludes `0.8.0` — so adopting the fix will be
 an explicit dependency bump, not a transparent pickup.
 
 **Rejected — (a) a naive, un-generated `wiki/` → `docs/` alias.** See
-Context: a flat, non-recursive scan of `wiki/` itself reaches 4 of 45 pages
-(8.9%), none of which were ever served pre-consolidation. Fails the basic
+Context: a flat, non-recursive scan of `wiki/` itself reaches only the 4
+bundle-root pages (4 of 46 at the time of writing), none of which were ever
+served pre-consolidation. Fails the basic
 floor of "restore what was serving before" before any other trade-off is
 even considered.
 

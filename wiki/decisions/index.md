@@ -233,11 +233,11 @@ See the [wiki index](../index.md) for the other sections.
   `wiki/` consolidation because upstream `exposeDocs` hardcodes a flat,
   non-recursive `<packageDir>/docs` scan it cannot be pointed at `wiki/`; a
   new `scripts/gen-docs-alias.mjs` regenerates a flat `docs/` from `wiki/` at
-  `prepack`/`postpack` time only, gitignored and never committed, serving 40
-  of 45 tracked wiki pages (a naive un-generated alias would serve only the 4
-  bundle-root files); records the accepted no-link-rewriting and
-  no-`TOC`-compat-alias trade-offs, the `exposeDocs` non-enumerability
-  limitation (confirmed non-structural against the installed MCP SDK), and the
-  retirement condition once upstream gains a configurable, recursive,
-  enumerable docs surface
+  `prepack`/`postpack` time only, gitignored and never committed, serving
+  every non-`RESERVED` wiki page plus a generated manifest (a naive
+  un-generated alias would serve only the 4 bundle-root files); records the
+  accepted no-link-rewriting and no-`TOC`-compat-alias trade-offs, the
+  `exposeDocs` non-enumerability limitation (confirmed non-structural against
+  the installed MCP SDK), and the retirement condition once upstream gains a
+  configurable, recursive, enumerable docs surface
   ([#198](https://github.com/GenvidTechnologies/construct3-chef/issues/198))
