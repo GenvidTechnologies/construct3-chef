@@ -1,4 +1,4 @@
-import { mcpError } from "@genvidtech/mcp-utils";
+import { mcpError, type TxTokenParseFailure } from "@genvidtech/mcp-utils";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { ProjectContext } from "./projectContext.js";
 
@@ -67,6 +67,36 @@ export function parseTxToken(s: string): { id: string; counter: number } | { err
     return { error: `Invalid txId '${s}' — counter '${counterText}' is not a non-negative integer` };
   }
   return { id, counter: Number(counterText) };
+}
+
+/**
+ * Render upstream's {@link TxTokenParseFailure} reason as chef's client-facing
+ * diagnostic wording (#217). Parameterized on `(token, reason)` alone — no
+ * `indexOf`, `lastIndexOf`, or `.split(` anywhere in this module — because
+ * upstream's failure result carries only the `reason`, never the token's
+ * split halves; re-deriving a split point here would re-implement upstream's
+ * own parse logic inside chef and reopen the exact drift channel this
+ * adoption exists to close. Nothing is lost by this: every message below
+ * interpolates the whole token, which already contains both halves verbatim.
+ *
+ * Not yet wired into {@link compareTxToken} — this is purely additive.
+ */
+export function renderParseFailure(token: string, reason: TxTokenParseFailure): string {
+  switch (reason) {
+    case "not-a-string":
+    case "no-separator":
+      return `Invalid txId '${token}' — expected format '<projectId>:<counter>'`;
+    case "invalid-project-id":
+      return `Invalid txId '${token}' — the project id must be non-empty and contain no ':' or whitespace`;
+    case "invalid-counter-shape":
+      return `Invalid txId '${token}' — the counter must be a canonical non-negative integer (no leading zeros, no sign, no whitespace)`;
+    case "counter-out-of-range":
+      return `Invalid txId '${token}' — the counter exceeds the maximum safe integer (2^53 - 1)`;
+    default: {
+      const exhaustive: never = reason;
+      throw new Error(`renderParseFailure: unsupported reason ${exhaustive as string}`);
+    }
+  }
 }
 
 /**

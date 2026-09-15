@@ -4,7 +4,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createProjectContext, type ProjectContext } from "../../src/mcp/projectContext.js";
-import { formatTxToken, parseTxToken, compareTxToken } from "../../src/mcp/txToken.js";
+import type { TxTokenParseFailure } from "@genvidtech/mcp-utils";
+import { formatTxToken, parseTxToken, compareTxToken, renderParseFailure } from "../../src/mcp/txToken.js";
 
 function errorText(r: CallToolResult): string {
   const block = r.content[0];
@@ -70,6 +71,32 @@ describe("txToken", () => {
       const parsed = parseTxToken("alpha:5:6");
       expect(parsed).to.deep.equal({ id: "alpha:5", counter: 6 });
     });
+  });
+
+  describe("renderParseFailure", () => {
+    // One row per TxTokenParseFailure member (#217). Calls renderParseFailure
+    // directly, never through parseTxToken/compareTxToken -- those still hold
+    // the old local implementation at this commit.
+    const sample = "alpha:5";
+    const cases: Array<[reason: TxTokenParseFailure, message: string]> = [
+      ["not-a-string", `Invalid txId '${sample}' — expected format '<projectId>:<counter>'`],
+      ["no-separator", `Invalid txId '${sample}' — expected format '<projectId>:<counter>'`],
+      [
+        "invalid-project-id",
+        `Invalid txId '${sample}' — the project id must be non-empty and contain no ':' or whitespace`,
+      ],
+      [
+        "invalid-counter-shape",
+        `Invalid txId '${sample}' — the counter must be a canonical non-negative integer (no leading zeros, no sign, no whitespace)`,
+      ],
+      ["counter-out-of-range", `Invalid txId '${sample}' — the counter exceeds the maximum safe integer (2^53 - 1)`],
+    ];
+
+    for (const [reason, message] of cases) {
+      it(`renders '${reason}' with the exact expected wording`, () => {
+        expect(renderParseFailure(sample, reason)).to.equal(message);
+      });
+    }
   });
 
   describe("compareTxToken", () => {
