@@ -5,7 +5,8 @@ import * as path from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createProjectContext, type ProjectContext } from "../../src/mcp/projectContext.js";
 import type { TxTokenParseFailure } from "@genvidtech/mcp-utils";
-import { formatTxToken, parseTxToken, compareTxToken, renderParseFailure } from "../../src/mcp/txToken.js";
+import { formatTxToken, compareTxToken, renderParseFailure } from "../../src/mcp/txToken.js";
+import { ProjectRegistry } from "../../src/mcp/projectRegistry.js";
 
 function errorText(r: CallToolResult): string {
   const block = r.content[0];
@@ -28,48 +29,6 @@ describe("txToken", () => {
 
     it("formats a zero counter", () => {
       expect(formatTxToken("alpha", 0)).to.equal("alpha:0");
-    });
-  });
-
-  describe("parseTxToken", () => {
-    it("round-trips a well-formed token", () => {
-      const parsed = parseTxToken(formatTxToken("alpha", 5));
-      expect(parsed).to.deep.equal({ id: "alpha", counter: 5 });
-    });
-
-    it("round-trips a zero counter", () => {
-      const parsed = parseTxToken(formatTxToken("alpha", 0));
-      expect(parsed).to.deep.equal({ id: "alpha", counter: 0 });
-    });
-
-    // Malformed-input table — mirrors the table in src/mcp/txToken.ts's
-    // parseTxToken docstring.
-    const malformed: Array<[label: string, input: string]> = [
-      ["no colon at all", "alpha"],
-      ["empty counter segment", "alpha:"],
-      ["non-numeric counter", "alpha:xyz"],
-      ["empty id segment", ":5"],
-      ["empty string", ""],
-    ];
-
-    for (const [label, input] of malformed) {
-      it(`returns the error variant for ${label} (${JSON.stringify(input)})`, () => {
-        const parsed = parseTxToken(input);
-        expect(parsed).to.have.property("error");
-        expect((parsed as { error: string }).error).to.be.a("string").and.not.empty;
-        // Never NaN-propagate: no numeric field, and the error text must not
-        // contain the literal "NaN".
-        expect(parsed).to.not.have.property("counter");
-        expect((parsed as { error: string }).error).to.not.include("NaN");
-      });
-    }
-
-    it("splits at the LAST colon, so an id containing ':' takes the trailing segment as the counter", () => {
-      // Ids may not contain ':' (enforced at ProjectRegistry.add through
-      // upstream's isValidProjectId — #217) — this only documents parseTxToken's
-      // own behavior as a pure function that doesn't re-validate that invariant.
-      const parsed = parseTxToken("alpha:5:6");
-      expect(parsed).to.deep.equal({ id: "alpha:5", counter: 6 });
     });
   });
 
@@ -186,5 +145,123 @@ describe("txToken", () => {
       expect(text).to.include("beta");
       expect(text).to.include("alpha");
     });
+
+    // ── #217 boundary classes: the three observable MCP-boundary changes ────
+    //
+    // Class 1 and Class 3 are reject->reject (reworded/newly-classified);
+    // Class 2 is the one disposition CHANGE the adoption makes (pre-change
+    // this returned null and PASSED).
+
+    it("Class 1: rejects a malformed id half with upstream's reworded message, not the old id-mismatch text", () => {
+      withTxId(ctx, 5);
+      // Pre-change this read `txId 'al pha:5' is for project 'al pha' but
+      // this call targets project 'alpha'` — an id-mismatch message naming a
+      // project the registry cannot hold (a space is invalid at
+      // ProjectRegistry.add). Upstream rejects the malformed left half at
+      // parse time instead.
+      const result = compareTxToken(ctx, "al pha:5");
+      expect(result).to.not.equal(null);
+      expect(result!.isError).to.equal(true);
+      expect(errorText(result!)).to.include("the project id must be non-empty");
+    });
+
+    it("Class 2: rejects a non-canonical counter shape the pre-adoption codec accepted", () => {
+      withTxId(ctx, 5);
+      // Pre-change `compareTxToken(ctx, "alpha:05")` returned null (passed).
+      // Upstream's canonical-integer shape rejects the leading zero.
+      const result = compareTxToken(ctx, "alpha:05");
+      expect(result).to.not.equal(null);
+      expect(result!.isError).to.equal(true);
+      expect(errorText(result!)).to.include("canonical non-negative integer");
+    });
+
+    it("Class 3 / R8 (#221): rejects an out-of-range counter without falling through to 'State changed'", () => {
+      withTxId(ctx, 5);
+      // Pre-change the truncated counter fell through to the
+      // counter-mismatch branch and produced `State changed (expected
+      // alpha:9007199254740997, got alpha:5) — re-validate before
+      // applying`. Upstream classifies this as counter-out-of-range at
+      // parse time, before any counter comparison runs.
+      const result = compareTxToken(ctx, "alpha:9007199254740993");
+      expect(result).to.not.equal(null);
+      expect(result!.isError).to.equal(true);
+      const text = errorText(result!);
+      expect(text).to.include("exceeds the maximum safe integer");
+      expect(text).to.not.include("State changed");
+    });
+  });
+
+  // ── R10 (#217): formatTxToken never throws at a site ProjectRegistry.add
+  // admitted ──────────────────────────────────────────────────────────────
+  //
+  // formatTxToken now throws a TypeError on an invalid projectId or a
+  // non-safe-integer counter (upstream's deliberate exception to its
+  // otherwise never-throw contract). This guards the claim that chef's own
+  // emission sites — which only ever mint a token for an id
+  // ProjectRegistry.add already admitted, and a counter the watcher itself
+  // produced — can never hit that throw path.
+  //
+  // Every row below asserts BOTH columns unconditionally, regardless of
+  // which branch it would take. A conditional `if (admitted)
+  // expect(isValidProjectId(id)).to.be.true` form is a TAUTOLOGY here: both
+  // ProjectRegistry.add and formatTxToken call the same isValidProjectId, so
+  // it would be true by construction and could never fail — and would
+  // contribute NO assertion at all for the rejected rows, which is exactly
+  // the mistake this table exists to not repeat.
+  describe("R10: formatTxToken throws exactly where ProjectRegistry.add would already have rejected", () => {
+    function addId(id: string): () => void {
+      const registry = new ProjectRegistry();
+      const fake = { id, root: "/fake", extractedDir: "/fake/extracted" } as unknown as ProjectContext;
+      return () => registry.add(fake);
+    }
+
+    const idCases: Array<[id: string, addAdmits: boolean, formatThrows: boolean]> = [
+      ["alpha", true, false],
+      ["al pha", false, true],
+      ["al\tpha", false, true],
+      ["", false, true],
+      ["al:pha", false, true],
+      // isValidProjectId permits '/' and '=' — EXPLICIT_ID_RE (splitSpec)
+      // excludes them only from what the explicit `<id>=<path>` branch can
+      // PRODUCE, a different enforcement point. A row asserting these two
+      // are rejected would be wrong.
+      ["al/pha", true, false],
+      ["al=pha", true, false],
+    ];
+
+    for (const [id, addAdmits, formatThrows] of idCases) {
+      it(`id ${JSON.stringify(id)}: add admits=${addAdmits}, formatTxToken throws=${formatThrows}`, () => {
+        if (addAdmits) {
+          expect(addId(id), `add(${JSON.stringify(id)})`).to.not.throw();
+        } else {
+          expect(addId(id), `add(${JSON.stringify(id)})`).to.throw();
+        }
+        if (formatThrows) {
+          expect(() => formatTxToken(id, 0), `formatTxToken(${JSON.stringify(id)}, 0)`).to.throw();
+        } else {
+          expect(() => formatTxToken(id, 0), `formatTxToken(${JSON.stringify(id)}, 0)`).to.not.throw();
+        }
+      });
+    }
+
+    // Independent throw path: the counter half, given a valid id.
+    const counterCases: Array<[n: number, formatThrows: boolean]> = [
+      [0, false],
+      [5, false],
+      [-1, true],
+      [1.5, true],
+      [NaN, true],
+      [2 ** 53, true],
+    ];
+
+    for (const [n, formatThrows] of counterCases) {
+      it(`counter ${n}: formatTxToken throws=${formatThrows}`, () => {
+        if (formatThrows) {
+          expect(() => formatTxToken("alpha", n), `formatTxToken("alpha", ${n})`).to.throw();
+        } else {
+          expect(() => formatTxToken("alpha", n), `formatTxToken("alpha", ${n})`).to.not.throw();
+        }
+      });
+    }
   });
 });
