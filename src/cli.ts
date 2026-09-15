@@ -32,7 +32,13 @@ import { lookup, formatLookupResult } from "./c3/aceLookup.js";
 import { loadOpsFromDir, substituteOp, formatOpsList, coerceArgs } from "./c3/opTemplate.js";
 import { discoverAddons, resolveAddonTarget } from "./c3/addonDiscovery.js";
 import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "./c3/addonReader.js";
-import { validateAddons, formatAddonValidation } from "./c3/addonValidator.js";
+import {
+  validateAddons,
+  formatAddonValidation,
+  countFatal,
+  FAMILY_ORDER,
+  type AddonFindingFamily,
+} from "./c3/addonValidator.js";
 import { listAddons, formatAddonInventory } from "./c3/addonInventory.js";
 import { diffAddonAces, formatAceDiff, resolveAceSource } from "./c3/addonAceDiff.js";
 import { scanAddonUsage, formatAddonUsage } from "./c3/addonAceUsage.js";
@@ -528,11 +534,29 @@ yargs(hideBin(process.argv))
     "validate-addons",
     "Validate bundled .c3addon packages against project.c3proj.usedAddons (metadata + integrity + orphan/missing/duplicate) and each addon's aces.json/properties against its lang/*.json; --addon scopes to one addon or source tree. Read-only.",
     (y) =>
-      y.option("addon", {
-        type: "string",
-        describe:
-          "Validate a single addon by discovered id or by path to an addon source tree (aces.json + lang/). Omit to validate all bundled addons.",
-      }),
+      y
+        .option("addon", {
+          type: "string",
+          describe:
+            "Validate a single addon by discovered id or by path to an addon source tree (aces.json + lang/). Omit to validate all bundled addons.",
+        })
+        .option("skip-gate", {
+          type: "string",
+          describe:
+            `Comma-delimited family names exempted from the exit code (findings still appear in the report). ` +
+            `Valid families: ${FAMILY_ORDER.join(", ")}. All four gate by default.`,
+          coerce: (raw: string): AddonFindingFamily[] => {
+            const families = raw.split(",").map((entry) => entry.trim());
+            const invalid = families.filter((family) => !FAMILY_ORDER.includes(family as AddonFindingFamily));
+            if (invalid.length > 0) {
+              throw new Error(
+                `Invalid --skip-gate value(s): ${invalid.map((family) => `'${family}'`).join(", ")}. ` +
+                  `Valid families: ${FAMILY_ORDER.join(", ")}.`,
+              );
+            }
+            return families as AddonFindingFamily[];
+          },
+        }),
     (argv) => {
       const rootDir = resolveProjectDir(argv);
       let result;
@@ -553,8 +577,9 @@ yargs(hideBin(process.argv))
       } else {
         result = validateAddons(rootDir);
       }
-      console.log(formatAddonValidation(result));
-      if (result.findings.length > 0) process.exitCode = 1;
+      const skipGate = argv.skipGate;
+      console.log(formatAddonValidation(result, skipGate ? { skipGate } : undefined));
+      if (countFatal(result.findings, skipGate ?? []) > 0) process.exitCode = 1;
     },
   )
   .command(

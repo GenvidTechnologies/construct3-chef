@@ -96,6 +96,16 @@ export function countByFamily(findings: AddonFinding[]): Record<AddonFindingFami
   return counts;
 }
 
+/**
+ * Count findings whose family is NOT in `skipGate` — the "fatal" count. Both
+ * `formatAddonValidation`'s "N fatal." line and the CLI's exit-code decision
+ * derive from this one function (#220), so the two can never disagree.
+ */
+export function countFatal(findings: AddonFinding[], skipGate: readonly AddonFindingFamily[]): number {
+  const skipSet = new Set(skipGate);
+  return findings.filter((finding) => !skipSet.has(familyOf(finding.kind))).length;
+}
+
 const LFS_POINTER_PREFIX = "version https://git-lfs.github.com/spec/v1";
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -472,7 +482,7 @@ export function formatAddonValidation(
     const skipSet = new Set(skipGate);
     const gating = FAMILY_ORDER.filter((family) => !skipSet.has(family));
     const exempted = FAMILY_ORDER.filter((family) => skipSet.has(family));
-    const fatal = findings.filter((finding) => !skipSet.has(familyOf(finding.kind))).length;
+    const fatal = countFatal(findings, skipGate);
     const exemptedSuffix = exempted.length > 0 ? ` (${exempted.join(", ")} exempted)` : "";
     // Every family exempted is a legitimate "report but never fail" run, so it must
     // render as prose rather than as an empty list: `gating.join()` would otherwise
