@@ -117,12 +117,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   > sanitized to `[a-z0-9-]`, so `--project-dir "/games/My Game"` is unchanged
   > and still yields `my-game`.
 
-  Adopting upstream's txToken **codec** (as opposed to its id rule) stays
-  deliberately deferred — it would collapse chef's three distinct parse
-  diagnostics into a bare `null`, and that gap is filed upstream as
-  [mcp-utils#25](https://github.com/GenvidTechnologies/mcp-utils/issues/25).
+  Adopting upstream's txToken **codec** (as opposed to its id rule) was
+  deferred at the time this rule shipped, gated on
+  [mcp-utils#25](https://github.com/GenvidTechnologies/mcp-utils/issues/25);
+  see the codec-adoption entry below for how that gate resolved.
   ([#217](https://github.com/GenvidTechnologies/construct3-chef/issues/217),
   ADR [`0036`](wiki/decisions/0036-project-id-guard-uses-the-upstream-wire-format-rule.md))
+
+- **Breaking: the txId parser now rejects four input shapes it previously
+  accepted or silently mangled, and one of those was a genuine bug fix.**
+  `src/mcp/txToken.ts` no longer parses the composite `<projectId>:<counter>`
+  token itself — it now imports `@genvidtech/mcp-utils`' `parseTxToken`,
+  bumped to `^0.10.0`, which surfaces *why* a token failed to parse instead
+  of returning a bare `null` (the gate the prior entry named). Rejections are
+  rendered through a new `renderParseFailure(token, reason)`, parameterized
+  on the whole token rather than its split halves, so chef never re-derives
+  upstream's split point locally. Of the four newly-rejected shapes, only one
+  is a disposition change — a token accepted before is rejected now:
+  - **`"alpha:05"` is now rejected** (leading zeros aren't a canonical
+    integer representation) — previously accepted as counter `5`.
+  - `"alpha:5:6"` is now rejected with the correct diagnostic — upstream
+    splits at the **first** `:`, chef's retired parser at the **last**; both
+    already rejected this shape, but for different reasons.
+  - `"al pha:5"` is now rejected with a message naming the actual defect
+    (whitespace in the project id) instead of a stale one that named a
+    project id — `al pha` — that no registry can hold, since
+    `ProjectRegistry.add` has required a valid id since the entry above.
+  - **Fixes [#221](https://github.com/GenvidTechnologies/construct3-chef/issues/221):**
+    `"alpha:9007199254740993"` (above `Number.MAX_SAFE_INTEGER`) is now
+    rejected instead of silently truncated to `9007199254740992`. The
+    truncation could never produce a false *accept* — a truncated value
+    can't coincide with a live counter, since real counters stay small — but
+    it accepted input it should have rejected.
+  ([#217](https://github.com/GenvidTechnologies/construct3-chef/issues/217),
+  ADR [`0037`](wiki/decisions/0037-adopt-upstream-txtoken-codec-and-make-the-no-wrapper-decline-permanent.md))
 
 ### Fixed
 
