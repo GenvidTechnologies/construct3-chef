@@ -322,3 +322,17 @@ See the [wiki index](../index.md) for the other sections.
   vectors (id, counter) are structurally/contractually unreachable in
   production
   ([#217](https://github.com/GenvidTechnologies/construct3-chef/issues/217))
+* [0038. `validate-addons` exit-code gating is a deny-list, not an allow-list](0038-validate-addons-deny-list-family-gating.md) -
+  `validate-addons` gains `--skip-gate <families>`: a comma-delimited
+  deny-list over four structural finding families (metadata, integrity,
+  package-consistency, lang) that exempts a named family from the CLI exit
+  code while never removing its findings from the report. All four families
+  gate by default, so no existing CI invocation changes behavior. Inverts
+  issue #220's first-preference allow-list (`--fail-on <families>`) because an
+  allow-list silently stops gating any family added after it's written —
+  #220's own triage note demonstrates the failure with the very families in
+  scope today. Relaxes the "drop, don't downgrade" constraint CLAUDE.md
+  records for #132, since selectable fatality now exists where it didn't then.
+  MCP gets the shared per-family summary but no gate parameter — it has no
+  exit code for a parameter to control
+  ([#220](https://github.com/GenvidTechnologies/construct3-chef/issues/220))
