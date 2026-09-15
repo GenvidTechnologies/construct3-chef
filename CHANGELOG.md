@@ -26,6 +26,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`validate-addons` gains `--skip-gate <families>`**, a comma-delimited
+  deny-list over its four structural finding families (`metadata`,
+  `integrity`, `package-consistency`, `lang`) that exempts a named family
+  from the CLI exit code without dropping its findings from the report — all
+  four families still gate by default, so no existing invocation changes
+  behavior. Reports also gain a per-family breakdown line after the header on
+  both surfaces. A deny-list was chosen over an allow-list because the
+  latter silently stops gating any family added after the invocation was
+  written; a deny-list gates a new family automatically. The MCP tool gets
+  the same breakdown line but no gate parameter, since it has no exit code to
+  control.
+  ([#220](https://github.com/GenvidTechnologies/construct3-chef/issues/220),
+  ADR [`0038`](wiki/decisions/0038-validate-addons-deny-list-family-gating.md))
+
 ## [2.0.0] - 2026-09-15
 
 ### Added
