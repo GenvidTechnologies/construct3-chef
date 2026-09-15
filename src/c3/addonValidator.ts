@@ -40,6 +40,72 @@ export interface AddonValidationResult {
   findings: AddonFinding[];
 }
 
+/**
+ * The four groupings `AddonFinding.kind` values fall into, named after the
+ * checks that emit them: metadata-mismatch -> "metadata" (`checkMetadataMismatch`);
+ * integrity -> "integrity" (`checkIntegrity`); orphan/missing/duplicate ->
+ * "package-consistency" (the `validateAddons` body); the three lang-* kinds
+ * -> "lang" (`src/c3/addonLangValidator.ts`).
+ */
+export type AddonFindingFamily = "metadata" | "integrity" | "package-consistency" | "lang";
+
+/** Stable rendering order for the four families — independent of finding order. */
+export const FAMILY_ORDER: readonly AddonFindingFamily[] = ["metadata", "integrity", "package-consistency", "lang"];
+
+/**
+ * Map an `AddonFinding.kind` to its family. The `default` branch's `never`
+ * assignment is load-bearing: it makes adding a 9th `kind` without a family
+ * mapping here fail `npm run typecheck` rather than fail silently at runtime.
+ */
+export function familyOf(kind: AddonFinding["kind"]): AddonFindingFamily {
+  switch (kind) {
+    case "metadata-mismatch":
+      return "metadata";
+    case "integrity":
+      return "integrity";
+    case "orphan":
+    case "missing":
+    case "duplicate":
+      return "package-consistency";
+    case "lang-missing-ace":
+    case "lang-missing-param":
+    case "lang-missing-property":
+      return "lang";
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(`unhandled AddonFinding kind: ${exhaustive}`);
+    }
+  }
+}
+
+/**
+ * Count findings per family, always returning all four keys (zero-filled)
+ * so a caller can render `metadata 0, integrity 0, ...` without presence
+ * checks.
+ */
+export function countByFamily(findings: AddonFinding[]): Record<AddonFindingFamily, number> {
+  const counts: Record<AddonFindingFamily, number> = {
+    metadata: 0,
+    integrity: 0,
+    "package-consistency": 0,
+    lang: 0,
+  };
+  for (const finding of findings) {
+    counts[familyOf(finding.kind)]++;
+  }
+  return counts;
+}
+
+/**
+ * Count findings whose family is NOT in `skipGate` — the "fatal" count. Both
+ * `formatAddonValidation`'s "N fatal." line and the CLI's exit-code decision
+ * derive from this one function (#220), so the two can never disagree.
+ */
+export function countFatal(findings: AddonFinding[], skipGate: readonly AddonFindingFamily[]): number {
+  const skipSet = new Set(skipGate);
+  return findings.filter((finding) => !skipSet.has(familyOf(finding.kind))).length;
+}
+
 const LFS_POINTER_PREFIX = "version https://git-lfs.github.com/spec/v1";
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -388,8 +454,18 @@ export function validateAddons(projectRoot: string, target?: DiscoveredAddon): A
 /**
  * Render an `AddonValidationResult` to plain text. Shared by the CLI and MCP
  * surfaces so output stays byte-identical.
+ *
+ * `opts.skipGate` names the families a caller treats as non-fatal (#220).
+ * When provided, a `Gating on ...` line follows the per-family breakdown,
+ * naming the still-gated families, the exempted ones, and the resulting
+ * `fatal` count (findings whose family is NOT in `skipGate`). When omitted,
+ * only the breakdown line is emitted — nothing is exempt, so there's nothing
+ * to say about gating. The per-finding lines below are unchanged either way.
  */
-export function formatAddonValidation(result: AddonValidationResult): string {
+export function formatAddonValidation(
+  result: AddonValidationResult,
+  opts?: { skipGate?: readonly AddonFindingFamily[] },
+): string {
   const { checked, findings } = result;
 
   if (findings.length === 0) {
@@ -397,6 +473,24 @@ export function formatAddonValidation(result: AddonValidationResult): string {
   }
 
   const lines: string[] = [`Checked ${checked} bundled addon(s), ${findings.length} issue(s):`];
+
+  const counts = countByFamily(findings);
+  lines.push(`  ${FAMILY_ORDER.map((family) => `${family} ${counts[family]}`).join(", ")}`);
+
+  const skipGate = opts?.skipGate;
+  if (skipGate !== undefined) {
+    const skipSet = new Set(skipGate);
+    const gating = FAMILY_ORDER.filter((family) => !skipSet.has(family));
+    const exempted = FAMILY_ORDER.filter((family) => skipSet.has(family));
+    const fatal = countFatal(findings, skipGate);
+    const exemptedSuffix = exempted.length > 0 ? ` (${exempted.join(", ")} exempted)` : "";
+    // Every family exempted is a legitimate "report but never fail" run, so it must
+    // render as prose rather than as an empty list: `gating.join()` would otherwise
+    // leave a bare "Gating on  (… exempted)" with a doubled space and nothing named.
+    const gatingSubject = gating.length > 0 ? gating.join(", ") : "nothing";
+    lines.push(`Gating on ${gatingSubject}${exemptedSuffix} — ${fatal} fatal.`);
+  }
+
   for (const finding of findings) {
     if (finding.kind === "metadata-mismatch") {
       lines.push(

@@ -78,17 +78,20 @@ Read-only check that bundled `.c3addon` packages under `addons/plugin/`, `addons
 `validate-addons` also cross-checks each addon's `aces.json` (actions/conditions/expressions and their params) and editor-`plugin.js` `properties` (including combo `items`) against every `lang/*.json` locale it ships, catching the "language string missing" class of error that Construct otherwise only surfaces as an opaque error at addon-load time. Each locale is checked independently and findings are reported per file, so a defect in `lang/fr-FR.json` doesn't mask (or get masked by) `lang/en-US.json` being clean. **Lang-presence gate:** an addon that ships no `lang/*.json` at all is silently skipped by this check (not flagged) — it's additive, so addons with no localization are unaffected and package-integrity/metadata findings for them are unchanged. The `properties` check is best-effort: property ids are recovered by scanning the editor `plugin.js` source for `SDK.PluginProperty(...)` string-literal ids, since properties are declared in JavaScript, not JSON; an unparseable or unconventional `plugin.js` causes the check to under-report rather than false-flag (see [ADR 0009](../decisions/0009-addon-lang-consistency-check.md)).
 
 ```bash
-npx construct3-chef validate-addons [--project-dir <path>] [--addon <id|path>]
+npx construct3-chef validate-addons [--project-dir <path>] [--addon <id|path>] [--skip-gate <families>]
 ```
 
 | Option | Description |
 | ------ | ----------- |
 | `--addon <id|path>` | Scope validation to a single addon instead of every bundled addon. Resolved two ways, tried in order: (1) a discovered bundled addon **id** (matches `discoverAddons`, same as the `read-addon` `name` argument); (2) a **path** to a raw addon source tree (a directory containing `aces.json`, `lang/`, and the editor `plugin.js` — no `.c3addon` archive required). Path mode lets the command run against an addon-dev repo, not just a C3 project with bundled `.c3addon` packages: with no archive, only the aces/properties ↔ lang cross-check runs (package-integrity and `project.c3proj` metadata/orphan checks are skipped, since there's no package or manifest entry to check against). The path is traversal-guarded — it must resolve within `--project-dir`. |
+| `--skip-gate <families>` | Comma-delimited deny-list exempting the named finding families from the exit code. Valid values: `metadata`, `integrity`, `package-consistency`, `lang`. All four gate by default — omitting the flag behaves exactly as before. |
 
-Exits with code 1 if any finding is reported, so it fits a project's `commands.validate` chain.
+Exits with code 1 if any finding belongs to a family that isn't named in `--skip-gate`, so it fits a project's `commands.validate` chain. Every finding is always printed regardless of `--skip-gate` — the flag narrows the exit-code check only, never the report.
 
 ```
 Checked 10 bundled addon(s), 8 issue(s):
+  metadata 1, integrity 4, package-consistency 3, lang 0
+Gating on metadata, integrity, package-consistency (lang exempted) — 8 fatal.
   addons/plugin/Complete.c3addon: version mismatch — package '1.0.0.0' vs project.c3proj '1.0.0.9'
   addons/plugin/CorruptZip.c3addon: malformed zip (not a valid .c3addon archive)
   addons/plugin/LfsPointer.c3addon: un-materialized LFS pointer (git-lfs not fetched)
@@ -98,6 +101,14 @@ Checked 10 bundled addon(s), 8 issue(s):
   MissingPkg: missing — declared bundled in project.c3proj but no package file on disk (version 3.2.1.0)
   Dup: duplicate — 2 packages resolve to the same addon id: addons/plugin/Dup.c3addon, addons/plugin/nested/Dup.c3addon
 ```
+
+The report header is followed by a per-family breakdown line (`metadata N, integrity N, package-consistency N, lang N`) on every run, gated or not — the example above uses `--skip-gate lang` against `test/fixtures/addon-validate`. With no `--skip-gate` flag, the breakdown line still appears but the `Gating on …` line is absent — the four-family classification is always computed, only the gating line is conditional on the flag being passed. With every family skipped (`--skip-gate metadata,integrity,package-consistency,lang`), the gating line reads `Gating on nothing (metadata, integrity, package-consistency, lang exempted) — 0 fatal.` and the command exits 0 regardless of how many findings were reported.
+
+An unknown family name is rejected outright, before any check runs: `Invalid --skip-gate value(s): 'bogus'. Valid families: metadata, integrity, package-consistency, lang.` A list containing one bad name is rejected as a whole — never partially applied — and whitespace around each name is trimmed (an empty element, e.g. from a trailing comma, is rejected the same way).
+
+**Rationale for a deny-list over an allow-list:** an allow-list (`--fail-on <families>`) would silently stop gating any family added after the invocation was written — a false green the next time a new finding kind ships. A deny-list gates a new family automatically, since the default is "gate everything" and an operator must explicitly name what to exempt. See [ADR 0038](../decisions/0038-validate-addons-deny-list-family-gating.md).
+
+The MCP `validate-addons` tool renders the same per-family breakdown line but takes no `--skip-gate`-equivalent parameter — it has no exit code, so there's nothing for a gate parameter to control (ADR 0038, following the precedent set by `--fail-on-strays` having no MCP counterpart — see [ADR 0025](../decisions/0025-stray-gating-is-cli-only-and-survives-a-manifest-failure.md)).
 
 The aces/properties ↔ lang findings appear the same way, one line per missing string, e.g.:
 
@@ -110,7 +121,7 @@ Checked 2 bundled addon(s), 4 issue(s):
   LangDefects [lang/en-US.json]: item 'slow' of property 'mode' has no lang string
 ```
 
-The clean case prints `Checked N bundled addon(s): all consistent.` Output uses the same `formatAddonValidation` formatter as the MCP `validate-addons` tool, so results are byte-identical between surfaces.
+The clean case prints `Checked N bundled addon(s): all consistent.` Output uses the same `formatAddonValidation` formatter as the MCP `validate-addons` tool, so results are byte-identical between surfaces — with one exception, introduced by `--skip-gate`: the `Gating on …` line is emitted only when that flag is passed, and the flag has no MCP equivalent, so only the CLI can ever produce it. Every other line, the per-family breakdown included, remains byte-identical on both surfaces.
 
 ---
 

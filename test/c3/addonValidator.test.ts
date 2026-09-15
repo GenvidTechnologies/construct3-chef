@@ -4,7 +4,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
-import { validateAddons, formatAddonValidation, type AddonFinding } from "../../src/c3/addonValidator.js";
+import {
+  validateAddons,
+  formatAddonValidation,
+  familyOf,
+  countByFamily,
+  type AddonFinding,
+} from "../../src/c3/addonValidator.js";
 import { resolveAddonTarget } from "../../src/c3/addonDiscovery.js";
 
 const FIXTURE_ROOT = path.resolve("test/fixtures/addon-validate");
@@ -236,6 +242,179 @@ describe("addonValidator", () => {
       const result = validateAddons(LANG_FIXTURE_ROOT, target!);
       expect(result.checked).to.equal(1);
       expect(result.findings).to.have.lengthOf(0);
+    });
+  });
+
+  describe("familyOf / countByFamily (#220 prep)", () => {
+    it("maps every kind to its family", () => {
+      expect(familyOf("metadata-mismatch")).to.equal("metadata");
+      expect(familyOf("integrity")).to.equal("integrity");
+      expect(familyOf("orphan")).to.equal("package-consistency");
+      expect(familyOf("missing")).to.equal("package-consistency");
+      expect(familyOf("duplicate")).to.equal("package-consistency");
+      expect(familyOf("lang-missing-ace")).to.equal("lang");
+      expect(familyOf("lang-missing-param")).to.equal("lang");
+      expect(familyOf("lang-missing-property")).to.equal("lang");
+    });
+
+    it("countByFamily zero-fills all four families on an empty array", () => {
+      expect(countByFamily([])).to.deep.equal({
+        metadata: 0,
+        integrity: 0,
+        "package-consistency": 0,
+        lang: 0,
+      });
+    });
+
+    it("countByFamily counts a mixed set correctly", () => {
+      const findings: AddonFinding[] = [
+        { kind: "metadata-mismatch" },
+        { kind: "integrity" },
+        { kind: "integrity" },
+        { kind: "orphan" },
+        { kind: "missing" },
+        { kind: "duplicate" },
+        { kind: "lang-missing-ace" },
+        { kind: "lang-missing-param" },
+        { kind: "lang-missing-property" },
+      ];
+      expect(countByFamily(findings)).to.deep.equal({
+        metadata: 1,
+        integrity: 2,
+        "package-consistency": 3,
+        lang: 3,
+      });
+    });
+  });
+
+  describe("formatAddonValidation: per-family breakdown + gating (#220)", () => {
+    const mixedFindings: AddonFinding[] = [
+      {
+        package: "addons/plugin/A.c3addon",
+        addonId: "A",
+        kind: "metadata-mismatch",
+        field: "version",
+        packageValue: "1.0.0.0",
+        manifestValue: "1.0.0.1",
+      },
+      { package: "addons/plugin/B.c3addon", kind: "integrity", problem: "missing required entry: aces.json" },
+      {
+        package: "addons/plugin/C.c3addon",
+        kind: "integrity",
+        problem: "malformed zip (not a valid .c3addon archive)",
+      },
+      {
+        package: "addons/plugin/D.c3addon",
+        addonId: "D",
+        kind: "orphan",
+        problem: "on disk but not in project.c3proj usedAddons",
+      },
+      {
+        addonId: "E",
+        kind: "missing",
+        problem: "declared bundled in project.c3proj but no package file on disk",
+      },
+      {
+        addonId: "F",
+        kind: "duplicate",
+        packages: ["addons/plugin/F.c3addon", "addons/plugin/nested/F.c3addon"],
+        problem: "2 packages resolve to the same addon id",
+      },
+      {
+        addonId: "G",
+        kind: "lang-missing-ace",
+        lang: "lang/en-US.json",
+        aceId: "drift",
+        problem: "missing ACE 'drift'",
+      },
+      {
+        addonId: "H",
+        kind: "lang-missing-param",
+        lang: "lang/en-US.json",
+        paramId: "offset",
+        problem: "missing param 'offset'",
+      },
+      {
+        addonId: "I",
+        kind: "lang-missing-property",
+        lang: "lang/en-US.json",
+        propId: "speed",
+        problem: "missing property 'speed'",
+      },
+    ];
+    const mixedResult = { checked: 9, findings: mixedFindings };
+
+    it("breakdown line lists all four families with correct counts, including zeros", () => {
+      const lines = formatAddonValidation(mixedResult).split("\n");
+      expect(lines[1]).to.equal("  metadata 1, integrity 2, package-consistency 3, lang 3");
+
+      // A finding set that is all one family still zero-fills the other three.
+      const onlyMetadata = { checked: 1, findings: [mixedFindings[0]] };
+      const onlyLines = formatAddonValidation(onlyMetadata).split("\n");
+      expect(onlyLines[1]).to.equal("  metadata 1, integrity 0, package-consistency 0, lang 0");
+    });
+
+    it("with a skip set, the gating line names gated + exempted families and excludes skipped findings from fatal", () => {
+      const lines = formatAddonValidation(mixedResult, { skipGate: ["lang"] }).split("\n");
+      expect(lines[1]).to.equal("  metadata 1, integrity 2, package-consistency 3, lang 3");
+      expect(lines[2]).to.equal("Gating on metadata, integrity, package-consistency (lang exempted) — 6 fatal.");
+    });
+
+    it("renders 'Gating on nothing' when every family is exempted, never a bare subject", () => {
+      // A report-but-never-fail run is legitimate, so the all-exempted case must read
+      // as prose. Joining an empty family list would emit "Gating on  (… exempted)"
+      // — a doubled space with nothing named. Pin the exact string, not a substring.
+      const lines = formatAddonValidation(mixedResult, {
+        skipGate: ["metadata", "integrity", "package-consistency", "lang"],
+      }).split("\n");
+      expect(lines[2]).to.equal(
+        "Gating on nothing (metadata, integrity, package-consistency, lang exempted) — 0 fatal.",
+      );
+      expect(lines[2]).to.not.include("on  ");
+    });
+
+    it("with no skip set, the gating line is absent but the breakdown line is present", () => {
+      const output = formatAddonValidation(mixedResult);
+      expect(output).to.not.include("Gating on");
+      const lines = output.split("\n");
+      expect(lines[1]).to.equal("  metadata 1, integrity 2, package-consistency 3, lang 3");
+      // finding lines follow immediately after the breakdown line (no gating line inserted).
+      expect(lines[2]).to.equal(
+        "  addons/plugin/A.c3addon: version mismatch — package '1.0.0.0' vs project.c3proj '1.0.0.1'",
+      );
+    });
+
+    it("clean case is unchanged: no breakdown line, no gating line", () => {
+      const cleanResult = { checked: 3, findings: [] as AddonFinding[] };
+      expect(formatAddonValidation(cleanResult)).to.equal("Checked 3 bundled addon(s): all consistent.");
+      expect(formatAddonValidation(cleanResult, { skipGate: ["lang"] })).to.equal(
+        "Checked 3 bundled addon(s): all consistent.",
+      );
+    });
+
+    it("existing per-finding lines are byte-identical to before, for the real fixture's 8 findings", () => {
+      const result = validateAddons(FIXTURE_ROOT);
+      const lines = formatAddonValidation(result).split("\n");
+
+      // header + breakdown + 8 finding lines (no skip set passed -> no gating line).
+      expect(lines).to.have.lengthOf(10);
+      expect(lines[0]).to.equal(`Checked 10 bundled addon(s), ${result.findings.length} issue(s):`);
+      expect(lines[1]).to.equal("  metadata 1, integrity 4, package-consistency 3, lang 0");
+
+      const expectedFindingLines = [
+        "  addons/plugin/Complete.c3addon: version mismatch — package '1.0.0.0' vs project.c3proj '1.0.0.9'",
+        "  addons/plugin/Orphan.c3addon: orphan — on disk but not in project.c3proj usedAddons (id 'Orphan')",
+        "  MissingPkg: missing — declared bundled in project.c3proj but no package file on disk (version 3.2.1.0)",
+        "  Dup: duplicate — 2 packages resolve to the same addon id: addons/plugin/Dup.c3addon, addons/plugin/nested/Dup.c3addon",
+      ];
+      for (const expected of expectedFindingLines) {
+        expect(lines).to.include(expected);
+      }
+      // Every line past the breakdown is a two-space-indented finding line (never a
+      // "Gating on ..." line, since no skipGate was passed).
+      for (const line of lines.slice(2)) {
+        expect(line.startsWith("  ")).to.equal(true);
+      }
     });
   });
 });
