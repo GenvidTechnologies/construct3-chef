@@ -307,3 +307,18 @@ See the [wiki index](../index.md) for the other sections.
   mcp-utils#25, because it would collapse three distinct parse diagnostics
   into a bare `null`
   ([#217](https://github.com/GenvidTechnologies/construct3-chef/issues/217))
+* [0037. Adopt upstream's txToken codec; the no-wrapper decline becomes permanent](0037-adopt-upstream-txtoken-codec-and-make-the-no-wrapper-decline-permanent.md) -
+  Amends ADR 0036: mcp-utils#25 shipped in `@genvidtech/mcp-utils@0.10.0` as a
+  discriminated `{ok:true,...} | {ok:false,reason}` result, closing 0036's
+  first decline. `src/mcp/txToken.ts` now imports upstream's
+  `formatTxToken`/`parseTxToken` rather than owning the codec; chef keeps only
+  `compareTxToken` (comparison policy) and a new `renderParseFailure` (client-
+  facing rendering), parameterized on the whole token rather than its split
+  halves so re-deriving upstream's split point never re-enters chef. Four
+  input classes are now rejected that weren't before; only one (`"alpha:05"`)
+  is a disposition change, the other three are reworded rejections. Closes
+  #221 (silent counter truncation). 0036's second decline (a non-throwing
+  local `format` wrapper) is upgraded from deferred to permanent — both throw
+  vectors (id, counter) are structurally/contractually unreachable in
+  production
+  ([#217](https://github.com/GenvidTechnologies/construct3-chef/issues/217))

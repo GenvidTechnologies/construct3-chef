@@ -99,7 +99,12 @@ operation, no merged results.**
   each of those six sites. This conversion landed (F4) while the registry still
   held exactly one project, which is what made it atomic by construction across
   the full static-emission set: one context meant one counter, so no
-  intermediate state could misattribute a token.
+  intermediate state could misattribute a token. **Amended by ADR
+  [0037](0037-adopt-upstream-txtoken-codec-and-make-the-no-wrapper-decline-permanent.md):**
+  `src/mcp/txToken.ts` no longer owns the codec — it re-exports upstream's
+  `formatTxToken`/`parseTxToken` and keeps only `compareTxToken` plus a
+  `renderParseFailure` renderer — everything else in this bullet remains
+  accurate.
 
 - **Op tools are `op-<projectId>_<opName>`**, including for the default
   project — there is no special-cased flat form (see decline 10 below). `_` is
