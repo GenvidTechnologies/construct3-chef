@@ -241,6 +241,12 @@ function readExtracted(ctx: ProjectContext, relPath: string): string | null {
   return fs.readFileSync(fullPath, "utf-8");
 }
 
+// Upstream's `formatTxToken` throws on an invalid project id or a counter that
+// isn't a non-negative safe integer (#217). Can't throw here: `ctx.id` is
+// guarded by `ProjectRegistry.add`'s `isValidProjectId` check (the only write
+// path into the registry's context map), and `ctx.watcher.txId` is always a
+// non-negative safe integer — `OptimisticWatcher` initializes `_txId` to 0
+// and has exactly one increment site (`bump()`).
 const txIdLine = (ctx: ProjectContext) => `txId: ${formatTxToken(ctx.id, ctx.watcher.txId)}`;
 
 const STALE_WARNING = "\n\n[Warning: extracted files may be stale — run regenerate to refresh]";
@@ -2034,6 +2040,8 @@ regP(
         content: [
           {
             type: "text",
+            // Can't throw here — see the `txIdLine` comment above for why
+            // `ctx.id`/`ctx.watcher.txId` always satisfy upstream's `formatTxToken`.
             text: `txId: ${formatTxToken(ctx.id, ctx.watcher.txId)}\nextractedDirty: ${ctx.extractedDirty}`,
           },
         ],
