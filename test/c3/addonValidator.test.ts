@@ -4,7 +4,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
-import { validateAddons, formatAddonValidation, type AddonFinding } from "../../src/c3/addonValidator.js";
+import {
+  validateAddons,
+  formatAddonValidation,
+  familyOf,
+  countByFamily,
+  type AddonFinding,
+} from "../../src/c3/addonValidator.js";
 import { resolveAddonTarget } from "../../src/c3/addonDiscovery.js";
 
 const FIXTURE_ROOT = path.resolve("test/fixtures/addon-validate");
@@ -236,6 +242,48 @@ describe("addonValidator", () => {
       const result = validateAddons(LANG_FIXTURE_ROOT, target!);
       expect(result.checked).to.equal(1);
       expect(result.findings).to.have.lengthOf(0);
+    });
+  });
+
+  describe("familyOf / countByFamily (#220 prep)", () => {
+    it("maps every kind to its family", () => {
+      expect(familyOf("metadata-mismatch")).to.equal("metadata");
+      expect(familyOf("integrity")).to.equal("integrity");
+      expect(familyOf("orphan")).to.equal("package-consistency");
+      expect(familyOf("missing")).to.equal("package-consistency");
+      expect(familyOf("duplicate")).to.equal("package-consistency");
+      expect(familyOf("lang-missing-ace")).to.equal("lang");
+      expect(familyOf("lang-missing-param")).to.equal("lang");
+      expect(familyOf("lang-missing-property")).to.equal("lang");
+    });
+
+    it("countByFamily zero-fills all four families on an empty array", () => {
+      expect(countByFamily([])).to.deep.equal({
+        metadata: 0,
+        integrity: 0,
+        "package-consistency": 0,
+        lang: 0,
+      });
+    });
+
+    it("countByFamily counts a mixed set correctly", () => {
+      const findings: AddonFinding[] = [
+        { kind: "metadata-mismatch" },
+        { kind: "integrity" },
+        { kind: "integrity" },
+        { kind: "orphan" },
+        { kind: "missing" },
+        { kind: "duplicate" },
+        { kind: "lang-missing-ace" },
+        { kind: "lang-missing-param" },
+        { kind: "lang-missing-property" },
+      ];
+      expect(countByFamily(findings)).to.deep.equal({
+        metadata: 1,
+        integrity: 2,
+        "package-consistency": 3,
+        lang: 3,
+      });
     });
   });
 });

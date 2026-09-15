@@ -40,6 +40,62 @@ export interface AddonValidationResult {
   findings: AddonFinding[];
 }
 
+/**
+ * The four groupings `AddonFinding.kind` values fall into, named after the
+ * checks that emit them: metadata-mismatch -> "metadata" (`checkMetadataMismatch`);
+ * integrity -> "integrity" (`checkIntegrity`); orphan/missing/duplicate ->
+ * "package-consistency" (the `validateAddons` body); the three lang-* kinds
+ * -> "lang" (`src/c3/addonLangValidator.ts`).
+ */
+export type AddonFindingFamily = "metadata" | "integrity" | "package-consistency" | "lang";
+
+/** Stable rendering order for the four families — independent of finding order. */
+export const FAMILY_ORDER: readonly AddonFindingFamily[] = ["metadata", "integrity", "package-consistency", "lang"];
+
+/**
+ * Map an `AddonFinding.kind` to its family. The `default` branch's `never`
+ * assignment is load-bearing: it makes adding a 9th `kind` without a family
+ * mapping here fail `npm run typecheck` rather than fail silently at runtime.
+ */
+export function familyOf(kind: AddonFinding["kind"]): AddonFindingFamily {
+  switch (kind) {
+    case "metadata-mismatch":
+      return "metadata";
+    case "integrity":
+      return "integrity";
+    case "orphan":
+    case "missing":
+    case "duplicate":
+      return "package-consistency";
+    case "lang-missing-ace":
+    case "lang-missing-param":
+    case "lang-missing-property":
+      return "lang";
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(`unhandled AddonFinding kind: ${exhaustive}`);
+    }
+  }
+}
+
+/**
+ * Count findings per family, always returning all four keys (zero-filled)
+ * so a caller can render `metadata 0, integrity 0, ...` without presence
+ * checks.
+ */
+export function countByFamily(findings: AddonFinding[]): Record<AddonFindingFamily, number> {
+  const counts: Record<AddonFindingFamily, number> = {
+    metadata: 0,
+    integrity: 0,
+    "package-consistency": 0,
+    lang: 0,
+  };
+  for (const finding of findings) {
+    counts[familyOf(finding.kind)]++;
+  }
+  return counts;
+}
+
 const LFS_POINTER_PREFIX = "version https://git-lfs.github.com/spec/v1";
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
