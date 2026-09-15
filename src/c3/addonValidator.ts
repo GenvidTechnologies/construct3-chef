@@ -444,8 +444,18 @@ export function validateAddons(projectRoot: string, target?: DiscoveredAddon): A
 /**
  * Render an `AddonValidationResult` to plain text. Shared by the CLI and MCP
  * surfaces so output stays byte-identical.
+ *
+ * `opts.skipGate` names the families a caller treats as non-fatal (#220).
+ * When provided, a `Gating on ...` line follows the per-family breakdown,
+ * naming the still-gated families, the exempted ones, and the resulting
+ * `fatal` count (findings whose family is NOT in `skipGate`). When omitted,
+ * only the breakdown line is emitted — nothing is exempt, so there's nothing
+ * to say about gating. The per-finding lines below are unchanged either way.
  */
-export function formatAddonValidation(result: AddonValidationResult): string {
+export function formatAddonValidation(
+  result: AddonValidationResult,
+  opts?: { skipGate?: readonly AddonFindingFamily[] },
+): string {
   const { checked, findings } = result;
 
   if (findings.length === 0) {
@@ -453,6 +463,24 @@ export function formatAddonValidation(result: AddonValidationResult): string {
   }
 
   const lines: string[] = [`Checked ${checked} bundled addon(s), ${findings.length} issue(s):`];
+
+  const counts = countByFamily(findings);
+  lines.push(`  ${FAMILY_ORDER.map((family) => `${family} ${counts[family]}`).join(", ")}`);
+
+  const skipGate = opts?.skipGate;
+  if (skipGate !== undefined) {
+    const skipSet = new Set(skipGate);
+    const gating = FAMILY_ORDER.filter((family) => !skipSet.has(family));
+    const exempted = FAMILY_ORDER.filter((family) => skipSet.has(family));
+    const fatal = findings.filter((finding) => !skipSet.has(familyOf(finding.kind))).length;
+    const exemptedSuffix = exempted.length > 0 ? ` (${exempted.join(", ")} exempted)` : "";
+    // Every family exempted is a legitimate "report but never fail" run, so it must
+    // render as prose rather than as an empty list: `gating.join()` would otherwise
+    // leave a bare "Gating on  (… exempted)" with a doubled space and nothing named.
+    const gatingSubject = gating.length > 0 ? gating.join(", ") : "nothing";
+    lines.push(`Gating on ${gatingSubject}${exemptedSuffix} — ${fatal} fatal.`);
+  }
+
   for (const finding of findings) {
     if (finding.kind === "metadata-mismatch") {
       lines.push(
