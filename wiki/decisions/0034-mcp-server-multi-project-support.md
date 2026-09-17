@@ -194,11 +194,15 @@ a set fixed at launch.
 
 `resolveRootFolder` (from `@genvidtech/mcp-utils`) already computes the full
 set of ambiguous root candidates internally when discovery finds ≥ 2 markers,
-but surfaces them only as prose inside an `mcpError` string. Parsing that
-string to recover the candidate list would be the first place in this repo
-treating an error message as structured data: upstream may reword it at any
-patch release with no version signal, and a regex miss degrades **silently**
-to an empty registry rather than a visible failure. Declined; filed instead as
+and passes them to `mcpError` as its `extraLines` argument — so they are
+rendered one absolute path per line, following the message line, rather than
+interpolated into the message itself. The `Error` text carries only the match
+count and the marker name. Recovering the candidates would therefore be a
+line split (`text.split("\n").slice(1)`), not a pattern match — but it would
+still be the first place in this repo treating an error message as structured
+data: upstream may reword the message, or add a trailing line, at any patch
+release with no version signal, and either degrades **silently** to a wrong
+or empty registry rather than a visible failure. Declined; filed instead as
 [`GenvidTechnologies/mcp-utils#20`](https://github.com/GenvidTechnologies/mcp-utils/issues/20),
 asking upstream for the structure directly (recorded in
 `wiki/process/leaf-dependency-ledger.md`, since it's a version-scoped ask
