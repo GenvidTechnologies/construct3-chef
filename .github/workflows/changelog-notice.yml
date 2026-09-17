@@ -23,3 +23,14 @@ jobs:
         run: |
           echo "### Changelog Notice" >> "$GITHUB_STEP_SUMMARY"
           node scripts/changelog-notice.mjs --base-ref HEAD^1 --title "$PR_TITLE" --body "$PR_BODY" | tee -a "$GITHUB_STEP_SUMMARY"
+      # The tag-existence half of the link-ref invariant. It lives here rather
+      # than in the mocha suite because it needs `git tag -l`, and the shared
+      # node-gate checkout is depth-1 with no tags. The tag count is printed
+      # first so a checkout that silently fetched no tags is visible as such,
+      # rather than being mistaken for "every referenced tag resolves".
+      - name: Check CHANGELOG link-ref tags
+        shell: bash
+        run: |
+          echo "### CHANGELOG link refs" >> "$GITHUB_STEP_SUMMARY"
+          echo "tags fetched: $(git tag -l | wc -l)" | tee -a "$GITHUB_STEP_SUMMARY"
+          node scripts/changelog-notice.mjs --check-tags | tee -a "$GITHUB_STEP_SUMMARY"
