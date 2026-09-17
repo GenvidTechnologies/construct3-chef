@@ -1,0 +1,25 @@
+name: Changelog Notice
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  notice:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Evaluate changelog signal
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        shell: bash
+        run: |
+          echo "### Changelog Notice" >> "$GITHUB_STEP_SUMMARY"
+          node scripts/changelog-notice.mjs --base-ref HEAD^1 --title "$PR_TITLE" --body "$PR_BODY" | tee -a "$GITHUB_STEP_SUMMARY"
