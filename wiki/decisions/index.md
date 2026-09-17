@@ -349,3 +349,12 @@ See the [wiki index](../index.md) for the other sections.
   `@changesets/cli`/`conventional-changelog` (this repo's changelog is
   hand-curated editorial prose, not generated)
   ([#218](https://github.com/GenvidTechnologies/construct3-chef/issues/218))
+* [0040. Opt-in multi-root auto-discovery (`--discover-projects`)](0040-opt-in-multi-root-discovery.md) -
+  Adopts `@genvidtech/mcp-utils`'s `resolveRootFolders` to let an MCP server
+  launch auto-register every ambiguous-discovery candidate as its own project,
+  gated behind a new `--discover-projects` flag so every existing launch stays
+  byte-identical by default. A discovery launch finding 2+ roots requires
+  `--default-project` and fails the launch (before any project is registered)
+  rather than picking one silently. Ships the work ADR 0034 decline 7
+  deferred, now that both of its stated blockers have cleared
+  ([#216](https://github.com/GenvidTechnologies/construct3-chef/issues/216))
