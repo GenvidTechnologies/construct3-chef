@@ -133,7 +133,7 @@ The CLI is stateless; the server hosts N registered C3 project roots (#95) behin
 
 ## Commit Format
 
-Conventional Commits: `<type>: <subject>`, where `type` is one of `feat`, `fix`, `chore`, `docs`, `refactor`, `test`. Subject is imperative, lowercase, no trailing period. Body (optional) explains the *why* and any non-obvious *what*, wrapped at ~72 cols. When a commit is authored with Claude Code, end the message with a `Co-Authored-By` trailer:
+Conventional Commits: `<type>: <subject>`, where `type` is one of `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `style`. A breaking change is marked with `!` after the type (`feat!: …`) — the `BREAKING CHANGE:` footer form is not used in this repo. Subject is imperative, lowercase, no trailing period. Body (optional) explains the *why* and any non-obvious *what*, wrapped at ~72 cols. When a commit is authored with Claude Code, end the message with a `Co-Authored-By` trailer:
 
 ```
 Co-Authored-By: Claude <model> (1M context) <noreply@anthropic.com>
@@ -142,6 +142,8 @@ Co-Authored-By: Claude <model> (1M context) <noreply@anthropic.com>
 **`<model>` is the model that actually authored the commit** — read it off the running session (e.g. `Opus 5`), don't copy the example. This line is an attribution record, so a pinned version here is wrong the moment the model changes, and pinning has already gone stale twice: the trailer read `Opus 4.6` for nine commits, was hand-bumped to `Opus 4.8 (1M context)` in `93b4627`, and was still claiming 4.8 while Opus 5 was authoring. Drop the ` (1M context)` qualifier if the session isn't a long-context one.
 
 Squash-merged PRs carry a `(#N)` suffix on the subject (added by the merge), e.g. `feat: composite template workflow ops + MCP tools (#9)`.
+
+A `Changelog Notice` CI check runs on every PR: a change needs a `CHANGELOG.md` entry unless its type is one of `docs`/`style`/`test`/`chore` **and** it touches no `src/` file (a `!` breaking-change marker always gates, regardless of type or files touched). Opt out with a PR-body line `Changelog: none — <reason>` — the reason is mandatory, a bare `Changelog: none` does not satisfy it; squash preserves the PR body, so a waiver stays recoverable via `git log --grep`. Pre-check locally with `node scripts/changelog-notice.mjs --base-ref origin/main --title "$(git log -1 --format=%s)"`. The check is **advisory** — there is no branch protection on `main`, so a red check does not block a merge. See ADR [`0039`](./wiki/decisions/0039-changelog-notice-workflow-deny-list.md) for the deny-list rationale.
 
 ## Pull Request Format
 
