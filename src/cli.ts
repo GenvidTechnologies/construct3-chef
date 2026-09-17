@@ -97,10 +97,23 @@ yargs(hideBin(process.argv))
           type: "string",
           describe:
             "Id of the project tool calls target when a launch declares more than one (defaults to the first --project-dir).",
+        })
+        .option("discover-projects", {
+          type: "boolean",
+          default: false,
+          describe:
+            "Opt-in (#216): when no --project-dir/C3_PROJECT_DIRS/C3_PROJECT_DIR is given, auto-register every " +
+            "directory discovered under cwd (instead of failing when 2+ are found). Discovering 2+ requires " +
+            "--default-project to pick which one tool calls target by default.",
         }),
     async (argv) => {
       const { startServer } = await import("./mcp/server.js");
-      await startServer(argv.projectDir, undefined, argv.defaultProject);
+      try {
+        await startServer(argv.projectDir, undefined, argv.defaultProject, argv.discoverProjects);
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
     },
   )
   .command(

@@ -1,5 +1,6 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
-import { resolveRootFolder, isMcpError } from "@genvidtech/mcp-utils";
+import { resolveRootFolder, resolveRootFolders, isMcpError } from "@genvidtech/mcp-utils";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { ProjectRegistry, deriveProjectId, splitSpec } from "./projectRegistry.js";
 import { createProjectContext, type ProjectContext } from "./projectContext.js";
@@ -52,6 +53,11 @@ export interface ResolvedRoot {
   id: string;
   root: string;
 }
+
+/** Same shape as upstream `resolveRootFolders`'s injectable `readdir` param
+ *  (not itself exported by `@genvidtech/mcp-utils`, hence the local copy).
+ *  **Test seam only** — production callers must omit it. */
+type ReaddirSync = (dir: string, opts: { withFileTypes: true }) => fs.Dirent[];
 
 /**
  * Resolve `specs` (the output of {@link resolveLaunchSpecs}) into one
@@ -108,6 +114,47 @@ export function resolveLaunchRoots(specs: readonly string[], log: LaunchLogger =
   return [{ id, root }];
 }
 
+/**
+ * Opt-in (`--discover-projects`, #216) counterpart to {@link resolveLaunchRoots}'s
+ * 0-spec branch: only ever called with `specs.length === 0` (no explicit
+ * `--project-dir`/`C3_PROJECT_DIRS`/`C3_PROJECT_DIR`), where the un-flagged
+ * behaviour resolves via the SINGULAR `resolveRootFolder` and treats 2+
+ * discovered candidates as an `mcpError` ("falling back to cwd").
+ *
+ * This function first PEEKS at the discovery result via the PLURAL
+ * `resolveRootFolders` — a pure probe, no logging — to decide which of two
+ * paths to take:
+ * - **0 or 1 candidate** (or a probe error, e.g. a real I/O fault): delegates
+ *   to the untouched {@link resolveLaunchRoots}`([], log)`, so behaviour is
+ *   byte-for-byte identical to the flag being off (R6) — including the
+ *   cwd-fallback stderr warning.
+ * - **2+ candidates**: every candidate is registered. Each gets an id via
+ *   {@link deriveProjectId}, deduped across an accumulating `usedIds` set
+ *   exactly as {@link resolveLaunchRoots}'s 2+-explicit-spec branch already
+ *   does. Whether this is actually launchable (a `--default-project` must
+ *   disambiguate) is {@link buildProjectRegistry}'s call, not this function's
+ *   — it only resolves roots, it never fails a launch.
+ */
+function resolveDiscoveredRoots(log: LaunchLogger, env?: NodeJS.ProcessEnv, readdir?: ReaddirSync): ResolvedRoot[] {
+  const probe = readdir
+    ? resolveRootFolders({ envVar: "C3_PROJECT_DIR", marker: "project.c3proj", searchDepth: 1 }, env, readdir)
+    : resolveRootFolders({ envVar: "C3_PROJECT_DIR", marker: "project.c3proj", searchDepth: 1 }, env);
+  // R7 (#216): resolveRootFolders returns ResolvedRoots | CallToolResult — a
+  // real I/O fault (not ambiguity; ambiguity is this function's SUCCESS case)
+  // takes this branch and falls through to the untouched 0/1-spec delegate
+  // below, exactly like resolveLaunchRoots' own isMcpError handling.
+  if (!isMcpError(probe) && probe.paths.length >= 2) {
+    const usedIds = new Set<string>();
+    return probe.paths.map((root) => {
+      const id = deriveProjectId(root, usedIds);
+      usedIds.add(id);
+      log(`[construct3-chef] Root: ${root} (source: discovery, id: ${id})`);
+      return { id, root };
+    });
+  }
+  return resolveLaunchRoots([], log);
+}
+
 /** Constructs a {@link ProjectContext} for one registered project. Matches
  *  {@link createProjectContext}'s signature — injectable so tests can build a
  *  registry without opening a real `C3Project`/loading real chef config for
@@ -129,15 +176,48 @@ export type ProjectContextFactory = (
  * {@link createProjectContext}), and apply an optional `--default-project`
  * override — which defaults to the FIRST spec, matching
  * {@link ProjectRegistry.add}'s "first-registered wins" default.
+ *
+ * `opts.discoverProjects` (#216, `--discover-projects`) is opt-in
+ * multi-root auto-discovery: it only takes effect when NO explicit spec was
+ * given (an explicit `--project-dir`/`C3_PROJECT_DIRS` always wins, same
+ * precedence as today), routing through {@link resolveDiscoveredRoots}
+ * instead of {@link resolveLaunchRoots}. When that discovers 2+ roots, a
+ * `--default-project` is REQUIRED to pick which one tool calls target by
+ * default — `ProjectRegistry.add()` sets the default to the first
+ * *registered* context, so "a registry with no default" isn't expressible,
+ * and an auto-discovered launch order isn't a meaningful "first" to pick one
+ * for the caller. Rather than register anything under that ambiguity, the
+ * whole launch fails with an actionable error naming the discovered ids —
+ * checked BEFORE any {@link ProjectContext} is constructed, so a failed
+ * launch never partially registers.
  */
 export async function buildProjectRegistry(
   projectDirs: readonly string[] | undefined,
   overrides?: Partial<ChefConfig>,
   defaultProject?: string,
-  opts?: { log?: LaunchLogger; env?: NodeJS.ProcessEnv; factory?: ProjectContextFactory },
+  opts?: {
+    log?: LaunchLogger;
+    env?: NodeJS.ProcessEnv;
+    factory?: ProjectContextFactory;
+    discoverProjects?: boolean;
+    /** Injectable directory reader, forwarded to the discovery probe only.
+     *  **Test seam only** — see `resolveDiscoveredRoots`'s `readdir` param. */
+    readdir?: ReaddirSync;
+  },
 ): Promise<ProjectRegistry> {
   const specs = resolveLaunchSpecs(projectDirs, opts?.env);
-  const roots = resolveLaunchRoots(specs, opts?.log);
+  const log = opts?.log ?? console.error;
+  const discovering = specs.length === 0 && opts?.discoverProjects === true;
+  const roots = discovering ? resolveDiscoveredRoots(log, opts?.env, opts?.readdir) : resolveLaunchRoots(specs, log);
+
+  if (discovering && roots.length >= 2 && defaultProject === undefined) {
+    const ids = roots.map((r) => r.id).join(", ");
+    throw new Error(
+      `--discover-projects found ${roots.length} candidate projects (${ids}) and no --default-project was ` +
+        `given to pick which one tool calls target by default. Pass --default-project <id> to disambiguate.`,
+    );
+  }
+
   const factory = opts?.factory ?? createProjectContext;
 
   const registry = new ProjectRegistry();
