@@ -219,6 +219,22 @@ real candidate list. Deferred to v2; the upstream request
 (mcp-utils#20, decline 6 above) is filed now rather than waiting for the gap
 to recur, per this repo's reactive-vs-proactive follow-up practice.
 
+**Superseded by ADR [0040](0040-opt-in-multi-root-discovery.md):** both
+stated blockers have since cleared. `@genvidtech/mcp-utils` shipped
+`resolveRootFolders`, whose result on 2+ marker matches is a **success**
+carrying every candidate path, rather than the singular `resolveRootFolder`'s
+`mcpError` on the same input; and `deriveProjectId(root, usedIds)` already
+existed in `src/mcp/projectRegistry.ts`, built for the explicit multi-spec
+launch path in this same PR (#212) — so that blocker was already stale the
+day this record shipped. The deferred work landed opt-in, behind
+`--discover-projects`
+([#216](https://github.com/GenvidTechnologies/construct3-chef/issues/216)).
+One phrase above also needs reconciling against decline 6's own correction
+(#213): "an unstructured error string" overstated the gap — the candidate
+paths always rode out via `mcpError`'s `extraLines`, one per line. What was
+actually missing was that the format is undocumented and unversioned, not
+that it lacked structure.
+
 ### 8. DECLINE — `list-projects` reporting per-project txIds
 
 Have `list-projects` include each registered project's live `txId` alongside

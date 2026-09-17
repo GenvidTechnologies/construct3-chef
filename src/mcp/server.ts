@@ -2185,13 +2185,17 @@ export async function startServer(
   projectDirs?: string[],
   overrides?: Partial<ChefConfig>,
   defaultProject?: string,
+  discoverProjects?: boolean,
 ): Promise<void> {
   // Launch surface precedence (#95): repeated `--project-dir` >
   // `C3_PROJECT_DIRS` > (fall through to the untouched `C3_PROJECT_DIR` /
   // discovery / cwd path, preserved byte-for-byte by resolveLaunchRoots for
-  // 0-or-1 resolved specs — see that function's own docstring).
+  // 0-or-1 resolved specs — see that function's own docstring). `discoverProjects`
+  // (#216, `--discover-projects`, opt-in) only takes effect on that same
+  // 0-resolved-specs path — see buildProjectRegistry's docstring.
   REGISTRY = await buildProjectRegistry(projectDirs, overrides, defaultProject, {
     log: (msg) => console.error(msg),
+    discoverProjects,
   });
   // Every project-scoped tool accepts a per-call `project` selector and
   // resolves its ProjectContext from REGISTRY at call time (see `regP`,
