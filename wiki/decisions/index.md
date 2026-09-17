@@ -336,3 +336,16 @@ See the [wiki index](../index.md) for the other sections.
   MCP gets the shared per-family summary but no gate parameter — it has no
   exit code for a parameter to control
   ([#220](https://github.com/GenvidTechnologies/construct3-chef/issues/220))
+* [0039. Changelog Notice is a separate advisory workflow, deny-list gated](0039-changelog-notice-workflow-deny-list.md) -
+  A new `.github/workflows/changelog-notice.yml`, triggered on `pull_request`
+  (including `edited`), runs a pure `decide()` from
+  `scripts/changelog-notice.mjs` to flag a PR that carries a user-visible
+  change with no `[Unreleased]` CHANGELOG entry and no mandatory-reason
+  opt-out. "User-visible" is a deny-list (transferring ADR 0038's reasoning):
+  gated unless the Conventional-Commit type is `docs`/`style`/`test`/`chore`
+  AND the PR touches no file under `src/`; a `!` breaking marker gates
+  unconditionally. Declines a test inside the shared `node-gate.yml` gate
+  (that gate's checkout can't diff a change) and declines
+  `@changesets/cli`/`conventional-changelog` (this repo's changelog is
+  hand-curated editorial prose, not generated)
+  ([#218](https://github.com/GenvidTechnologies/construct3-chef/issues/218))
