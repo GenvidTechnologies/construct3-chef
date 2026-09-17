@@ -54,6 +54,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([#218](https://github.com/GenvidTechnologies/construct3-chef/issues/218),
   ADR [`0039`](wiki/decisions/0039-changelog-notice-workflow-deny-list.md))
 
+- **The MCP server gains `--discover-projects`**, opt-in multi-root
+  auto-discovery. With the flag, a launch given no explicit `--project-dir`
+  registers *every* directory discovery finds carrying a `project.c3proj`,
+  rather than treating two or more as an ambiguity error. It is opt-in
+  because that error currently falls back to cwd, and adopting the plural by
+  default would silently turn an existing single-root launch into N
+  registered projects. An explicit `--project-dir` or `C3_PROJECT_DIRS`
+  still wins with unchanged precedence, and every case other than "two or
+  more discovered" routes through the same code as before. A discovery
+  launch that finds two or more roots **requires** `--default-project` and
+  fails naming the candidates, because the first registered context would
+  otherwise silently become the default and discovery order is not a
+  meaningful ranking.
+  ([#216](https://github.com/GenvidTechnologies/construct3-chef/issues/216),
+  ADR [`0040`](wiki/decisions/0040-opt-in-multi-root-discovery.md))
+
 ## [2.0.0] - 2026-09-15
 
 ### Added
