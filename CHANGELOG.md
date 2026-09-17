@@ -41,6 +41,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   control.
   ([#220](https://github.com/GenvidTechnologies/construct3-chef/issues/220),
   ADR [`0038`](wiki/decisions/0038-validate-addons-deny-list-family-gating.md))
+- **A `Changelog Notice` CI check now runs on every PR.** It flags a PR that
+  carries a user-visible change but adds no `## [Unreleased]` entry.
+  "User-visible" is a deny-list: exempt only when the Conventional-Commit
+  type is one of `docs`/`style`/`test`/`chore` **and** the PR touches no
+  `src/` file — a `!` breaking marker always gates. A deny-list was chosen
+  over an allow-list for the same reason as `--skip-gate` above: an
+  allow-list silently stops gating any commit type introduced after it was
+  written, while a deny-list keeps gating it automatically. Opt out with a
+  PR-body line `Changelog: none — <reason>`; the reason is mandatory. The
+  check is advisory — it does not block a merge.
+  ([#218](https://github.com/GenvidTechnologies/construct3-chef/issues/218),
+  ADR [`0039`](wiki/decisions/0039-changelog-notice-workflow-deny-list.md))
 
 ## [2.0.0] - 2026-09-15
 
