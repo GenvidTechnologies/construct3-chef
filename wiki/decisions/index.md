@@ -358,3 +358,16 @@ See the [wiki index](../index.md) for the other sections.
   rather than picking one silently. Ships the work ADR 0034 decline 7
   deferred, now that both of its stated blockers have cleared
   ([#216](https://github.com/GenvidTechnologies/construct3-chef/issues/216))
+* [0041. § Releasing is overrides and repo-only facts, not a runbook](0041-releasing-section-is-overrides-not-a-runbook.md) -
+  `CLAUDE.md` § Releasing stops being a standalone manual procedure and
+  becomes a set of repo-specific overrides plus facts the
+  `gvt-dev:release-npm-package` skill cannot infer, deferring the procedure to
+  that skill. Resolves the apparent deadlock between "exactly one page owns a
+  given fact" and `CLAUDE.md` being the only always-loaded surface: a *delta*
+  is not a duplicate, so the numbered list survives as a list but changes
+  kind. The authority clause is phrased as a duty on the operator because the
+  skill reads this file for the commit-message format alone. Declines a
+  `wiki/process/releasing.md` page (a third location for one procedure),
+  exemption prose (there is nothing left to exempt), and a guard (every
+  candidate oracle lives outside the repo)
+  ([#230](https://github.com/GenvidTechnologies/construct3-chef/issues/230))
