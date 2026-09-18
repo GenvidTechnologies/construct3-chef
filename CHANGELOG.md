@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-18
+
 ### Added
 
 - **`validate-addons` gains `--skip-gate <families>`**, a comma-delimited
@@ -69,10 +71,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   meaningful ranking.
   ([#216](https://github.com/GenvidTechnologies/construct3-chef/issues/216),
   ADR [`0040`](wiki/decisions/0040-opt-in-multi-root-discovery.md))
-
-## [2.0.0] - 2026-09-15
-
-### Added
 
 - **One MCP server process now hosts N Construct 3 project roots.** Every tool
   call still targets exactly one project — there is no fan-out and no
