@@ -195,10 +195,10 @@ same line for unrelated reasons.
   `audit-conventions`. It is **not filed yet** and carries no issue number.
   That is the durable replacement for the guard declined above — it puts the
   oracle where the thing that drifts actually lives.
-- **The heading `### Releasing` is now hard-pinned**, and two of its inbound
-  references are prose name-matches that no anchor checker can see:
-  `CLAUDE.md`'s own "Public-API surface = the `src/index.ts` barrel" bullet
-  (a markdown anchor, `#releasing`), the `#74` history note in
+- **The heading `### Releasing` is now hard-pinned** by its inbound
+  references — and all but one are prose name-matches that no anchor checker
+  can see: `CLAUDE.md`'s own "Public-API surface = the `src/index.ts` barrel"
+  bullet (the lone markdown anchor, `#releasing`), the `#74` history note in
   [`wiki/reference/generators.md`](../reference/generators.md), and the
   downstream-pin-bump note in ADR
   [0034](0034-mcp-server-multi-project-support.md). All are section-level
