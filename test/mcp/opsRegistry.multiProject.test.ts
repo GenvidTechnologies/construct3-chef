@@ -21,7 +21,8 @@ import { ProjectRegistry } from "../../src/mcp/projectRegistry.js";
  *
  * Uses temp copies of test/fixtures/construct3-chef-sample throughout — never
  * the tracked fixture itself, which the golden test byte-diffs (see
- * CLAUDE.md's "No mutating smoke on golden fixtures").
+ * wiki/local-verification-practice.md § "Smoke-testing without corrupting the
+ * fixture").
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

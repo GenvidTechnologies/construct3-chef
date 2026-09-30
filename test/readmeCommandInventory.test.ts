@@ -13,8 +13,8 @@ import path from "node:path";
  * against an actual 21. Adding a subcommand touches ~6 sites; four of them
  * drifted without anything going red.
  *
- * `CLAUDE.md` documents the analogous "adding a generator touches ~10 sites in
- * lockstep" — and that lockstep is documented and *still* drifts. Documentation
+ * `CLAUDE.md` § "The two-surface data model" documents the analogous generator
+ * lockstep — and that lockstep is documented and *still* drifts. Documentation
  * alone demonstrably does not hold this invariant, so it is asserted instead.
  */
 

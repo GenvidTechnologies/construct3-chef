@@ -102,8 +102,9 @@ export function decide({ title, changedFiles, baseBullets, headBullets, body }) 
   // `.some(...)` half catches a bullet that's new text even when the count
   // is unchanged (e.g. a bullet was also removed in the same PR). Collapsing
   // this into a deduped-set comparison would report "no change" when a PR
-  // adds a bullet identical to one that's already there — the false-GREEN
-  // trap this repo's CLAUDE.md § Conventions names explicitly.
+  // adds a bullet identical to one that's already there — a false GREEN,
+  // because deduplication can't tell "identical" from "present on one side
+  // only", which is exactly the difference this check exists to detect.
   const added = headBullets.length > baseBullets.length || headBullets.some((b) => !baseBullets.includes(b));
   if (added) {
     return { gated: true, flagged: false, reason: "entry-added" };
