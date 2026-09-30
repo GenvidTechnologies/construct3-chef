@@ -5,6 +5,12 @@ upstream leaf-dependency release shipped and what chef did with it.
 
 See the [wiki index](../index.md) for the other sections.
 
+* [Canonical sample fixture](canonical-fixture.md) -
+  How `test/fixtures/construct3-chef-sample/` is materialized from the
+  `construct3-sample` submodule, what the golden test does and does not prove,
+  what the fixture deliberately exercises (and the vacuity traps it cannot
+  cover), and the mandatory clean → prep → verify → C3 import → clean-again
+  protocol for bumping the submodule pin
 * [Backlog Triage Conventions](issue-triage.md) -
   Backlog-grooming conventions consumed by `/gvt-dev:triage-issues` (types,
   `priority/*` + `area:*` labels, required fields, split/duplicate/dependency
@@ -15,3 +21,10 @@ See the [wiki index](../index.md) for the other sections.
   `@genvidtech/mcp-utils` releases: what each shipped, what chef adopted, and
   the deliberate declines (adoption *posture* stays in CLAUDE.md § "Leaf
   dependencies")
+* [Verification and documentation traps](verification-traps.md) -
+  The precedent record behind CLAUDE.md's short rules on verifying and
+  documenting: mutation-proving guard tests, the vacuity shapes (half-green
+  paired assertions, false reds, harness substitution, rows that become
+  tautologies), citation drift and opacity, grep/count traps, retired-name
+  sweeps, and the history of the conventions audit's reach over the wiki
+  layout

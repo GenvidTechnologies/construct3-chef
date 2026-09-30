@@ -27,7 +27,7 @@
 //   npm run fixture:prep
 //   npm run fixture:verify
 // `npm run fixture:verify` (`verify-fixture-parity.mjs`) is the oracle that the
-// purge worked. See CLAUDE.md § Fixture materialization and ADR 0013.
+// purge worked. See wiki/process/canonical-fixture.md and ADR 0013.
 
 import { execSync } from "node:child_process";
 import { cpSync } from "node:fs";
