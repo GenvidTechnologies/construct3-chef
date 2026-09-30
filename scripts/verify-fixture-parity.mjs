@@ -6,7 +6,7 @@
 // pin bump that *removes* a file leaves the stale copy on disk — gitignored, and
 // therefore invisible to `git status`. This script is the oracle for that drift:
 // run it after every `npm run fixture:prep`, and unconditionally as step 0 of the
-// canonical pin-update protocol (see CLAUDE.md § Fixture materialization).
+// canonical pin-update protocol (see wiki/process/canonical-fixture.md).
 //
 // Four assertions, all of which always run (no short-circuit — the point is a
 // complete report). Exit code is 1 if any of them fails:

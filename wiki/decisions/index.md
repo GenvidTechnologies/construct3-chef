@@ -371,3 +371,13 @@ See the [wiki index](../index.md) for the other sections.
   exemption prose (there is nothing left to exempt), and a guard (every
   candidate oracle lives outside the repo)
   ([#230](https://github.com/GenvidTechnologies/construct3-chef/issues/230))
+* [0042. `CLAUDE.md` keeps the rules; the wiki keeps their history](0042-claude-md-keeps-rules-the-wiki-keeps-their-history.md) -
+  `CLAUDE.md` had regrown to 104,991 characters, mostly per-issue history and
+  lesson narratives inside unwrapped bullets. It is cut to about 50,600 by
+  moving that material verbatim into three wiki pages
+  (`architecture/addon-tooling.md`, `process/canonical-fixture.md`,
+  `process/verification-traps.md`) and deleting history that ADRs 0029/0033
+  and git already own. Each moved lesson keeps a one-line rule in `CLAUDE.md`
+  so it still fires mid-task. The routing test generalizes ADR 0026's to "is
+  this a rule you must know before you'd think to look, or the evidence behind
+  one?"

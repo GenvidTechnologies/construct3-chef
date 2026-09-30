@@ -226,7 +226,7 @@ from a calendar default.** Concretely:
 
 Never pick "a year out" by reflex. An unfalsifiable date is worse than no date at
 all, because `lint` will faithfully report the page as healthy on the very day it
-stops being true — the same vacuous-check shape `CLAUDE.md` § "Conventions"
+stops being true — the same vacuous-check shape [Verification and documentation traps](/process/verification-traps.md)
 catalogues at length.
 
 ## The verb contract

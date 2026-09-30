@@ -15,6 +15,24 @@ before. If a past entry itself needs correcting, add a new entry that says
 so; never edit or remove the old one in place. See `wiki/wiki-schema.md` for
 the full maintenance schema.
 
+## 2026-09-30
+
+* **Creation**: `architecture/addon-tooling.md`, `process/canonical-fixture.md`
+  and `process/verification-traps.md`, all three moved verbatim out of
+  `CLAUDE.md` (source: `CLAUDE.md` at `b4997ef`; no `raw/` capture, because
+  the source is a tracked file with a permanent permalink, following the
+  ledger-split precedent of ADR
+  [0026](decisions/0026-leaf-dependency-ledger-split-from-claude-md.md)).
+  `CLAUDE.md` drops from 104,991 to about 50,600 characters and keeps a
+  one-line rule, with a pointer, for every lesson that moved.
+* **Creation**: `decisions/0042-claude-md-keeps-rules-the-wiki-keeps-their-history.md`
+  records the split and its routing test ("a rule you must know before you'd
+  think to look, or the evidence behind one?").
+* **Update**: `wiki-schema.md` now points at the traps page rather than at
+  `CLAUDE.md` § "Conventions", which no longer carries the catalogue.
+  `local-verification-practice.md` gains a `## Related` section linking to
+  both new process pages.
+
 ## 2026-09-11
 
 * **Update**: `local-verification-practice.md` — added a false-**red** failure

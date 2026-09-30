@@ -163,5 +163,10 @@ single boolean encoding two distinct meanings; that's the shape that produces
 wrong wording while every existing test stays green, because each test was
 written against only one of the meanings.
 
+## Related
+
+- [Verification and documentation traps](/process/verification-traps.md) — the precedents behind CLAUDE.md's rules for authoring and grading checks
+- [Canonical sample fixture](/process/canonical-fixture.md) — how the golden-tested fixture is materialized and re-pinned
+
 [^agent-memory]: Capture of five construct3-chef agent auto-memory entries on local verification, `raw/2026-08-16-agent-memory-local-verification.md`.
 [^agent-memory-origin]: Claude Code project-scoped auto-memory directory (machine-local origin of the capture).
