@@ -1,0 +1,15 @@
+# Event sheet 1 — DSL Coordinate Index
+# Regenerate: npm run generate-dsl
+#
+# Event | JSON Path             | SID              | DSL Line | Description
+#-------|-----------------------|------------------|----------|-----------
+  -     | events[0]             |                  | 4        | include Event sheet 2
+  -     | events[1]             | §100000000000020 | 6        | global var score: number = 0
+  1     | events[2]             | §100000000000022 | 8        | group "GameLoop"
+  2     | events[2].children[0] | §804371239000122 | 9        | block ⟪search⟫ System.on-start-of-layout() Functions.map-function-default(name="mymap", function=MyFunction) Functions.map-function-default(name="normal", function=MyFunction)
+  3     | events[2].children[1] | §627117500832093 | 14       | block ⟪search⟫ System.compare-two-values(first-value=Sprite2.X, comparison=4 (>), second-value=0) System.set-eventvar-value(variable=score, value=Sprite2.X)
+  -     | events[2].children[2] | §100000000000021 | 18       | var temp: number = 0
+  4     | events[2].children[3] | §573288374737163 | 20       | block ⟪search⟫ NavButton.on-clicked() System.compare-two-values(first-value=score, comparison=4 (>), second-value=0) System.compare-eventvar(variable=temp, comparison=0 (=), value=0) ace NavButton.OnClickAction()
+  5     | events[2].children[4] | §709436016193761 | 26       | function MyFunction() ⟪search⟫ Functions.set-function-return-value(value=1)
+  6     | events[2].children[5] | §149644071357242 | 29       | function MyAsyncFunction() ⟪search⟫ Sprite2[MyCustomBehavior].stop() TextFamily[Timer].start-timer(duration=duration, type=once, tag=timer) System.wait-for-previous-actions()
+  7     | events[2].children[6] | §757019400607615 | 34       | ace NavButton.OnClickAction() ⟪search⟫ System.add-to-eventvar(variable=temp, value=Functions.CallMapped("mymap", "MyFunction") + Functions.MyFunction) call MyAsyncFunction("test", 1) System.wait-for-previous-actions() System.go-to-layout(layout=Second Layout)

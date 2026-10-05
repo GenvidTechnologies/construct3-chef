@@ -1,5 +1,7 @@
 # Event sheet 1
-# Source: eventSheets/Event sheet 1.json
+# Source: eventSheets/Gameplay/Event sheet 1.json
+
+include Event sheet 2
 
 global var score: number = 0
 
@@ -8,6 +10,10 @@ group "GameLoop" (active)
     when: System.on-start-of-layout()
     do: Functions.map-function-default(name="mymap", function=MyFunction)
     do: Functions.map-function-default(name="normal", function=MyFunction)
+
+  block
+    when: System.compare-two-values(first-value=Sprite2.X, comparison=4 (>), second-value=0)
+    do: System.set-eventvar-value(variable=score, value=Sprite2.X)
 
   var temp: number = 0
 

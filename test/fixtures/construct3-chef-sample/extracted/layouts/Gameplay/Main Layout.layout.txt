@@ -1,5 +1,5 @@
 # Main Layout
-# Source: layouts/Main Layout.json
+# Source: layouts/Gameplay/Main Layout.json
 # EventSheet: Event sheet 1
 # Size: 960 x 1280
 

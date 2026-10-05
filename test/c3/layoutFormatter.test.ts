@@ -630,8 +630,8 @@ describe("layoutFormatter", () => {
 
   describe("buildGlobalLayerReport", () => {
     it("should return the correct report entries for the construct3-chef-sample fixture", () => {
-      const mainLayoutJson = readFileSync(path.join(FIXTURE_LAYOUTS_DIR, "Main Layout.json"), "utf-8");
-      const secondLayoutJson = readFileSync(path.join(FIXTURE_LAYOUTS_DIR, "Second Layout.json"), "utf-8");
+      const mainLayoutJson = readFileSync(path.join(FIXTURE_LAYOUTS_DIR, "Gameplay", "Main Layout.json"), "utf-8");
+      const secondLayoutJson = readFileSync(path.join(FIXTURE_LAYOUTS_DIR, "UI", "Second Layout.json"), "utf-8");
       const parsedLayouts = [
         { layout: JSON.parse(secondLayoutJson) as Layout },
         { layout: JSON.parse(mainLayoutJson) as Layout },

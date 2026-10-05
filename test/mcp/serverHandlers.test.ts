@@ -173,7 +173,8 @@ describe("MCP server handler response shaping", () => {
 
   // ── 2. stale-warning appended when extractedDirty is true ────────────────
   // Uses read-dsl which routes through paginatedResponse → appendStaleWarning.
-  // The fixture has extracted/eventSheets/Event sheet 1.dsl.txt.
+  // The fixture has extracted/eventSheets/Gameplay/Event sheet 1.dsl.txt (read-dsl
+  // takes a relative path without extension, so the sheet is "Gameplay/Event sheet 1").
 
   it("read-dsl appends STALE_WARNING when extractedDirty=true, not when false", async () => {
     const handler = __getHandler("read-dsl")!;
@@ -181,12 +182,12 @@ describe("MCP server handler response shaping", () => {
 
     // With dirty = true
     __setExtractedDirty(true);
-    const dirtyResult = (await handler({ sheet: "Event sheet 1" }, makeExtra())) as any;
+    const dirtyResult = (await handler({ sheet: "Gameplay/Event sheet 1" }, makeExtra())) as any;
     expect(dirtyResult.content[0].text).to.include(STALE_WARNING);
 
     // Reset and try clean
     __setExtractedDirty(false);
-    const cleanResult = (await handler({ sheet: "Event sheet 1" }, makeExtra())) as any;
+    const cleanResult = (await handler({ sheet: "Gameplay/Event sheet 1" }, makeExtra())) as any;
     expect(cleanResult.content[0].text).to.not.include(STALE_WARNING);
   });
 
@@ -195,7 +196,8 @@ describe("MCP server handler response shaping", () => {
   // collapses the page text and the range footer into ONE content block, joined
   // with "\n\n". The old two-block shape is gone.
   //
-  // Fixture: extracted/eventSheets/Event sheet 1.dsl.txt — 12 lines.
+  // Fixture: extracted/eventSheets/Gameplay/Event sheet 1.dsl.txt — 38 lines
+  // (line 2 is the "# Source: eventSheets/Gameplay/Event sheet 1.json" header).
 
   it("read-dsl with offset+limit returns single content block with in-block range footer", async () => {
     const handler = __getHandler("read-dsl")!;
@@ -203,7 +205,7 @@ describe("MCP server handler response shaping", () => {
 
     __setExtractedDirty(false);
     // offset=2, limit=1 → returns line 2 of the DSL file; footer appended in-block.
-    const result = (await handler({ sheet: "Event sheet 1", offset: 2, limit: 1 }, makeExtra())) as any;
+    const result = (await handler({ sheet: "Gameplay/Event sheet 1", offset: 2, limit: 1 }, makeExtra())) as any;
 
     // Single block — core contract of #26
     expect(result.content).to.have.length(1);
@@ -214,7 +216,7 @@ describe("MCP server handler response shaping", () => {
     // Out-of-range page: offset far beyond total lines → footer shows "lines: 0 / <total>"
     // (documents the latent-bug fix: the old two-block code computed a misleading
     //  endLine when returnedLines was 0 — the new upstream helper emits "lines: 0 / N")
-    const outOfRange = (await handler({ sheet: "Event sheet 1", offset: 9999, limit: 1 }, makeExtra())) as any;
+    const outOfRange = (await handler({ sheet: "Gameplay/Event sheet 1", offset: 9999, limit: 1 }, makeExtra())) as any;
     expect(outOfRange.content).to.have.length(1);
     expect(outOfRange.content[0].text).to.match(/lines: 0 \/ \d+/);
   });
@@ -527,8 +529,8 @@ describe("MCP server handler response shaping", () => {
 
   // ── 11. navigation-graph ──────────────────────────────────────────────────
   // Fixture has two nav entries:
-  //   Event sheet 1 → Second Layout  (line 11 in Event sheet 1.dsl.txt)
-  //   Event sheet 2 → Main Layout    (line 7  in Event sheet 2.dsl.txt)
+  //   Event sheet 1 → Second Layout  (line 38 in Gameplay/Event sheet 1.dsl.txt)
+  //   Event sheet 2 → Main Layout    (line 11 in UI/Event sheet 2.dsl.txt)
 
   describe("navigation-graph", () => {
     it("default (table): one block, contains header and fixture nav entries", async () => {
@@ -826,7 +828,7 @@ describe("MCP server handler response shaping", () => {
 
     it("positive control: a newer REAL layouts/*.json file DOES set extractedDirty and bump", async () => {
       pinBaseline();
-      const layoutPath = path.join(tmp, "layouts", "Main Layout.json");
+      const layoutPath = path.join(tmp, "layouts", "Gameplay", "Main Layout.json");
       fs.utimesSync(layoutPath, NEWER, NEWER);
 
       const handler = __getHandler("generate-sids")!;
@@ -1099,7 +1101,7 @@ describe("MCP server handler response shaping", () => {
 
       const result = (await handler(
         {
-          source: "Main Layout.json",
+          source: "Gameplay/Main Layout.json",
           name: "T3ClonedLayout",
           path: "T3ClonedLayout.json",
           eventSheet: "Event sheet 1",

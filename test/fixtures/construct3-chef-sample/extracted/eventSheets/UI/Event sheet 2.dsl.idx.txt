@@ -1,0 +1,12 @@
+# Event sheet 2 — DSL Coordinate Index
+# Regenerate: npm run generate-dsl
+#
+# Event | JSON Path                         | SID              | DSL Line | Description
+#-------|-----------------------------------|------------------|----------|-----------
+  1     | events[0]                         | §544395983790907 | 4        | group "Second Layout Events"
+  -     | events[0].children[0]             | §274712856729018 | 5        | static isActive: boolean = true
+  2     | events[0].children[1]             | §873125372253996 | 7        | block ⟪search⟫ NavButton.on-clicked() System.compare-boolean-eventvar(variable=isActive) System.compare-eventvar(variable=score, comparison=5 (≥), value=10) System.go-to-layout-by-name(layout="Main Layout") Text[Timer].stop-timer(tag="test")
+  3     | events[0].children[2]             | §902117897955465 | 14       | block ⟪search⟫ System.on-start-of-layout()
+  4     | events[0].children[2].children[0] | §802418253791295 | 17       | block ⟪search⟫ System.add-to-eventvar(variable=inner1, value=1) TextInput.set-text(text=str(inner1))
+  -     | events[0].children[2].children[1] | §463567326328426 | 21       | var inner1: number = 2
+  5     | events[0].children[2].children[2] | §173325987025130 | 23       | block ⟪search⟫ System.add-to-eventvar(variable=inner1, value=1) Text.set-text(text=str(inner1))
