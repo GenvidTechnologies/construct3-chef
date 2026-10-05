@@ -313,7 +313,7 @@ describe("scanAddonUsage — effect target (public dispatch)", () => {
 //   - objectTypes/images/Sprite2.json: effectTypes ["burn" (unrelated
 //     built-in, negative case), "MyCompany_MyEffect"]
 //   - families/TextFamily.json: effectTypes ["MyCompany_MyEffect"]
-//   - layouts/Second Layout.json: "MyCompany_MyEffect" applied to "layer 1".
+//   - layouts/UI/Second Layout.json: "MyCompany_MyEffect" applied to "layer 1".
 // The canonical editor export applies the effect at three sites (objectType,
 // family, layer); the recursive nested-subLayers walk is covered SYNTHETICALLY
 // above (see "finds all four application sites ... plus the nested sub-layer").

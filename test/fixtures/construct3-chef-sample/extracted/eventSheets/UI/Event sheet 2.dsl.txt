@@ -1,0 +1,25 @@
+# Event sheet 2
+# Source: eventSheets/UI/Event sheet 2.json
+
+group "Second Layout Events" (active)
+  static isActive: boolean = true
+
+  block
+    when: NavButton.on-clicked()
+    when: System.compare-boolean-eventvar(variable=isActive)
+    when: System.compare-eventvar(variable=score, comparison=5 (≥), value=10)
+    do: System.go-to-layout-by-name(layout="Main Layout")
+    do: Text[Timer].stop-timer(tag="test")
+
+  block
+    when: System.on-start-of-layout()
+
+    block
+      do: System.add-to-eventvar(variable=inner1, value=1)
+      do: TextInput.set-text(text=str(inner1))
+
+    var inner1: number = 2
+
+    block
+      do: System.add-to-eventvar(variable=inner1, value=1)
+      do: Text.set-text(text=str(inner1))

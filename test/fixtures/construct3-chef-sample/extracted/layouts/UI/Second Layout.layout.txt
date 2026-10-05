@@ -1,5 +1,5 @@
 # Second Layout
-# Source: layouts/Second Layout.json
+# Source: layouts/UI/Second Layout.json
 # EventSheet: Event sheet 2
 # Size: 960 x 1280
 
