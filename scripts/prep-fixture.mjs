@@ -7,6 +7,9 @@
 //   - `<submodule>/archive-sources/` -> `<fixture>/archive-sources/` (the bundled
 //     addons' source trees, used as extracted-addon-dir test inputs)
 //
+// Only files the submodule TRACKS are copied, so ignored editor-local output in
+// the submodule clone (e.g. `*.uistate.json`) never reaches the fixture.
+//
 // Chef's only local overlay is the `extracted/` golden read-surface, which does
 // not exist in either canonical tree, so a recursive copy never overwrites it.
 //
@@ -29,7 +32,7 @@
 // `npm run fixture:verify` (`verify-fixture-parity.mjs`) is the oracle that the
 // purge worked. See wiki/process/canonical-fixture.md and ADR 0013.
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { cpSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -67,8 +70,32 @@ execSync(`git ${sshToHttps}submodule update --init -- "${submodule}"`, { cwd: re
 //    so a `--from` pointing outside the root is rejected. Keeping the path at
 //    `<fixture>/archive-sources/<id>` is what lets the scan-addon-usage
 //    blast-radius tests address it unchanged.
-cpSync(source, dest, { recursive: true });
-cpSync(archiveSources, path.join(dest, "archive-sources"), { recursive: true });
+//
+//    Only git-TRACKED files are copied. The submodule clone may hold ignored
+//    editor-local output (`*.uistate.json`, `layouts/uistate/`, written when its
+//    project is opened in the C3 editor); a plain recursive copy would carry it
+//    into the fixture and fail `fixture:verify`. The tracked set comes from
+//    `git ls-files -z` (NUL-separated, so names with spaces survive). `cpSync`
+//    hands its filter native paths, so they are normalized to POSIX before the
+//    lookup. Deliberately NOT c3source's `isEditorLocalPath`: it also matches
+//    `ts-defs/` and `tsconfig.json`, which are tracked canonical content here.
+function copyTracked(from, to) {
+	const out = execFileSync("git", ["ls-files", "-z"], { cwd: from, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+	const files = new Set(out.split("\0").filter(Boolean));
+	const dirs = new Set();
+	for (const file of files) {
+		for (let dir = path.posix.dirname(file); dir !== "."; dir = path.posix.dirname(dir)) dirs.add(dir);
+	}
+	cpSync(from, to, {
+		recursive: true,
+		filter: (src) => {
+			const rel = path.relative(from, src).split(path.sep).join("/");
+			return rel === "" || files.has(rel) || dirs.has(rel);
+		},
+	});
+}
+copyTracked(source, dest);
+copyTracked(archiveSources, path.join(dest, "archive-sources"));
 
 // 3. Report the materialized pin + file count, for operator / CI visibility.
 const sha = execSync("git rev-parse HEAD", { cwd: submodule }).toString().trim();

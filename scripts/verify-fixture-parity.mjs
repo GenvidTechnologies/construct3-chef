@@ -13,8 +13,8 @@
 //   1. zero `*.uistate.json` files under the fixture
 //   2. zero directories named `uistate` under the fixture
 //   3. exactly 12 git-tracked overlay files under the fixture
-//   4. the strong oracle — a recursive path-set + byte compare of the submodule's
-//      `project/` tree against the fixture, excluding chef's top-level overlay dirs
+//   4. the strong oracle — a path-set + byte compare of the submodule's tracked
+//      `project/` files against the fixture, excluding chef's top-level overlay dirs
 //
 // Node rather than `find`/`diff -rq` on purpose: the shell-agnostic form is the
 // only one runnable from both PowerShell and bash, and `prep-fixture.mjs` is the
@@ -125,7 +125,17 @@ if (!existsSync(source) || walk(source).files.length === 0) {
 		"run `npm run fixture:prep` to initialize and materialize it.",
 	]);
 } else {
-	const canonical = walk(source, OVERLAY_DIRS);
+	// The canonical side is what the submodule TRACKS, not what its clone holds on
+	// disk: the clone may carry ignored editor-local output (`*.uistate.json`,
+	// `layouts/uistate/`) from being opened in the C3 editor, which
+	// `prep-fixture.mjs` deliberately does not copy. The fixture side stays a real
+	// filesystem walk, so leftovers there are still reported.
+	const canonical = {
+		files: execFileSync("git", ["ls-files", "-z"], { cwd: source, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
+			.split("\0")
+			.filter(Boolean)
+			.sort(),
+	};
 	const compared = walk(fixture, OVERLAY_DIRS);
 	const canonicalSet = new Set(canonical.files);
 	const comparedSet = new Set(compared.files);
