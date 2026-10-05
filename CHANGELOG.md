@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The post-apply reminder now names a command that exists.** After
+  `apply-recipe`, the CLI output and the MCP tool result both told you to run
+  `npm run sync-c3proj`, a script this package does not define. The reminder now
+  points at `sync-project`, which is available as the `construct3-chef sync-project`
+  CLI subcommand and as the `sync-project` MCP tool
+  ([#240](https://github.com/GenvidTechnologies/construct3-chef/issues/240)).
+
 ## [2.0.0] - 2026-09-18
 
 ### Added

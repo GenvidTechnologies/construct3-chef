@@ -1131,7 +1131,9 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   }
 
   log("\nDone.");
-  log("\nReminder: run 'npm run sync-c3proj' to register new files with Construct 3.");
+  log(
+    "\nReminder: run sync-project (CLI: `construct3-chef sync-project`, or the `sync-project` MCP tool) to register new files with Construct 3.",
+  );
 
   if (regenerate) {
     regenerateExtracted(rootDir, layoutsForLoop.size > 0, extractedDir, log);

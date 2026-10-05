@@ -267,6 +267,9 @@ describe("MCP server handler response shaping", () => {
     expect(result.isError).to.be.undefined;
     expect(result.content).to.have.length(1);
     expect(result.content[0].text).to.include("txId: default:6");
+    // The post-apply reminder reaches MCP callers too, so it must name a command that exists (#240).
+    expect(result.content[0].text).to.include("sync-project");
+    expect(result.content[0].text).to.not.include("sync-c3proj");
     expect(watcher.bumped).to.equal(1);
     // regenerate:false should NOT clear dirty
     // (dirty was true; test verifies it stays unchanged from this handler's perspective)
