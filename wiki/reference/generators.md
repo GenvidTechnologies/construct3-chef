@@ -15,7 +15,7 @@ Reference for the six C3 generators that produce `extracted/` files from C3 JSON
 
 The `extracted/` directory should be committed alongside C3 source files. If you change event sheets, layouts, or scripts, run `generate` and commit the updated files.
 
-**Prefer extracted files over raw JSON** when verifying event sheet state, exploring logic, or reviewing changes. Read the extracted `.dsl.txt` and `.ts` files instead of grepping raw event sheet JSON. When writing plans or documents that reference event sheet locations, use DSL cross-references (e.g., `GoalsEvents_Event48_Act1`) and DSL line numbers — they are stable across edits while JSON line numbers shift.
+**Prefer extracted files over raw JSON** when verifying event sheet state, exploring logic, or reviewing changes. Read the extracted `.dsl.txt` and `.ts` files instead of grepping raw event sheet JSON. When writing plans or documents that reference event sheet locations, DSL cross-references (e.g., `GoalsEvents_Event48_Act1`) and DSL line numbers are easier to read than JSON line numbers and survive JSON reformatting — but they are **positional**, not stable: inserting or removing an event renumbers every later `Event<N>` in that sheet, inserting an action renumbers every later sibling `Act<M>`, and any added DSL line shifts the line numbers below it (see [§ C3 Event Numbering](#c3-event-numbering)). For a reference that must survive edits, cite the node's SID instead (the SID column of the `.dsl.idx.txt` index; see [§ DSL Index Format](#dsl-index-format-dslidxtxt)).
 
 ---
 
@@ -37,30 +37,35 @@ All accept `--project-dir <path>` (defaults to `cwd`).
 
 ## Output Structure
 
-Extracted files mirror the event sheet directory structure:
+Per-sheet and per-layout files mirror the source directory structure under `eventSheets/` and `layouts/`:
 
 ```
 extracted/
 ├── template-scope.txt                  <- cross-layout template map
 ├── sid-registry.txt                    <- sorted global SID list (one row per owning node)
 ├── global-layers.txt                   <- global layers: source + overriding layouts + instance counts
-├── Goals/
-│   ├── GoalsEvents.dsl.txt             <- human-readable DSL
-│   ├── GoalsEvents.dsl.idx.txt         <- JSON-path / SID index
-│   ├── GoalsEvents.ts                  <- aggregated extracted TypeScript
-│   ├── GoalsEvents_e3_a1.ts            <- individual script block
+├── containers.txt                      <- container member groups from project.c3proj (written by the layout-summary generator)
+├── tsconfig.json                       <- resolves C3 type definitions for the extracted .ts files
+├── eventSheets/
+│   ├── Goals/
+│   │   ├── GoalsEvents.dsl.txt         <- human-readable DSL
+│   │   ├── GoalsEvents.dsl.idx.txt     <- JSON-path / SID index
+│   │   ├── GoalsEvents.ts              <- all of the sheet's script actions, one function each
+│   │   └── ...
 │   └── ...
-├── Login/
-│   ├── LoginLayout.layout.txt          <- layout layer/instance summary
-│   └── ...
-└── ...
+└── layouts/
+    ├── Login/
+    │   ├── LoginLayout.layout.txt      <- layout layer/instance summary
+    │   └── ...
+    └── ...
 ```
 
-Event sheet file names encode the C3 event/action coordinates: `{SheetName}_e{eventIndex}_a{actionIndex}.ts`. Each extracted `.ts` file contains a named function with:
+Script extraction writes **one aggregated `.ts` file per event sheet** (`extracted/eventSheets/<dir>/<SheetName>.ts`), and only for sheets that contain script actions — there is no per-script file. Each file contains:
 
 - Real imports (fully typed, not `any`)
-- A typed `localVars` parameter when scope variables are present
-- The original script body, with a header comment showing the C3 location and human-readable event path
+- A named type per distinct local-variable scope used by the sheet's scripts
+- One `async function` per script action, named `<Sheet>_Event<N>_Act<M>` by c3source's `generateFunctionName` (the sheet name with every non-alphanumeric run collapsed to `_` and leading/trailing `_` trimmed; `<N>`/`<M>` are the positional coordinates from [§ C3 Event Numbering](#c3-event-numbering)). It takes `runtime: IRuntime`, plus a typed `localVars` parameter when scope variables are present, and its body is the original script, unchanged.
+- Above each function, a header comment: `// --- <human-readable event path> ---`, then `// C3: <SheetName>, event N, action M (lines 1-K)` where K is the script's line count, then a `// Context: …` line listing the block's conditions when it has any.
 
 The generator also produces a `tsconfig.json` under `extracted/` that includes all C3 type definitions, so editors can resolve types without per-file `/// <reference>` directives.
 
@@ -92,11 +97,11 @@ Actions within a block are numbered 1-indexed within that block's `actions` arra
 
 When C3 reports an error like `GoalEvents, event 5, action 1, line 12`:
 
-1. Find the extracted file matching those coordinates: `GoalEvents_e5_a1.ts`
-2. Go to line 12 in that file (line numbers match the original script array)
+1. Open the sheet's aggregated file, `extracted/eventSheets/<dir>/GoalEvents.ts`, and find the function `GoalEvents_Event5_Act1` (or search for its header, `// C3: GoalEvents, event 5, action 1`)
+2. Count 12 lines into that **function's body** — C3's line number is relative to the script itself (line 1 is the first line after the function's opening `{`), not to the file
 3. Fix the issue in the extracted file, then port the fix back to the event sheet JSON
 
-DSL cross-references in `.dsl.txt` files (e.g., `// -> SheetName_Event3_Act1`) link multi-line script actions to the corresponding extracted `.ts` file.
+In `.dsl.txt` files, a multi-line script action carries a cross-reference comment naming its extracted function (e.g., `script { // → GoalEvents_Event5_Act1`; the arrow is the Unicode `→`, emitted by c3source's `formatAction`). Single-line scripts are rendered inline as `script { code }` with no cross-reference.
 
 ---
 
