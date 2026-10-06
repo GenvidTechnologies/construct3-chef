@@ -1035,12 +1035,17 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
     return;
   }
 
+  // Set when this apply writes a file that didn't exist before, i.e. one that
+  // sync-project must register in project.c3proj. Gates the post-apply reminder (#245).
+  let createdNewFile = false;
+
   // ─── Step 1: Process objectTypes ───
   if (recipe.objectTypes && recipe.objectTypes.length > 0) {
     log("\nobjectTypes:");
     for (const ot of recipe.objectTypes) {
       const created = createObjectType(sidGen, rootDir, ot, false, log);
       if (created) {
+        createdNewFile = true;
         updateInstanceTypes(rootDir, ot, false, log);
         updateObjects(rootDir, ot, false, log);
       }
@@ -1113,6 +1118,8 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
         const sheet = createSheet(sidGen, extractSheetName(filePath), entry.events);
         // Brand-new sheet: original is empty (no pre-existing events).
         assertCustomActionsValid(customAceIndex, filePath, { ...sheet, events: [] }, sheet);
+        // A CREATE over an existing path overwrites it (#249), so it adds nothing to register.
+        if (!existsSync(fullPath)) createdNewFile = true;
         mkdirSync(path.dirname(fullPath), { recursive: true });
         writeEventSheet(fullPath, sheet);
         log(`  CREATED ${filePath}`);
@@ -1131,9 +1138,11 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   }
 
   log("\nDone.");
-  log(
-    "\nReminder: run sync-project (CLI: `construct3-chef sync-project`, or the `sync-project` MCP tool) to register new files with Construct 3.",
-  );
+  if (createdNewFile) {
+    log(
+      "\nReminder: run sync-project (CLI: `construct3-chef sync-project`, or the `sync-project` MCP tool) to register new files with Construct 3.",
+    );
+  }
 
   if (regenerate) {
     regenerateExtracted(rootDir, layoutsForLoop.size > 0, extractedDir, log);
