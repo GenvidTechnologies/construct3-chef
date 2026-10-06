@@ -146,6 +146,12 @@ one topic. Two situations, two different actions:
   `description` if the topic's shape has changed, and refresh the frontmatter
   `sources` list. Append an entry to `<wikiDir>/log.md` either way.
 
+Both rules above govern **ingest runs**, which are what `<wikiDir>/log.md`
+records. A direct correction made outside an ingest run, such as a docs PR
+that fixes a page against the code without ingesting a new `raw/` source,
+appends **no** `log.md` entry. Its commit and PR are the record, the same
+way page fixes #204 and #205 landed.
+
 When it's ambiguous whether a source is a new topic or a refinement of an
 existing one, prefer updating the closer existing page — a wiki with one
 strong page beats a wiki with two thin overlapping ones.
