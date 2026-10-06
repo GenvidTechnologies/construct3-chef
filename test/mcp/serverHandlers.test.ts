@@ -267,12 +267,52 @@ describe("MCP server handler response shaping", () => {
     expect(result.isError).to.be.undefined;
     expect(result.content).to.have.length(1);
     expect(result.content[0].text).to.include("txId: default:6");
-    // The post-apply reminder reaches MCP callers too, so it must name a command that exists (#240).
-    expect(result.content[0].text).to.include("sync-project");
-    expect(result.content[0].text).to.not.include("sync-c3proj");
+    // R1 (#245): an addInstVars-only apply creates no new file, so no sync-project reminder.
+    expect(result.content[0].text).to.not.include("Reminder: run sync-project");
     expect(watcher.bumped).to.equal(1);
     // regenerate:false should NOT clear dirty
     // (dirty was true; test verifies it stays unchanged from this handler's perspective)
+  });
+
+  // R6 (#245/#240): the reminder only prints when the apply creates a new file, so the
+  // wording guard needs a recipe that creates one (a new objectType).
+  it("apply-recipe that creates a file prints the reminder naming sync-project, not sync-c3proj", async () => {
+    const handler = __getHandler("apply-recipe")!;
+    expect(handler).to.exist;
+
+    __setExtractedDirty(true); // skip registry freshness scan
+    const createRecipe = JSON.stringify({ objectTypes: [{ name: "ReminderJson", plugin: "Json" }] });
+    const result = (await handler({ recipe: createRecipe, txId: "default:5", regenerate: false }, makeExtra())) as any;
+
+    expect(result.isError).to.be.undefined;
+    expect(result.content[0].text).to.include("Reminder: run sync-project");
+    // The post-apply reminder reaches MCP callers too, so it must name a command that exists (#240).
+    expect(result.content[0].text).to.include("sync-project");
+    expect(result.content[0].text).to.not.include("sync-c3proj");
+  });
+
+  // R2 (#245): a workflow tool routes through applyParsed too; it only edits an existing
+  // layout (creates no new file), so no reminder.
+  it("clone-replica-to-layouts (workflow) succeeds with no sync-project reminder", async () => {
+    const handler = __getHandler("clone-replica-to-layouts")!;
+    expect(handler).to.exist;
+
+    __setExtractedDirty(true); // skip registry freshness scan
+    const result = (await handler(
+      {
+        templatesLayout: "layouts/Templates Layout.json",
+        templateName: "default",
+        sourceType: "Sprite3",
+        targets: [{ layout: "layouts/UI/Second Layout.json", layer: "layer 1" }],
+        txId: "default:5",
+        regenerate: false,
+      },
+      makeExtra(),
+    )) as any;
+
+    expect(result.isError).to.be.undefined;
+    expect(result.content[0].text).to.include("txId: default:6");
+    expect(result.content[0].text).to.not.include("Reminder: run sync-project");
   });
 
   // ── 7. apply-recipe success (regenerate:true) clears extractedDirty ───────
