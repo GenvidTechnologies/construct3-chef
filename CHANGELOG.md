@@ -34,6 +34,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   points at `sync-project`, which is available as the `construct3-chef sync-project`
   CLI subcommand and as the `sync-project` MCP tool
   ([#240](https://github.com/GenvidTechnologies/construct3-chef/issues/240)).
+- **The post-apply `sync-project` reminder now appears only when it applies.**
+  `apply-recipe` printed it after every apply, including recipes that only
+  modified existing files, and the four workflow tools (`extract-template`,
+  `templatize-in-place`, `clone-replica-to-layouts`,
+  `replace-instance-with-replica`) returned it every time. It now appears
+  only when the apply created a file that `project.c3proj` must register: a
+  new objectType or a new event sheet. A `files` CREATE over an existing
+  sheet doesn't count, since no new file appears
+  ([#245](https://github.com/GenvidTechnologies/construct3-chef/issues/245)).
 
 ## [2.0.0] - 2026-09-18
 
