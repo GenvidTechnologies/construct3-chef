@@ -88,7 +88,7 @@ output.
 `test/fixtures/construct3-chef-sample/` is real C3-export data that the
 golden test (`test/c3/sampleProjectGolden.test.ts`) diffs byte-for-byte
 against a committed golden. Never point a **mutating** command — `sync-project`,
-`apply-recipe`, `clone-layout`, `generate`, or any of the workflow ops — at
+`apply-recipe`, `scaffold-layout`, `generate`, or any of the workflow ops — at
 that fixture as a smoke test[^agent-memory]. It can silently rewrite the
 committed `project.c3proj` or `extracted/` output and break the golden diff,
 or worse, corrupt the fixture outright if it wasn't already in sync; on issue

@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { READ_ONLY, walkFiles, toPosixPath } from "@genvidtech/mcp-utils";
 import {
@@ -21,6 +22,8 @@ import { syncAddonMetadata, formatAddonMetadataSync, type AddonSyncResult } from
 import { SID_SOURCE_DIRS } from "../../src/c3/generators.js";
 import { reportStrayFiles } from "../../src/c3/projectSync.js";
 import { seedManifestDrift } from "../helpers/seedManifestDrift.js";
+import { runCli } from "../helpers/runCli.js";
+import { formatScaffoldRefusal } from "../../src/c3/scaffoldGuard.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = path.join(__dirname, "..", "fixtures", "construct3-chef-sample");
@@ -1204,6 +1207,159 @@ describe("MCP server handler response shaping", () => {
       expect(result.isError, result.content?.[0]?.text).to.be.undefined;
 
       assertNoTrailingNewline(path.join(tmp, "objectTypes", "T3ClonedSprite.json"), 0x7d);
+    });
+  });
+
+  // ── scaffold-layout / scaffold-sprite refuse to overwrite or collide (#254) ──
+  // `tmp` is a fresh fixture copy per test (beforeEach), so planted images and any
+  // writes here cannot leak into other rows.
+
+  describe("scaffold tools refuse overwrites and collisions (#254)", () => {
+    /** relPath -> sha256 of every file under root, so "nothing written" is assertable tree-wide. */
+    function snapshotTree(root: string): Map<string, string> {
+      const snap = new Map<string, string>();
+      const walk = (dir: string): void => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) walk(full);
+          else
+            snap.set(
+              toPosixPath(path.relative(root, full)),
+              createHash("sha256").update(fs.readFileSync(full)).digest("hex"),
+            );
+        }
+      };
+      walk(root);
+      return snap;
+    }
+
+    const textOf = (result: any): string => result.content.map((b: any) => b.text).join("\n");
+
+    function plantSpriteImages(): void {
+      fs.writeFileSync(path.join(tmp, "images", "text-a-000.png"), "src");
+      fs.writeFileSync(path.join(tmp, "images", "sprite-a-000.png"), "existing");
+    }
+
+    it("H1: scaffold-layout with source == path is refused: names the file, leaves bytes, no bump, no suppress", async () => {
+      const handler = __getHandler("scaffold-layout")!;
+      expect(handler).to.exist;
+      const rel = "layouts/Gameplay/Main Layout.json";
+      const before = fs.readFileSync(path.join(tmp, rel));
+
+      const result = (await handler(
+        {
+          source: "Gameplay/Main Layout.json",
+          name: "H1Layout",
+          path: "Gameplay/Main Layout.json",
+          eventSheet: "Event sheet 1",
+          regenerate: false,
+        },
+        makeExtra(),
+      )) as any;
+
+      expect(result.isError).to.be.true;
+      const text = textOf(result);
+      expect(text).to.include("scaffold-layout refused:");
+      expect(text).to.include(rel);
+      expect(text.split("\n").pop()).to.equal("txId: default:5");
+      expect(fs.readFileSync(path.join(tmp, rel)).equals(before)).to.be.true;
+      expect(watcher.bumped).to.equal(0);
+      expect(watcher.suppressCalls).to.equal(0);
+    });
+
+    it("H2: scaffold-layout with a colliding layout name is refused and the whole tree is unchanged, dirty flag kept", async () => {
+      const handler = __getHandler("scaffold-layout")!;
+      expect(handler).to.exist;
+      __setExtractedDirty(true);
+      const before = snapshotTree(tmp);
+
+      const result = (await handler(
+        {
+          source: "Gameplay/Main Layout.json",
+          name: "H2Layout",
+          path: "NewDir/Main Layout.json",
+          eventSheet: "Event sheet 1",
+          regenerate: true,
+        },
+        makeExtra(),
+      )) as any;
+
+      expect(result.isError).to.be.true;
+      const text = textOf(result);
+      expect(text).to.include("scaffold-layout refused:");
+      expect(text).to.include("layouts/Gameplay/Main Layout.json");
+      expect(fs.existsSync(path.join(tmp, "layouts", "NewDir"))).to.be.false;
+      expect(snapshotTree(tmp)).to.deep.equal(before);
+      expect(__getExtractedDirty()).to.be.true;
+    });
+
+    it("H3: scaffold-sprite collects every conflict (objectType name + image target) and writes nothing", async () => {
+      const handler = __getHandler("scaffold-sprite")!;
+      expect(handler).to.exist;
+      plantSpriteImages();
+      const before = snapshotTree(tmp);
+
+      const result = (await handler({ source: "Text", name: "Sprite" }, makeExtra())) as any;
+
+      expect(result.isError).to.be.true;
+      const text = textOf(result);
+      expect(text).to.include("refused: 2 conflicting path(s)");
+      expect(text).to.include("objectTypes/images/Sprite.json");
+      expect(text).to.include("images/sprite-a-000.png");
+      expect(text.split("\n").pop()).to.equal("txId: default:5");
+      expect(fs.existsSync(path.join(tmp, "objectTypes", "Sprite.json"))).to.be.false;
+      expect(snapshotTree(tmp)).to.deep.equal(before);
+      expect(watcher.bumped).to.equal(0);
+    });
+
+    it("H4a: scaffold-sprite with a missing source reports 'not found', not a refusal, even when the target exists", async () => {
+      const handler = __getHandler("scaffold-sprite")!;
+      const result = (await handler({ source: "NoSuchSprite", name: "Text" }, makeExtra())) as any;
+
+      expect(result.isError).to.be.true;
+      const text = textOf(result);
+      expect(text).to.include("Source objectType not found");
+      expect(text).to.not.include("refused:");
+    });
+
+    it("H4b: scaffold-layout with a missing source reports 'not found', not a refusal, even when the output exists", async () => {
+      const handler = __getHandler("scaffold-layout")!;
+      const result = (await handler(
+        {
+          source: "Nope/Missing.json",
+          name: "H4Layout",
+          path: "Gameplay/Main Layout.json",
+          eventSheet: "Event sheet 1",
+          regenerate: false,
+        },
+        makeExtra(),
+      )) as any;
+
+      expect(result.isError).to.be.true;
+      const text = textOf(result);
+      expect(text).to.include("Source layout not found");
+      expect(text).to.not.include("refused:");
+    });
+
+    it("C4: the CLI refusal is byte-identical to the MCP refusal (minus the txId line) and to formatScaffoldRefusal", async function () {
+      this.timeout(60_000);
+      plantSpriteImages();
+      const handler = __getHandler("scaffold-sprite")!;
+      const mcp = (await handler({ source: "Text", name: "Sprite" }, makeExtra())) as any;
+      expect(mcp.isError).to.be.true;
+      const lines = textOf(mcp).split("\n");
+      expect(lines.pop()).to.equal("txId: default:5");
+      const mcpMessage = lines.join("\n");
+
+      const cli = runCli(["scaffold-sprite", "--project-dir", tmp, "--source", "Text", "--name", "Sprite"]);
+
+      const expected = formatScaffoldRefusal("scaffold-sprite", [
+        { relPath: "objectTypes/images/Sprite.json", reason: "objectType-name" },
+        { relPath: "images/sprite-a-000.png", reason: "image-target" },
+      ]);
+      expect(cli.exitCode).to.equal(1);
+      expect(cli.stderr.trimEnd()).to.equal(mcpMessage);
+      expect(mcpMessage).to.equal(expected);
     });
   });
 });

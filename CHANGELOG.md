@@ -50,6 +50,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same recipe. To edit an existing sheet, give its `files` entry an ops
   array. A recipe that previously succeeded by overwriting a sheet now fails
   ([#249](https://github.com/GenvidTechnologies/construct3-chef/issues/249)).
+- **`scaffold-layout` and `scaffold-sprite` now refuse to overwrite existing
+  project files.** On both the CLI and the MCP tools, the scaffold is refused
+  (CLI exit 1, MCP error result) and nothing is written when the output path
+  already exists, when a layout with the same file name or an objectType with
+  the same name already exists in another folder, or when an image the sprite
+  scaffold would copy already
+  exists. The error lists every conflicting path. Previously they silently
+  overwrote the existing file
+  ([#254](https://github.com/GenvidTechnologies/construct3-chef/issues/254)).
 - **`sync-project` now records the `type` the C3 editor writes for more file
   extensions.** A new entry under `files/` used to get `application/octet-stream`
   for anything outside a 10-entry local table. Its `type` now comes from

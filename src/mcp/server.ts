@@ -61,6 +61,11 @@ import { scanAddonUsage, formatAddonUsage } from "../c3/addonAceUsage.js";
 import { syncAddonMetadata, formatAddonMetadataSync } from "../c3/addonMetadataSync.js";
 import { lookup, formatLookupResult } from "../c3/aceLookup.js";
 import { formatOpsList } from "../c3/opTemplate.js";
+import {
+  findLayoutScaffoldConflicts,
+  findSpriteScaffoldConflicts,
+  formatScaffoldRefusal,
+} from "../c3/scaffoldGuard.js";
 import { OpsRegistry } from "./opsRegistry.js";
 import { ProjectContext, createProjectContext } from "./projectContext.js";
 import { ProjectRegistry } from "./projectRegistry.js";
@@ -1542,7 +1547,7 @@ regP(
   {
     title: "Scaffold Layout",
     description:
-      "Clone an existing layout to create a new one. Remaps all UIDs and SIDs for uniqueness, sets the layout name and event sheet, writes the new layout JSON, and syncs project.c3proj. Optionally regenerates extracted/ files.",
+      "Clone an existing layout to create a new one; never overwrites existing files. Remaps all UIDs and SIDs for uniqueness, sets the layout name and event sheet, writes the new layout JSON, and syncs project.c3proj. Optionally regenerates extracted/ files.",
     annotations: MUTATE,
     inputSchema: {
       source: z
@@ -1586,6 +1591,12 @@ regP(
           }
           if (!fs.existsSync(sourceFullPath)) {
             return mcpError(`Source layout not found: layouts/${source}`, { extraLines: [txIdLine(ctx)] });
+          }
+
+          // Refuse to overwrite or collide with existing project content (#254)
+          const conflicts = findLayoutScaffoldConflicts(ctx.root, layoutsDir, outFullPath);
+          if (conflicts.length > 0) {
+            return mcpError(formatScaffoldRefusal("scaffold-layout", conflicts), { extraLines: [txIdLine(ctx)] });
           }
 
           const sourceContent = fs.readFileSync(sourceFullPath, "utf-8");
@@ -1645,7 +1656,7 @@ regP(
   {
     title: "Scaffold Sprite",
     description:
-      "Clone an existing objectType (sprite) to create a new one. Remaps all SIDs and imageSpriteIds for uniqueness, copies associated image files, writes the new objectType JSON, and syncs project.c3proj.",
+      "Clone an existing objectType (sprite) to create a new one; never overwrites existing files. Remaps all SIDs and imageSpriteIds for uniqueness, copies associated image files, writes the new objectType JSON, and syncs project.c3proj.",
     annotations: MUTATE,
     inputSchema: {
       source: z.string().describe("Source objectType name (e.g. 'StoryBookIcon')"),
@@ -1680,6 +1691,12 @@ regP(
           const sourceFile = path.join(objectTypesDir, `${source}.json`);
           if (!fs.existsSync(sourceFile)) {
             return mcpError(`Source objectType not found: objectTypes/${source}.json`, { extraLines: [txIdLine(ctx)] });
+          }
+
+          // Refuse to overwrite or collide with existing project content (#254)
+          const conflicts = findSpriteScaffoldConflicts(ctx.root, objectTypesDir, imagesDir, source, targetName);
+          if (conflicts.length > 0) {
+            return mcpError(formatScaffoldRefusal("scaffold-sprite", conflicts), { extraLines: [txIdLine(ctx)] });
           }
 
           const sourceContent = fs.readFileSync(sourceFile, "utf-8");

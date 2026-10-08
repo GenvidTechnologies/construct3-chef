@@ -14,6 +14,7 @@ import type { Recipe } from "./c3/recipeInterpreter.js";
 import { ALL_SECTION_KEYS, runSync, reportImageDrift, reportStrayFiles } from "./c3/projectSync.js";
 import { collectAllUids, cloneLayout } from "./c3/layoutScaffold.js";
 import { readRegistryFile } from "./c3/sidUtils.js";
+import { findLayoutScaffoldConflicts, findSpriteScaffoldConflicts, formatScaffoldRefusal } from "./c3/scaffoldGuard.js";
 import {
   collectAllObjectTypeSids,
   collectMaxImageSpriteId,
@@ -265,6 +266,12 @@ yargs(hideBin(process.argv))
       const sourcePath = path.resolve(argv.source);
       const outPath = path.resolve(argv.out);
       const source = JSON.parse(readFileSync(sourcePath, "utf-8")) as Record<string, unknown>;
+      const conflicts = findLayoutScaffoldConflicts(rootDir, openProject(rootDir).layoutsDir, outPath);
+      if (conflicts.length > 0) {
+        console.error(formatScaffoldRefusal("scaffold-layout", conflicts));
+        process.exitCode = 1;
+        return;
+      }
       const existingUids = collectAllUids(openProject(rootDir).layoutsDir);
       // Seed clone-SID minting against the project-wide registry so cloned SIDs can't
       // collide with anything in eventSheets/, layouts/, or objectTypes/.
@@ -292,6 +299,12 @@ yargs(hideBin(process.argv))
       const imagesDir = openProject(rootDir).imagesDir;
       const sourceFile = path.join(objectTypesDir, `${argv.source}.json`);
       const source = JSON.parse(readFileSync(sourceFile, "utf-8")) as Record<string, unknown>;
+      const conflicts = findSpriteScaffoldConflicts(rootDir, objectTypesDir, imagesDir, argv.source, argv.name);
+      if (conflicts.length > 0) {
+        console.error(formatScaffoldRefusal("scaffold-sprite", conflicts));
+        process.exitCode = 1;
+        return;
+      }
       const existingSids = collectAllObjectTypeSids(objectTypesDir);
       const maxImageSpriteId = collectMaxImageSpriteId(objectTypesDir);
       const cloned = cloneSprite(source, {
