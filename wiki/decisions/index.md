@@ -393,3 +393,13 @@ See the [wiki index](../index.md) for the other sections.
   the idempotent SKIP of `objectTypes`/`addInstVars`, which carry no content a
   skip would drop
   ([#249](https://github.com/GenvidTechnologies/construct3-chef/issues/249))
+* [0044. The scaffold tools refuse existing targets](0044-scaffold-tools-refuse-existing-targets.md) -
+  Amends ADR 0043. `scaffold-layout` and `scaffold-sprite`, on the CLI and in
+  MCP, wrote their output with no existence check, silently replacing an
+  existing layout or objectType and copying images over its frames. Both now
+  refuse, before any write, when the output path exists, when a same-named
+  layout or objectType lives in another folder, or when an image the sprite
+  scaffold would copy exists. All conflicts are collected into one message
+  rendered by a shared off-barrel formatter, so CLI and MCP output are
+  byte-identical. There is no overwrite flag
+  ([#254](https://github.com/GenvidTechnologies/construct3-chef/issues/254))

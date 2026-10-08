@@ -58,6 +58,10 @@ carry no content a SKIP would drop. A `files` CREATE carries events.
    behaviour change, a recipe that "succeeded" by overwriting now failing, is
    called out in the CHANGELOG.
 
+**Amended by ADR [0044](0044-scaffold-tools-refuse-existing-targets.md):** the
+same refuse-don't-overwrite rule now covers `scaffold-layout` and
+`scaffold-sprite`.
+
 ## Rejected alternatives
 
 - **SKIP the CREATE, mirroring `createObjectType`.** It silently drops the
