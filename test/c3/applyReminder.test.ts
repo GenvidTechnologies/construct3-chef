@@ -93,9 +93,13 @@ describe("apply reminder only when a new file is created (#245)", () => {
     expect(out).to.not.include(REMINDER);
   });
 
-  it("R10: files CREATE at an already-existing sheet path prints no reminder", () => {
+  it("R10: files CREATE at an already-existing sheet path is rejected", () => {
     expect(existsSync(path.join(tmp, EXISTING_SHEET))).to.be.true;
-    const out = apply({ files: { [EXISTING_SHEET]: { create: true, events: [] } } });
+    expect(() => apply({ files: { [EXISTING_SHEET]: { create: true, events: [] } } })).to.throw(
+      /already exist on disk/,
+    );
+    const out = lines.join("\n");
     expect(out).to.not.include(REMINDER);
+    expect(out).to.not.include("Done.");
   });
 });
