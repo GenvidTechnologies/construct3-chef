@@ -381,3 +381,15 @@ See the [wiki index](../index.md) for the other sections.
   so it still fires mid-task. The routing test generalizes ADR 0026's to "is
   this a rule you must know before you'd think to look, or the evidence behind
   one?"
+* [0043. A `files` CREATE refuses a target that already exists](0043-files-create-refuses-existing-targets.md) -
+  A recipe `files` entry with `create: true` whose resolved path already
+  exists used to replace the whole sheet (events, SIDs, comments) while
+  dry-run reported a plain CREATE. It is now strict: any existing CREATE
+  target rejects the whole recipe before anything is written, in apply,
+  dry-run, `--preview`, and the MCP recipe tools, with one error listing every
+  offending path. The check is a module-private `checkCreateTargets` in
+  `recipeApplier.ts`, beside `checkMoveVariableDemotions`; "exists" is
+  `existsSync` on disk, with no overwrite flag. This deliberately differs from
+  the idempotent SKIP of `objectTypes`/`addInstVars`, which carry no content a
+  skip would drop
+  ([#249](https://github.com/GenvidTechnologies/construct3-chef/issues/249))
