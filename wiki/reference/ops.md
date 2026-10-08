@@ -41,6 +41,8 @@ Each op is a single JSON file in the ops directory. The file name (without `.jso
 }
 ```
 
+A `create: true` entry is refused if the sheet already exists ([File Creation](./recipe-reference.md#file-creation)), so running this op twice with the same `SCREEN_NAME` fails instead of overwriting.
+
 ### Top-level fields
 
 | Field | Required | Description |

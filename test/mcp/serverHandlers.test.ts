@@ -291,6 +291,43 @@ describe("MCP server handler response shaping", () => {
     expect(result.content[0].text).to.not.include("sync-c3proj");
   });
 
+  // R10a/R10b (#249): a files CREATE over an existing sheet is refused on both MCP paths.
+  const CREATE_EXISTING_RECIPE = JSON.stringify({
+    files: { "eventSheets/Gameplay/Event sheet 1.json": { create: true, events: [] } },
+  });
+
+  it("validate-recipe reports a files CREATE over an existing sheet as an error (#249)", async () => {
+    const handler = __getHandler("validate-recipe")!;
+    expect(handler).to.exist;
+
+    __setExtractedDirty(true); // skip registry freshness scan
+    const result = (await handler({ recipe: CREATE_EXISTING_RECIPE }, makeExtra())) as any;
+
+    expect(result.isError).to.be.true;
+    const text = result.content.map((b: any) => b.text).join("\n");
+    expect(text).to.include("already exist on disk");
+    expect(text).to.include("eventSheets/Gameplay/Event sheet 1.json");
+    expect(text).to.include("txId: default:5");
+  });
+
+  it("apply-recipe refuses a files CREATE over an existing sheet: error, no bump, sheet untouched (#249)", async () => {
+    const handler = __getHandler("apply-recipe")!;
+    expect(handler).to.exist;
+
+    const sheet = path.join(tmp, "eventSheets", "Gameplay", "Event sheet 1.json");
+    const before = fs.readFileSync(sheet);
+
+    __setExtractedDirty(true); // skip registry freshness scan
+    const result = (await handler(
+      { recipe: CREATE_EXISTING_RECIPE, txId: "default:5", regenerate: false },
+      makeExtra(),
+    )) as any;
+
+    expect(result.isError).to.be.true;
+    expect(watcher.bumped).to.equal(0);
+    expect(fs.readFileSync(sheet).equals(before)).to.be.true;
+  });
+
   // R2 (#245): a workflow tool routes through applyParsed too; it only edits an existing
   // layout (creates no new file), so no reminder.
   it("clone-replica-to-layouts (workflow) succeeds with no sync-project reminder", async () => {

@@ -129,9 +129,9 @@ Adds instance variables to existing objectTypes and updates all references (obje
 
 Creates a new event sheet from scratch using builder events. Sheet name is derived from the file path (basename without `.json`).
 
-⚠️ **There is no existence check.** A CREATE whose path already holds a sheet **overwrites** it, dropping its events, SIDs and comments. Dry-run reports it as a plain `CREATE`. This differs from `objectTypes`, which `SKIP`s a type whose file already exists. Use an ops array to edit an existing sheet. Tracked in [#249](https://github.com/GenvidTechnologies/construct3-chef/issues/249).
+⚠️ **A CREATE never overwrites.** If the target path already holds a file, the whole recipe is rejected before anything is written — in dry-run and `--preview` as well as a real apply, with the same error. This differs from `objectTypes`, which `SKIP`s a type whose file already exists. Use an ops array to edit an existing sheet ([#249](https://github.com/GenvidTechnologies/construct3-chef/issues/249); rationale in [ADR 0043](../decisions/0043-files-create-refuses-existing-targets.md)).
 
-After a real apply, the `sync-project` reminder prints only when the apply created a file that didn't exist before: a new objectType, or a CREATE at a new path. A CREATE that overwrites an existing sheet gets no reminder ([#245](https://github.com/GenvidTechnologies/construct3-chef/issues/245)).
+After a real apply, the `sync-project` reminder prints only when the apply created a file that didn't exist before: a new objectType, or a CREATE at a new path ([#245](https://github.com/GenvidTechnologies/construct3-chef/issues/245)).
 
 ---
 
