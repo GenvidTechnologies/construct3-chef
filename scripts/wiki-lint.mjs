@@ -68,6 +68,41 @@ function resolveTarget(target, fromDir, absWiki) {
     : slash(path.normalize(path.join(fromDir, target)));
 }
 
+// A non-blank text line directly above a `---` line is a setext H2 in CommonMark,
+// not a paragraph followed by a thematic break. It renders as a heading, so the
+// mistake is invisible to a grep for the sentence's wording. It bit #249's docs
+// edit, which deleted the blank line before a section's closing `---`.
+// Frontmatter and fenced code are skipped. So is a `---` under a line that can't
+// be a setext heading's content: a list item, an ATX heading, a blockquote, or
+// a table row.
+const SETEXT_RULE = /^ {0,3}-{3,}[ \t]*$/;
+const NOT_PARAGRAPH = /^\s*([-*+]\s|\d+[.)]\s|#|>|\|)/;
+const FENCE_LINE = /^\s*(```|~~~)/;
+
+export function findSetextHeadings(text) {
+  const lines = text.split(/\r?\n/);
+  const hits = [];
+  let i = 0;
+  if (lines[0] === "---") {
+    i = 1;
+    while (i < lines.length && lines[i] !== "---") i++;
+    i++;
+  }
+  let inFence = false;
+  for (; i < lines.length; i++) {
+    const line = lines[i];
+    if (FENCE_LINE.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence || i === 0 || !SETEXT_RULE.test(line)) continue;
+    const prev = lines[i - 1];
+    if (prev.trim() === "" || FENCE_LINE.test(prev) || NOT_PARAGRAPH.test(prev)) continue;
+    hits.push({ line: i + 1, over: prev.trim().slice(0, 60) });
+  }
+  return hits;
+}
+
 export function lintWiki(repoRoot = REPO_ROOT, today = new Date().toISOString().slice(0, 10)) {
   const wikiDir = resolveWikiDir(repoRoot);
   const absWiki = slash(path.join(repoRoot, wikiDir));
@@ -80,9 +115,12 @@ export function lintWiki(repoRoot = REPO_ROOT, today = new Date().toISOString().
   const outOfBundle = [];
   const stale = [];
   const noType = [];
+  const setext = [];
 
   for (const f of all) {
-    const body = stripCode(readFileSync(f, "utf8"));
+    const raw = readFileSync(f, "utf8");
+    for (const h of findSetextHeadings(raw)) setext.push(`${slash(path.relative(repoRoot, f))}:${h.line} (over "${h.over}")`);
+    const body = stripCode(raw);
     const dir = slash(path.dirname(f));
     for (const m of body.matchAll(/\]\(([^)\s]+?)(#[^)\s]*)?\)/g)) {
       const target = m[1];
@@ -131,7 +169,19 @@ export function lintWiki(repoRoot = REPO_ROOT, today = new Date().toISOString().
     rawModified = [];
   }
 
-  return { wikiDir, pageCount: pages.length, indexCount: indexes.length, dead, outOfBundle, orphans, unreachable, stale, noType, rawModified };
+  return {
+    wikiDir,
+    pageCount: pages.length,
+    indexCount: indexes.length,
+    dead,
+    outOfBundle,
+    orphans,
+    unreachable,
+    stale,
+    noType,
+    setext,
+    rawModified,
+  };
 }
 
 function main() {
@@ -151,6 +201,7 @@ function main() {
   report("unreachable subdir indexes", r.unreachable);
   report("stale pages", r.stale);
   report("pages with no frontmatter type", r.noType);
+  report("accidental setext headings", r.setext, "a text line directly above `---` renders as an H2; add a blank line");
   report("raw/ files modified after add", r.rawModified, "raw/ is append-only");
   console.log("\nAdvisory only — this check never fails a build (OKF §11).");
 }
