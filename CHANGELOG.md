@@ -50,6 +50,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same recipe. To edit an existing sheet, give its `files` entry an ops
   array. A recipe that previously succeeded by overwriting a sheet now fails
   ([#249](https://github.com/GenvidTechnologies/construct3-chef/issues/249)).
+- **`sync-project` now records the `type` the C3 editor writes for more file
+  extensions.** A new entry under `files/` used to get `application/octet-stream`
+  for anything outside a 10-entry local table. Its `type` now comes from
+  `@genvidtech/c3source`'s `fileTypeForName`, so `.jpg`/`.jpeg` get `image/jpeg`,
+  `.webp` `image/webp`, `.gif` `image/gif`, `.svg` `image/svg+xml`, `.mp4`
+  `video/mp4`, `.mp3` `audio/mpeg`, `.m4a` `audio/mp4`, and `.js`
+  `application/javascript`. **Behaviour change:** `.plist` now gets
+  `application/octet-stream`, which is what the editor records, instead of
+  `text/xml`. Only newly added entries are affected; existing entries keep their
+  recorded `type`. A file whose whole name is an extension (such as a file
+  named `.jpg`) is now typed by that extension rather than falling back to
+  `application/octet-stream`. `MIME_MAP` is deprecated in favour of c3source's
+  `EXTENSION_FILE_TYPES` and is now that same object, so writing to it changes
+  c3source's table for every importer in the process. The `@genvidtech/c3source`
+  floor is raised to `^2.1.0`
+  ([#236](https://github.com/GenvidTechnologies/construct3-chef/issues/236)).
 
 ## [2.0.0] - 2026-09-18
 

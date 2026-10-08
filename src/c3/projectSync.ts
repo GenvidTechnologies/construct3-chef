@@ -7,6 +7,8 @@ import {
   detectImageDrift,
   detectManifestDrift,
   detectStrayFiles,
+  EXTENSION_FILE_TYPES,
+  fileTypeForName,
   type DriftEntry,
   type StrayFile,
 } from "@genvidtech/c3source";
@@ -114,22 +116,26 @@ export const ALL_SECTION_KEYS = [...FILE_SECTIONS.map((s) => s.key), ...NAME_SEC
 // MIME type inference
 // ---------------------------------------------------------------------------
 
-export const MIME_MAP: Record<string, string> = {
-  ".ts": "application/typescript",
-  ".webm": "audio/webm; codecs=opus",
-  ".ttf": "application/font-sfnt",
-  ".png": "image/png",
-  ".json": "application/json",
-  ".html": "text/html",
-  ".css": "text/css",
-  ".xml": "text/xml",
-  ".plist": "text/xml",
-  ".txt": "text/plain",
-};
+/**
+ * Dotted, lowercase file extension → the `type` c3source records for a C3 file entry.
+ * The table is observed rather than specified, tiered AUDITED / UNVALIDATED, and known
+ * to be incomplete; see `EXTENSION_FILE_TYPES` for which tier each entry is in.
+ *
+ * @deprecated Use `EXTENSION_FILE_TYPES` / `fileTypeForName` from `@genvidtech/c3source`,
+ * which owns this fact (#236). Kept because it is public API through the barrel. It is
+ * the upstream table itself, not a copy, so writing an entry here changes what
+ * {@link inferMimeType} returns. That write also changes c3source's own table for every
+ * importer in the process.
+ */
+export const MIME_MAP: Record<string, string> = EXTENSION_FILE_TYPES;
 
+/**
+ * The `type` to record for a newly synced file entry named `filename`. Delegates to
+ * c3source's `fileTypeForName`, which falls back to `application/octet-stream` for an
+ * unknown or missing extension.
+ */
 export function inferMimeType(filename: string): string {
-  const ext = path.extname(filename).toLowerCase();
-  return MIME_MAP[ext] ?? "application/octet-stream";
+  return fileTypeForName(filename);
 }
 
 // ---------------------------------------------------------------------------
