@@ -43,10 +43,12 @@ on a second surface that decision did not reach.
    - `output-exists`: the output file already exists.
    - `layout-name` / `objectType-name`: a layout or objectType with the same
      name lives in another folder. Two same-named items are ambiguous to every
-     by-name reference. A probe of c3source's name-tree diff (the comparison
-     `sync-project` runs) showed that, depending on folder sort order, sync
-     either never registers the new file or repoints the existing manifest
-     entry at the new file. So a name collision is a
+     by-name reference, and sync does not catch them: with a top-level
+     `objectTypes/Sprite.json` next to the registered `objectTypes/images/Sprite.json`,
+     c3source's drift detection reports the project in sync and `sync-project`
+     changes nothing, so the second `Sprite` is silently never registered
+     ([probe on #254](https://github.com/GenvidTechnologies/construct3-chef/issues/254#issuecomment-6069558119)).
+     So a name collision is a
      conflict even though no file is overwritten.
    - `image-target`: an image the sprite scaffold would copy already exists.
 2. **Collect all, report once.** Every conflict is gathered, deduplicated by

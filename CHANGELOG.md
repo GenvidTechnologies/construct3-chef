@@ -53,8 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`scaffold-layout` and `scaffold-sprite` now refuse to overwrite existing
   project files.** On both the CLI and the MCP tools, the scaffold is refused
   (CLI exit 1, MCP error result) and nothing is written when the output path
-  already exists, when a layout or objectType with the same name already exists
-  in another folder, or when an image the sprite scaffold would copy already
+  already exists, when a layout with the same file name or an objectType with
+  the same name already exists in another folder, or when an image the sprite
+  scaffold would copy already
   exists. The error lists every conflicting path. Previously they silently
   overwrote the existing file
   ([#254](https://github.com/GenvidTechnologies/construct3-chef/issues/254)).
