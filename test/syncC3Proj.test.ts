@@ -73,8 +73,52 @@ describe("syncC3Proj", () => {
       assert.equal(inferMimeType("config.xml"), "text/xml");
     });
 
-    it("returns correct MIME for .plist", () => {
-      assert.equal(inferMimeType("Info.plist"), "text/xml");
+    // #236: the editor records application/octet-stream for a .plist, not the
+    // text/xml chef's old local table wrote.
+    it("returns application/octet-stream for .plist", () => {
+      assert.equal(inferMimeType("Info.plist"), "application/octet-stream");
+    });
+
+    // #236: values measured in C3 r49502 (construct3-sample#4) and owned upstream
+    // by c3source's EXTENSION_FILE_TYPES.
+    it("returns image/jpeg for .jpg", () => {
+      assert.equal(inferMimeType("photo.jpg"), "image/jpeg");
+    });
+
+    it("returns image/jpeg for .jpeg", () => {
+      assert.equal(inferMimeType("photo.jpeg"), "image/jpeg");
+    });
+
+    it("returns image/webp for .webp", () => {
+      assert.equal(inferMimeType("photo.webp"), "image/webp");
+    });
+
+    it("returns image/gif for .gif", () => {
+      assert.equal(inferMimeType("anim.gif"), "image/gif");
+    });
+
+    it("returns image/svg+xml for .svg", () => {
+      assert.equal(inferMimeType("logo.svg"), "image/svg+xml");
+    });
+
+    it("returns video/mp4 for .mp4", () => {
+      assert.equal(inferMimeType("clip.mp4"), "video/mp4");
+    });
+
+    it("returns audio/mpeg for .mp3", () => {
+      assert.equal(inferMimeType("track.mp3"), "audio/mpeg");
+    });
+
+    it("returns audio/mp4 for .m4a", () => {
+      assert.equal(inferMimeType("track.m4a"), "audio/mp4");
+    });
+
+    it("returns application/javascript for .js", () => {
+      assert.equal(inferMimeType("main.js"), "application/javascript");
+    });
+
+    it("is case-insensitive on the extension", () => {
+      assert.equal(inferMimeType("PHOTO.JPG"), "image/jpeg");
     });
 
     it("returns correct MIME for .ttf", () => {
@@ -87,6 +131,24 @@ describe("syncC3Proj", () => {
 
     it("returns octet-stream for unknown extension", () => {
       assert.equal(inferMimeType("file.xyz"), "application/octet-stream");
+    });
+
+    // #236 R11: the fixture's project.c3proj was written by the C3 editor, so every
+    // `files/` entry's recorded type is ground truth for what inferMimeType must
+    // produce. The floor stops this passing on an empty or shrunken entry set.
+    it("matches the editor-recorded type of every files/ entry in the fixture", () => {
+      const manifest = readProjectManifest(path.join(sampleProjectDir, "project.c3proj"));
+      const entries: FileItem[] = [];
+      const walk = (folder: FileFolder): void => {
+        entries.push(...folder.items);
+        for (const sub of folder.subfolders) walk(sub);
+      };
+      walk(manifest.rootFileFolders.general as FileFolder);
+
+      assert.isAtLeast(entries.length, 9);
+      for (const entry of entries) {
+        assert.equal(inferMimeType(entry.name), entry.type, entry.name);
+      }
     });
   });
 
