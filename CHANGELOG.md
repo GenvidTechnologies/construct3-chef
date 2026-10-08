@@ -40,9 +40,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `templatize-in-place`, `clone-replica-to-layouts`,
   `replace-instance-with-replica`) returned it every time. It now appears
   only when the apply created a file that `project.c3proj` must register: a
-  new objectType or a new event sheet. A `files` CREATE over an existing
-  sheet doesn't count, since no new file appears
+  new objectType or a new event sheet
   ([#245](https://github.com/GenvidTechnologies/construct3-chef/issues/245)).
+- **A recipe `files` entry with `"create": true` whose event sheet already
+  exists is now refused instead of silently overwriting it.** The refusal
+  applies to apply, `--dry-run`, `--preview` and the MCP `validate-recipe`,
+  `apply-recipe` and op tools alike. It raises one error listing every such
+  path, and nothing is written, including any objectType or layout change in
+  the same recipe. To edit an existing sheet, give its `files` entry an ops
+  array. A recipe that previously succeeded by overwriting a sheet now fails
+  ([#249](https://github.com/GenvidTechnologies/construct3-chef/issues/249)).
 
 ## [2.0.0] - 2026-09-18
 

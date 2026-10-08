@@ -458,6 +458,25 @@ function findVariableNameBySidRef(sheet: EventSheet, ref: string): string | null
 }
 
 /**
+ * Refuse a files CREATE whose target already exists on disk (#249). A CREATE only
+ * makes new sheets; editing an existing one is an ops array's job. Runs before any
+ * dry-run output or write, so validate-recipe / --preview report the same refusal
+ * as apply, and no objectType/layout write from Steps 1–2 can land first. Resolves
+ * each target exactly as Step 3's write does: path.join(rootDir, <normalized key>).
+ */
+function checkCreateTargets(rootDir: string, files: NonNullable<Recipe["files"]>): void {
+  const existing = Object.entries(files)
+    .filter(([filePath, entry]) => isFileCreate(entry) && existsSync(path.join(rootDir, filePath)))
+    .map(([filePath]) => filePath);
+  if (existing.length === 0) return;
+  throw new Error(
+    `files CREATE refused: ${existing.length} target(s) already exist on disk, and { "create": true } never overwrites an existing event sheet. Nothing was written.\n` +
+      existing.map((p) => `  - ${p}`).join("\n") +
+      `\nTo edit an existing sheet, give its files entry an ops array instead, e.g. [{ "op": "insert-event", ... }].`,
+  );
+}
+
+/**
  * Refuse a global → local demotion when the variable is referenced from other
  * event sheets — a project-wide global cannot be confined to a single local
  * scope. The check is conservative: it matches the variable name as a whole
@@ -798,10 +817,13 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   summaryParts.push(`${totalOpCount} operation(s)`);
   log(`Recipe: ${summaryParts.join(", ")}`);
 
-  // Safety: a move-variable global → local demotion is only valid when the
-  // global is not referenced from other event sheets. Check before any dry-run
-  // output or write so validate-recipe surfaces it too.
+  // Disk-aware safety checks. Both run before any dry-run output or write, so
+  // validate-recipe / --preview surface them too and a refusal lands before
+  // Steps 1–2 write anything. (a) a files CREATE must not target an existing
+  // sheet (#249); (b) a move-variable global → local demotion is only valid when
+  // the global is not referenced from other event sheets.
   if (recipe.files && Object.keys(recipe.files).length > 0) {
+    checkCreateTargets(rootDir, recipe.files);
     checkMoveVariableDemotions(rootDir, recipe.files, log);
   }
 
@@ -1118,8 +1140,9 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
         const sheet = createSheet(sidGen, extractSheetName(filePath), entry.events);
         // Brand-new sheet: original is empty (no pre-existing events).
         assertCustomActionsValid(customAceIndex, filePath, { ...sheet, events: [] }, sheet);
-        // A CREATE over an existing path overwrites it (#249), so it adds nothing to register.
-        if (!existsSync(fullPath)) createdNewFile = true;
+        // checkCreateTargets refused any CREATE over an existing path before Step 1 (#249),
+        // so every CREATE reaching here writes a file sync-project must register.
+        createdNewFile = true;
         mkdirSync(path.dirname(fullPath), { recursive: true });
         writeEventSheet(fullPath, sheet);
         log(`  CREATED ${filePath}`);
