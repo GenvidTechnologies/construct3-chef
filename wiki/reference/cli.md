@@ -282,9 +282,11 @@ npx construct3-chef scaffold-layout \
 | `--out <path>` | yes | Output path for the new layout JSON file |
 | `--name <name>` | yes | Name for the new layout (shown in C3 editor) |
 | `--event-sheet <name>` | yes | Event sheet name to associate with the new layout |
-| `--no-regenerate` | no | Skip regenerating `extracted/` after scaffolding |
+| `--no-regenerate` | no | Skip regenerating `extracted/` after scaffolding. Currently rejected as `Unknown argument: regenerate` ([#261](https://github.com/GenvidTechnologies/construct3-chef/issues/261)) |
 
 After scaffolding, `project.c3proj` is automatically synced and `extracted/` is regenerated.
+
+`scaffold-layout` never overwrites. It refuses when the `--out` file already exists, or when a layout with the same file name exists in another folder. Every conflict is listed in one message, nothing is written (no sync, no regenerate), and the command exits 1 ([#254](https://github.com/GenvidTechnologies/construct3-chef/issues/254), ADR [0044](../decisions/0044-scaffold-tools-refuse-existing-targets.md)).
 
 ---
 
@@ -310,6 +312,8 @@ The command:
 - Writes `objectTypes/<name>.json`
 - Copies `images/<source>-*.png` to `images/<name>-*.png`
 - Syncs `project.c3proj`
+
+`scaffold-sprite` never overwrites. It refuses when `objectTypes/<name>.json` already exists, when an objectType of that name exists in any subfolder, or when an image it would copy already exists. Every conflict is listed in one message, nothing is written (no sync, no regenerate), and the command exits 1 ([#254](https://github.com/GenvidTechnologies/construct3-chef/issues/254), ADR [0044](../decisions/0044-scaffold-tools-refuse-existing-targets.md)).
 
 ---
 
