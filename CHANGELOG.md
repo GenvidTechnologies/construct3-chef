@@ -59,8 +59,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `application/javascript`. **Behaviour change:** `.plist` now gets
   `application/octet-stream`, which is what the editor records, instead of
   `text/xml`. Only newly added entries are affected; existing entries keep their
-  recorded `type`. `MIME_MAP` is deprecated in favour of c3source's
-  `EXTENSION_FILE_TYPES`, which it now refers to. The `@genvidtech/c3source`
+  recorded `type`. A file whose whole name is an extension (such as a file
+  named `.jpg`) is now typed by that extension rather than falling back to
+  `application/octet-stream`. `MIME_MAP` is deprecated in favour of c3source's
+  `EXTENSION_FILE_TYPES` and is now that same object, so writing to it changes
+  c3source's table for every importer in the process. The `@genvidtech/c3source`
   floor is raised to `^2.1.0`
   ([#236](https://github.com/GenvidTechnologies/construct3-chef/issues/236)).
 

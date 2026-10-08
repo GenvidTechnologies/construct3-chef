@@ -117,12 +117,15 @@ export const ALL_SECTION_KEYS = [...FILE_SECTIONS.map((s) => s.key), ...NAME_SEC
 // ---------------------------------------------------------------------------
 
 /**
- * Dotted, lowercase file extension → the `type` the C3 editor records on a file entry.
+ * Dotted, lowercase file extension → the `type` c3source records for a C3 file entry.
+ * The table is observed rather than specified, tiered AUDITED / UNVALIDATED, and known
+ * to be incomplete; see `EXTENSION_FILE_TYPES` for which tier each entry is in.
  *
  * @deprecated Use `EXTENSION_FILE_TYPES` / `fileTypeForName` from `@genvidtech/c3source`,
  * which owns this fact (#236). Kept because it is public API through the barrel. It is
- * the upstream table itself, not a copy, so adding an entry here still changes what
- * {@link inferMimeType} returns.
+ * the upstream table itself, not a copy, so writing an entry here changes what
+ * {@link inferMimeType} returns. That write also changes c3source's own table for every
+ * importer in the process.
  */
 export const MIME_MAP: Record<string, string> = EXTENSION_FILE_TYPES;
 
