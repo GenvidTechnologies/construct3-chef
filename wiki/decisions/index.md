@@ -403,3 +403,14 @@ See the [wiki index](../index.md) for the other sections.
   rendered by a shared off-barrel formatter, so CLI and MCP output are
   byte-identical. There is no overwrite flag
   ([#254](https://github.com/GenvidTechnologies/construct3-chef/issues/254))
+* [0045. Scaffold plan/write split and CLI path containment](0045-scaffold-plan-write-split-and-cli-path-containment.md) -
+  Follows ADR 0044. The scaffold tools' validation now lives in one read-only,
+  off-barrel planning module (`scaffoldPlan.ts`) shared by the CLI and MCP,
+  with per-surface write wrappers. The CLI's `scaffold-layout` resolves
+  `--source` and `--out` against the project root and contains both to
+  `layouts/`; `scaffold-sprite` applies MCP's plain-name check. Rejections and
+  success lines render identically on both surfaces. Containment is lexical,
+  so a Windows 8.3 short-form `--project-dir` can falsely reject a long-form
+  absolute path
+  ([#259](https://github.com/GenvidTechnologies/construct3-chef/issues/259),
+  [#261](https://github.com/GenvidTechnologies/construct3-chef/issues/261))
