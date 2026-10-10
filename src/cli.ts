@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync, writeFileSync, copyFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
@@ -9,17 +9,9 @@ import { openProject } from "@genvidtech/c3source";
 import { loadChefConfig, resolveOpsDir } from "./c3/chefConfig.js";
 import { GENERATORS, GENERATOR_NAMES, type GeneratorName } from "./c3/generators.js";
 import { applyParsed, renameSymbols } from "./c3/recipeApplier.js";
-import { writeSourceJson } from "./c3/sourceJson.js";
 import type { Recipe } from "./c3/recipeInterpreter.js";
 import { ALL_SECTION_KEYS, runSync, reportImageDrift, reportStrayFiles } from "./c3/projectSync.js";
-import { planLayoutScaffold, writeLayoutScaffold } from "./c3/scaffoldPlan.js";
-import { findSpriteScaffoldConflicts, formatScaffoldRefusal } from "./c3/scaffoldGuard.js";
-import {
-  collectAllObjectTypeSids,
-  collectMaxImageSpriteId,
-  discoverAndPlanImageCopies,
-  cloneSprite,
-} from "./c3/spriteScaffold.js";
+import { planLayoutScaffold, writeLayoutScaffold, planSpriteScaffold, writeSpriteScaffold } from "./c3/scaffoldPlan.js";
 import { findTemplates } from "./c3/templateLister.js";
 import {
   buildLayoutEventSheetMap,
@@ -307,36 +299,38 @@ yargs(hideBin(process.argv))
     "Clone a sprite/objectType with new SIDs and images",
     (y) =>
       y
-        .option("source", { type: "string", demandOption: true, describe: "Source objectType name" })
-        .option("name", { type: "string", demandOption: true, describe: "Target objectType name" }),
+        .option("source", {
+          type: "string",
+          demandOption: true,
+          describe: "Source objectType name (a plain name, no path separators)",
+        })
+        .option("name", {
+          type: "string",
+          demandOption: true,
+          describe: "Target objectType name (a plain name, no path separators)",
+        }),
     (argv) => {
-      const rootDir = resolveProjectDir(argv);
-      const objectTypesDir = openProject(rootDir).objectTypesDir;
-      const imagesDir = openProject(rootDir).imagesDir;
-      const sourceFile = path.join(objectTypesDir, `${argv.source}.json`);
-      const source = JSON.parse(readFileSync(sourceFile, "utf-8")) as Record<string, unknown>;
-      const conflicts = findSpriteScaffoldConflicts(rootDir, objectTypesDir, imagesDir, argv.source, argv.name);
-      if (conflicts.length > 0) {
-        console.error(formatScaffoldRefusal("scaffold-sprite", conflicts));
+      try {
+        const rootDir = resolveProjectDir(argv);
+        const project = openProject(rootDir);
+        const plan = planSpriteScaffold({
+          rootDir,
+          objectTypesDir: project.objectTypesDir,
+          imagesDir: project.imagesDir,
+          source: argv.source,
+          name: argv.name,
+        });
+        if (!plan.ok) {
+          console.error(plan.message);
+          process.exitCode = 1;
+          return;
+        }
+        writeSpriteScaffold(plan, console.log);
+        runSync(rootDir, false, console.log);
+      } catch (e) {
+        console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
         process.exitCode = 1;
-        return;
       }
-      const existingSids = collectAllObjectTypeSids(objectTypesDir);
-      const maxImageSpriteId = collectMaxImageSpriteId(objectTypesDir);
-      const cloned = cloneSprite(source, {
-        name: argv.name,
-        existingSids,
-        nextImageSpriteId: maxImageSpriteId + 1,
-      });
-      const outFile = path.join(objectTypesDir, `${argv.name}.json`);
-      writeSourceJson(outFile, cloned);
-      console.log(`Scaffolded ${argv.name} → objectTypes/${argv.name}.json`);
-      const imageCopies = discoverAndPlanImageCopies(imagesDir, argv.source, argv.name);
-      for (const { sourcePath, targetPath, sourceBasename, targetBasename } of imageCopies) {
-        copyFileSync(sourcePath, targetPath);
-        console.log(`Copied images/${sourceBasename} → images/${targetBasename}`);
-      }
-      runSync(rootDir, false, console.log);
     },
   )
   .command(
