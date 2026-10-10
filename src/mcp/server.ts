@@ -24,7 +24,6 @@ import {
 } from "@genvidtech/mcp-utils";
 import type { Logger } from "@genvidtech/mcp-utils";
 import { applyParsed } from "../c3/recipeApplier.js";
-import { writeSourceJson } from "../c3/sourceJson.js";
 import { validateRecipe, type Recipe } from "../c3/recipeInterpreter.js";
 import { findJsonFiles, SID_SOURCE_DIRS } from "../c3/generators.js";
 import { runSync, reportImageDrift, reportStrayFiles } from "../c3/projectSync.js";
@@ -34,16 +33,9 @@ import { filterIndex, buildShallowSidMap, type SidMapEntry } from "../c3/dslForm
 import { find_all_eventsheets_path, find_all_layouts_path } from "@genvidtech/c3source";
 import type { EventSheet } from "@genvidtech/c3source";
 import { resolveIncludeTree, formatIncludeTree, flattenIncludeTree } from "../c3/includeTree.js";
-import { collectAllUids, cloneLayout } from "../c3/layoutScaffold.js";
 import { search } from "../c3/search.js";
 import { createSourceWatcher } from "./sourceWatcher.js";
 import { resolveAnchor } from "../c3/anchorResolver.js";
-import {
-  collectAllObjectTypeSids,
-  collectMaxImageSpriteId,
-  discoverAndPlanImageCopies,
-  cloneSprite,
-} from "../c3/spriteScaffold.js";
 import type { ChefConfig } from "../c3/chefConfig.js";
 import {
   buildLayoutEventSheetMap,
@@ -62,10 +54,11 @@ import { syncAddonMetadata, formatAddonMetadataSync } from "../c3/addonMetadataS
 import { lookup, formatLookupResult } from "../c3/aceLookup.js";
 import { formatOpsList } from "../c3/opTemplate.js";
 import {
-  findLayoutScaffoldConflicts,
-  findSpriteScaffoldConflicts,
-  formatScaffoldRefusal,
-} from "../c3/scaffoldGuard.js";
+  planLayoutScaffold,
+  planSpriteScaffold,
+  writeLayoutScaffold,
+  writeSpriteScaffold,
+} from "../c3/scaffoldPlan.js";
 import { OpsRegistry } from "./opsRegistry.js";
 import { ProjectContext, createProjectContext } from "./projectContext.js";
 import { ProjectRegistry } from "./projectRegistry.js";
@@ -1572,53 +1565,23 @@ regP(
           const txCheck = compareTxToken(ctx, expectedTxId, "scaffolding");
           if (txCheck) return txCheck;
 
-          const layoutsDir = ctx.project.layoutsDir;
-
-          // Path traversal check — output must stay within layouts/
-          const outFullPath = resolveWithin(layoutsDir, outRelPath);
-          if (outFullPath === null) {
-            return mcpError(`Invalid output path '${outRelPath}' — must stay within layouts/`, {
-              extraLines: [txIdLine(ctx)],
-            });
-          }
-
-          // Path traversal check — source must stay within layouts/
-          const sourceFullPath = resolveWithin(layoutsDir, source);
-          if (sourceFullPath === null) {
-            return mcpError(`Invalid source path '${source}' — must stay within layouts/`, {
-              extraLines: [txIdLine(ctx)],
-            });
-          }
-          if (!fs.existsSync(sourceFullPath)) {
-            return mcpError(`Source layout not found: layouts/${source}`, { extraLines: [txIdLine(ctx)] });
-          }
-
-          // Refuse to overwrite or collide with existing project content (#254)
-          const conflicts = findLayoutScaffoldConflicts(ctx.root, layoutsDir, outFullPath);
-          if (conflicts.length > 0) {
-            return mcpError(formatScaffoldRefusal("scaffold-layout", conflicts), { extraLines: [txIdLine(ctx)] });
-          }
-
-          const sourceContent = fs.readFileSync(sourceFullPath, "utf-8");
-          const sourceLayout = JSON.parse(sourceContent) as Record<string, unknown>;
-
-          // Collect all existing UIDs and SIDs, then clone. Seeding existingSids from the
-          // project registry prevents cloned SIDs from colliding with anything in eventSheets/,
-          // layouts/, or objectTypes/.
-          const existingUids = collectAllUids(layoutsDir);
-          const sidRegistryPath = path.join(ctx.extractedDir, "sid-registry.txt");
-          const existingSids = fs.existsSync(sidRegistryPath) ? readRegistryFile(sidRegistryPath) : new Set<number>();
-          const cloned = cloneLayout(sourceLayout, { name, eventSheet, existingUids, existingSids });
+          const plan = planLayoutScaffold({
+            rootDir: ctx.root,
+            layoutsDir: ctx.project.layoutsDir,
+            extractedDirAbs: ctx.extractedDir,
+            pathBase: "layouts",
+            source,
+            out: outRelPath,
+            name,
+            eventSheet,
+          });
+          if (!plan.ok) return mcpError(plan.message, { extraLines: [txIdLine(ctx)] });
 
           // Write output
           await ctx.watcher.suppress(async () => {
-            // Ensure output directory exists
-            const outDir = path.dirname(outFullPath);
-            fs.mkdirSync(outDir, { recursive: true });
-            writeSourceJson(outFullPath, cloned);
-            ctx.watcher.expect(outFullPath);
+            writeLayoutScaffold(plan, log);
+            ctx.watcher.expect(plan.outPath);
             await sendProgress(extra, 0, totalSteps, "Cloning layout");
-            log(`Scaffolded ${name} → layouts/${outRelPath}`);
 
             // Sync project.c3proj
             await sendProgress(extra, 1, totalSteps, "Syncing project.c3proj");
@@ -1672,63 +1635,20 @@ regP(
           const txCheck = compareTxToken(ctx, expectedTxId, "scaffolding");
           if (txCheck) return txCheck;
 
-          const objectTypesDir = ctx.project.objectTypesDir;
-          const imagesDir = ctx.project.imagesDir;
-
-          // Validate names don't contain path separators
-          for (const [label, val] of [
-            ["source", source],
-            ["name", targetName],
-          ] as const) {
-            if (val.includes("/") || val.includes("\\") || val.includes("..")) {
-              return mcpError(`Invalid ${label} '${val}' — must be a plain objectType name without path separators`, {
-                extraLines: [txIdLine(ctx)],
-              });
-            }
-          }
-
-          // Read source objectType
-          const sourceFile = path.join(objectTypesDir, `${source}.json`);
-          if (!fs.existsSync(sourceFile)) {
-            return mcpError(`Source objectType not found: objectTypes/${source}.json`, { extraLines: [txIdLine(ctx)] });
-          }
-
-          // Refuse to overwrite or collide with existing project content (#254)
-          const conflicts = findSpriteScaffoldConflicts(ctx.root, objectTypesDir, imagesDir, source, targetName);
-          if (conflicts.length > 0) {
-            return mcpError(formatScaffoldRefusal("scaffold-sprite", conflicts), { extraLines: [txIdLine(ctx)] });
-          }
-
-          const sourceContent = fs.readFileSync(sourceFile, "utf-8");
-          const sourceObj = JSON.parse(sourceContent) as Record<string, unknown>;
-
-          // Collect all existing SIDs and max imageSpriteId
-          const existingSids = collectAllObjectTypeSids(objectTypesDir);
-          const maxImageSpriteId = collectMaxImageSpriteId(objectTypesDir);
-
-          // Clone the sprite
-          const cloned = cloneSprite(sourceObj, {
+          const plan = planSpriteScaffold({
+            rootDir: ctx.root,
+            objectTypesDir: ctx.project.objectTypesDir,
+            imagesDir: ctx.project.imagesDir,
+            source,
             name: targetName,
-            existingSids,
-            nextImageSpriteId: maxImageSpriteId + 1,
           });
+          if (!plan.ok) return mcpError(plan.message, { extraLines: [txIdLine(ctx)] });
 
           // Write output and copy images
           await ctx.watcher.suppress(async () => {
-            // Write objectType JSON
-            const outFile = path.join(objectTypesDir, `${targetName}.json`);
-            writeSourceJson(outFile, cloned);
-            ctx.watcher.expect(outFile);
-            log(`Scaffolded ${targetName} → objectTypes/${targetName}.json`);
-
-            // Discover and copy images (images/ is NOT watched — no ctx.expected needed)
-            if (fs.existsSync(imagesDir)) {
-              const imageCopies = discoverAndPlanImageCopies(imagesDir, source, targetName);
-              for (const { sourcePath, targetPath, sourceBasename, targetBasename } of imageCopies) {
-                fs.copyFileSync(sourcePath, targetPath);
-                log(`Copied images/${sourceBasename} → images/${targetBasename}`);
-              }
-            }
+            writeSpriteScaffold(plan, log);
+            // images/ is NOT watched — only the objectType JSON needs an expect
+            ctx.watcher.expect(plan.outPath);
 
             // Sync project.c3proj
             runSync(ctx.root, false, log);
