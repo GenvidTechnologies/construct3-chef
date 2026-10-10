@@ -81,9 +81,6 @@ describe("scaffold-layout / scaffold-sprite CLI refuse overwrites (#254)", funct
     expect(snapshotTree(tmp)).to.deep.equal(before);
   });
 
-  // NOTE: the plan's C2 passes --no-regenerate, but the CLI declares an option literally named
-  // "no-regenerate", which yargs .strict() rejects as "Unknown argument: regenerate" (exit 1 plus
-  // help, before the handler runs). It is omitted here so the refusal itself is what is asserted.
   it("C2: scaffold-layout --out onto an existing event sheet is refused, no Scaffolded line, sheet unchanged", () => {
     const sheet = path.join(tmp, SHEET_REL);
     const sheetBefore = readFileSync(sheet);
@@ -101,6 +98,7 @@ describe("scaffold-layout / scaffold-sprite CLI refuse overwrites (#254)", funct
         "C2",
         "--event-sheet",
         "Event sheet 1",
+        "--no-regenerate",
       ],
       { cwd: tmp },
     );
@@ -124,6 +122,58 @@ describe("scaffold-layout / scaffold-sprite CLI refuse overwrites (#254)", funct
     expect(existsSync(path.join(tmp, "objectTypes", "Sprite.json"))).to.be.false;
     expect(snapshotTree(tmp, "images")).to.deep.equal(imagesBefore);
     expect(snapshotTree(tmp, "objectTypes")).to.deep.equal(objectTypesBefore);
+  });
+
+  for (const flag of ["--no-regenerate", "--regenerate=false"]) {
+    it(`T4: scaffold-layout ${flag} succeeds, writes the layout, leaves extracted/ untouched`, () => {
+      const extractedBefore = snapshotTree(tmp, "extracted");
+
+      const r = runCli(
+        [
+          "scaffold-layout",
+          "--project-dir",
+          tmp,
+          "--source",
+          path.join(tmp, LAYOUT_REL),
+          "--out",
+          path.join(tmp, "layouts/Gameplay/C6.json"),
+          "--name",
+          "C6",
+          "--event-sheet",
+          "Event sheet 1",
+          flag,
+        ],
+        { cwd: tmp },
+      );
+
+      expect(r.exitCode, r.stderr).to.equal(0);
+      expect(existsSync(path.join(tmp, "layouts/Gameplay/C6.json"))).to.be.true;
+      expect(snapshotTree(tmp, "extracted")).to.deep.equal(extractedBefore);
+      expect(r.stdout + r.stderr).to.not.include("Options:");
+    });
+  }
+
+  it("T5: control — scaffold-layout with no regenerate flag regenerates extracted/", () => {
+    const r = runCli(
+      [
+        "scaffold-layout",
+        "--project-dir",
+        tmp,
+        "--source",
+        path.join(tmp, LAYOUT_REL),
+        "--out",
+        path.join(tmp, "layouts/Gameplay/C6.json"),
+        "--name",
+        "C6",
+        "--event-sheet",
+        "Event sheet 1",
+      ],
+      { cwd: tmp },
+    );
+
+    expect(r.exitCode, r.stderr).to.equal(0);
+    expect(existsSync(path.join(tmp, "extracted/layouts/Gameplay/C6.layout.txt"))).to.be.true;
+    expect(r.stdout.split(/\r?\n/).some((l) => l.startsWith("[strays]"))).to.be.false;
   });
 
   it("C5: positive control — scaffold-sprite onto a fresh name still succeeds and creates the file", () => {

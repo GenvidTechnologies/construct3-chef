@@ -259,7 +259,11 @@ yargs(hideBin(process.argv))
         .option("out", { type: "string", demandOption: true, describe: "Output path for the new layout JSON file" })
         .option("name", { type: "string", demandOption: true, describe: "Name for the new layout" })
         .option("event-sheet", { type: "string", demandOption: true, describe: "Event sheet name for the new layout" })
-        .option("no-regenerate", { type: "boolean", default: false, describe: "Skip regenerating extracted/ files" }),
+        .option("regenerate", {
+          type: "boolean",
+          default: true,
+          describe: "Regenerate extracted/ files after scaffolding",
+        }),
     async (argv) => {
       const rootDir = resolveProjectDir(argv);
       const extractedDir = await resolveExtractedDir(rootDir);
@@ -281,7 +285,7 @@ yargs(hideBin(process.argv))
       writeSourceJson(outPath, cloned);
       console.log(`Scaffolded ${argv.name} → ${path.relative(rootDir, outPath)}`);
       runSync(rootDir, false, console.log);
-      if (!argv.noRegenerate) {
+      if (argv.regenerate) {
         runGenerators(rootDir, extractedDir);
       }
     },
