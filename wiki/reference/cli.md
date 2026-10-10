@@ -278,15 +278,17 @@ npx construct3-chef scaffold-layout \
 
 | Option | Required | Description |
 | ------ | -------- | ----------- |
-| `--source <path>` | yes | Path to the source layout JSON file |
-| `--out <path>` | yes | Output path for the new layout JSON file |
+| `--source <path>` | yes | Source layout JSON file, relative to the project root (`--project-dir`), not the current directory; must stay within `layouts/` |
+| `--out <path>` | yes | Output path for the new layout JSON file, relative to the project root; must stay within `layouts/`. Missing folders are created |
 | `--name <name>` | yes | Name for the new layout (shown in C3 editor) |
 | `--event-sheet <name>` | yes | Event sheet name to associate with the new layout |
-| `--no-regenerate` | no | Skip regenerating `extracted/` after scaffolding. Currently rejected as `Unknown argument: regenerate` ([#261](https://github.com/GenvidTechnologies/construct3-chef/issues/261)) |
+| `--no-regenerate` | no | Skip regenerating `extracted/` after scaffolding (`--regenerate=false` is equivalent; default: regenerate) |
 
 After scaffolding, `project.c3proj` is automatically synced and `extracted/` is regenerated.
 
 `scaffold-layout` never overwrites. It refuses when the `--out` file already exists, or when a layout with the same file name exists in another folder. Every conflict is listed in one message, nothing is written (no sync, no regenerate), and the command exits 1 ([#254](https://github.com/GenvidTechnologies/construct3-chef/issues/254), ADR [0044](../decisions/0044-scaffold-tools-refuse-existing-targets.md)).
+
+Paths are contained to the project. A `--out` or `--source` outside `layouts/` is rejected with `Invalid output path '<arg>' — must stay within layouts/` (`Invalid source path …` for `--source`), exit 1, nothing written. A missing source prints `Source layout not found: <path>`. Errors print one line (`Error: <message>`), and success lines use `/` separators on every platform ([#259](https://github.com/GenvidTechnologies/construct3-chef/issues/259), ADR [0045](../decisions/0045-scaffold-plan-write-split-and-cli-path-containment.md)).
 
 ---
 
@@ -312,6 +314,8 @@ The command:
 - Writes `objectTypes/<name>.json`
 - Copies `images/<source>-*.png` to `images/<name>-*.png`
 - Syncs `project.c3proj`
+
+`--source` and `--name` are plain objectType names: one containing `/`, `\` or `..` is rejected (exit 1, nothing written), and a missing source prints `Source objectType not found: …`. `images/` is optional; with no images folder there are no image copies ([#259](https://github.com/GenvidTechnologies/construct3-chef/issues/259), ADR [0045](../decisions/0045-scaffold-plan-write-split-and-cli-path-containment.md)).
 
 `scaffold-sprite` never overwrites. It refuses when `objectTypes/<name>.json` already exists, when an objectType of that name exists in any subfolder, or when an image it would copy already exists. Every conflict is listed in one message, nothing is written (no sync, no regenerate), and the command exits 1 ([#254](https://github.com/GenvidTechnologies/construct3-chef/issues/254), ADR [0044](../decisions/0044-scaffold-tools-refuse-existing-targets.md)).
 
