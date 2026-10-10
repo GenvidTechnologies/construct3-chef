@@ -1579,8 +1579,8 @@ regP(
 
           // Write output
           await ctx.watcher.suppress(async () => {
-            writeLayoutScaffold(plan, log);
             ctx.watcher.expect(plan.outPath);
+            writeLayoutScaffold(plan, log);
             await sendProgress(extra, 0, totalSteps, "Cloning layout");
 
             // Sync project.c3proj
@@ -1646,9 +1646,11 @@ regP(
 
           // Write output and copy images
           await ctx.watcher.suppress(async () => {
-            writeSpriteScaffold(plan, log);
-            // images/ is NOT watched — only the objectType JSON needs an expect
+            // Register before writing, so a failed image copy after the JSON write
+            // still leaves the JSON accounted for. images/ is NOT watched — only the
+            // objectType JSON needs an expect.
             ctx.watcher.expect(plan.outPath);
+            writeSpriteScaffold(plan, log);
 
             // Sync project.c3proj
             runSync(ctx.root, false, log);
