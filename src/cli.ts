@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync, writeFileSync, copyFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, copyFileSync } from "node:fs";
 import path from "node:path";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
@@ -12,9 +12,8 @@ import { applyParsed, renameSymbols } from "./c3/recipeApplier.js";
 import { writeSourceJson } from "./c3/sourceJson.js";
 import type { Recipe } from "./c3/recipeInterpreter.js";
 import { ALL_SECTION_KEYS, runSync, reportImageDrift, reportStrayFiles } from "./c3/projectSync.js";
-import { collectAllUids, cloneLayout } from "./c3/layoutScaffold.js";
-import { readRegistryFile } from "./c3/sidUtils.js";
-import { findLayoutScaffoldConflicts, findSpriteScaffoldConflicts, formatScaffoldRefusal } from "./c3/scaffoldGuard.js";
+import { planLayoutScaffold, writeLayoutScaffold } from "./c3/scaffoldPlan.js";
+import { findSpriteScaffoldConflicts, formatScaffoldRefusal } from "./c3/scaffoldGuard.js";
 import {
   collectAllObjectTypeSids,
   collectMaxImageSpriteId,
@@ -255,8 +254,17 @@ yargs(hideBin(process.argv))
     "Clone a layout with new UIDs",
     (y) =>
       y
-        .option("source", { type: "string", demandOption: true, describe: "Path to source layout JSON file" })
-        .option("out", { type: "string", demandOption: true, describe: "Output path for the new layout JSON file" })
+        .option("source", {
+          type: "string",
+          demandOption: true,
+          describe: "Source layout JSON, relative to the project root (must be within layouts/)",
+        })
+        .option("out", {
+          type: "string",
+          demandOption: true,
+          describe:
+            "Output path for the new layout JSON, relative to the project root (must be within layouts/); missing folders are created",
+        })
         .option("name", { type: "string", demandOption: true, describe: "Name for the new layout" })
         .option("event-sheet", { type: "string", demandOption: true, describe: "Event sheet name for the new layout" })
         .option("regenerate", {
@@ -265,28 +273,32 @@ yargs(hideBin(process.argv))
           describe: "Regenerate extracted/ files after scaffolding",
         }),
     async (argv) => {
-      const rootDir = resolveProjectDir(argv);
-      const extractedDir = await resolveExtractedDir(rootDir);
-      const sourcePath = path.resolve(argv.source);
-      const outPath = path.resolve(argv.out);
-      const source = JSON.parse(readFileSync(sourcePath, "utf-8")) as Record<string, unknown>;
-      const conflicts = findLayoutScaffoldConflicts(rootDir, openProject(rootDir).layoutsDir, outPath);
-      if (conflicts.length > 0) {
-        console.error(formatScaffoldRefusal("scaffold-layout", conflicts));
+      try {
+        const rootDir = resolveProjectDir(argv);
+        const extractedDir = await resolveExtractedDir(rootDir);
+        const plan = planLayoutScaffold({
+          rootDir,
+          layoutsDir: openProject(rootDir).layoutsDir,
+          extractedDirAbs: path.join(rootDir, extractedDir),
+          pathBase: "project-root",
+          source: argv.source,
+          out: argv.out,
+          name: argv.name,
+          eventSheet: argv.eventSheet,
+        });
+        if (!plan.ok) {
+          console.error(plan.message);
+          process.exitCode = 1;
+          return;
+        }
+        writeLayoutScaffold(plan, console.log);
+        runSync(rootDir, false, console.log);
+        if (argv.regenerate) {
+          runGenerators(rootDir, extractedDir);
+        }
+      } catch (e) {
+        console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
         process.exitCode = 1;
-        return;
-      }
-      const existingUids = collectAllUids(openProject(rootDir).layoutsDir);
-      // Seed clone-SID minting against the project-wide registry so cloned SIDs can't
-      // collide with anything in eventSheets/, layouts/, or objectTypes/.
-      const registryPath = path.join(rootDir, extractedDir, "sid-registry.txt");
-      const existingSids = existsSync(registryPath) ? readRegistryFile(registryPath) : new Set<number>();
-      const cloned = cloneLayout(source, { name: argv.name, eventSheet: argv.eventSheet, existingUids, existingSids });
-      writeSourceJson(outPath, cloned);
-      console.log(`Scaffolded ${argv.name} → ${path.relative(rootDir, outPath)}`);
-      runSync(rootDir, false, console.log);
-      if (argv.regenerate) {
-        runGenerators(rootDir, extractedDir);
       }
     },
   )
