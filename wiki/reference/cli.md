@@ -288,7 +288,7 @@ After scaffolding, `project.c3proj` is automatically synced and `extracted/` is 
 
 `scaffold-layout` never overwrites. It refuses when the `--out` file already exists, or when a layout with the same file name exists in another folder. Every conflict is listed in one message, nothing is written (no sync, no regenerate), and the command exits 1 ([#254](https://github.com/GenvidTechnologies/construct3-chef/issues/254), ADR [0044](../decisions/0044-scaffold-tools-refuse-existing-targets.md)).
 
-Paths are contained to the project. A `--out` or `--source` outside `layouts/` is rejected with `Invalid output path '<arg>' — must stay within layouts/` (`Invalid source path …` for `--source`), exit 1, nothing written. A missing source prints `Source layout not found: <path>`. Errors print one line (`Error: <message>`), and success lines use `/` separators on every platform ([#259](https://github.com/GenvidTechnologies/construct3-chef/issues/259), ADR [0045](../decisions/0045-scaffold-plan-write-split-and-cli-path-containment.md)).
+Paths are contained to `layouts/`. A `--out` or `--source` outside it is rejected with `Invalid output path '<arg>' — must stay within layouts/` (`Invalid source path …` for `--source`), exit 1, nothing written. A missing source prints `Source layout not found: <path>`. Each rejection is that one message line, with no prefix; any other error (an unreadable source, say) prints one `Error: <message>` line instead of a stack trace or help text. Success lines use `/` separators on every platform ([#259](https://github.com/GenvidTechnologies/construct3-chef/issues/259), ADR [0045](../decisions/0045-scaffold-plan-write-split-and-cli-path-containment.md)).
 
 ---
 

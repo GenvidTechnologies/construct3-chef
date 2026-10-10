@@ -40,8 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI `scaffold-sprite` rejects names and sources containing path separators
   or `..`** (including a subfolder `--source` such as `images/Sprite`), works
   without an `images/` folder, and prints `Source objectType not found: …`
-  instead of a stack trace. Scaffold errors print one line (`Error: <message>`)
-  instead of a stack or help dump, success lines use `/` separators on Windows,
+  instead of a stack trace. On both scaffold commands a rejection is one
+  message line, and any other error prints one `Error: <message>` line instead
+  of a stack or help dump; success lines use `/` separators on Windows,
   and the MCP scaffold tools render not-found and success paths normalized and
   relative to the project root
   ([#259](https://github.com/GenvidTechnologies/construct3-chef/issues/259)).

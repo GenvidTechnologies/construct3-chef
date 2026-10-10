@@ -109,7 +109,10 @@ describe("scaffoldPlan (T26, #259)", function () {
         it(`${pathBase} base: ${which} name merely starting with '..' is not an invalid-path`, () => {
           const value = prefix + "..cache.json";
           const r = planLayoutScaffold(layoutOpts(pathBase, { [key]: value }));
-          if (!r.ok) expect(r.kind).to.not.equal("invalid-path");
+          // Contained, so it gets past the path check: an output is accepted outright, and a
+          // source (no such file in the fixture) reaches the existence check.
+          if (which === "output") expect(r.ok, JSON.stringify(r)).to.equal(true);
+          else expect(r.ok ? "ok" : r.kind).to.equal("source-not-found");
         });
       }
 

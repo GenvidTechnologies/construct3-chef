@@ -114,5 +114,10 @@ implementations of the same validation, one in `src/cli.ts` and one in
   the filesystem, so a `--project-dir` given in Windows 8.3 short form
   (`C:\Users\FABIEN~1\...`) against an absolute `--out` in long form, or the
   reverse, is falsely rejected. It fails safe: a rejection, never an escape. A
-  follow-up could canonicalize both sides with `realpathSync.native`.
+  follow-up could canonicalize both sides with `realpathSync.native`. For the
+  same reason, a symlink or junction inside `layouts/` that points elsewhere is
+  not detected; that one does not fail safe.
+- **The sprite name check is a substring test.** Any `..` is rejected, so a
+  legal but unusual name such as `a..b` is refused too. This is MCP's existing
+  rule, adopted unchanged rather than loosened.
 - A yargs-wide error renderer for the remaining CLI commands is a follow-up.
