@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync, writeFileSync, copyFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
@@ -9,18 +9,9 @@ import { openProject } from "@genvidtech/c3source";
 import { loadChefConfig, resolveOpsDir } from "./c3/chefConfig.js";
 import { GENERATORS, GENERATOR_NAMES, type GeneratorName } from "./c3/generators.js";
 import { applyParsed, renameSymbols } from "./c3/recipeApplier.js";
-import { writeSourceJson } from "./c3/sourceJson.js";
 import type { Recipe } from "./c3/recipeInterpreter.js";
 import { ALL_SECTION_KEYS, runSync, reportImageDrift, reportStrayFiles } from "./c3/projectSync.js";
-import { collectAllUids, cloneLayout } from "./c3/layoutScaffold.js";
-import { readRegistryFile } from "./c3/sidUtils.js";
-import { findLayoutScaffoldConflicts, findSpriteScaffoldConflicts, formatScaffoldRefusal } from "./c3/scaffoldGuard.js";
-import {
-  collectAllObjectTypeSids,
-  collectMaxImageSpriteId,
-  discoverAndPlanImageCopies,
-  cloneSprite,
-} from "./c3/spriteScaffold.js";
+import { planLayoutScaffold, writeLayoutScaffold, planSpriteScaffold, writeSpriteScaffold } from "./c3/scaffoldPlan.js";
 import { findTemplates } from "./c3/templateLister.js";
 import {
   buildLayoutEventSheetMap,
@@ -255,34 +246,51 @@ yargs(hideBin(process.argv))
     "Clone a layout with new UIDs",
     (y) =>
       y
-        .option("source", { type: "string", demandOption: true, describe: "Path to source layout JSON file" })
-        .option("out", { type: "string", demandOption: true, describe: "Output path for the new layout JSON file" })
+        .option("source", {
+          type: "string",
+          demandOption: true,
+          describe: "Source layout JSON, relative to the project root (must be within layouts/)",
+        })
+        .option("out", {
+          type: "string",
+          demandOption: true,
+          describe:
+            "Output path for the new layout JSON, relative to the project root (must be within layouts/); missing folders are created",
+        })
         .option("name", { type: "string", demandOption: true, describe: "Name for the new layout" })
         .option("event-sheet", { type: "string", demandOption: true, describe: "Event sheet name for the new layout" })
-        .option("no-regenerate", { type: "boolean", default: false, describe: "Skip regenerating extracted/ files" }),
+        .option("regenerate", {
+          type: "boolean",
+          default: true,
+          describe: "Regenerate extracted/ files after scaffolding",
+        }),
     async (argv) => {
-      const rootDir = resolveProjectDir(argv);
-      const extractedDir = await resolveExtractedDir(rootDir);
-      const sourcePath = path.resolve(argv.source);
-      const outPath = path.resolve(argv.out);
-      const source = JSON.parse(readFileSync(sourcePath, "utf-8")) as Record<string, unknown>;
-      const conflicts = findLayoutScaffoldConflicts(rootDir, openProject(rootDir).layoutsDir, outPath);
-      if (conflicts.length > 0) {
-        console.error(formatScaffoldRefusal("scaffold-layout", conflicts));
+      try {
+        const rootDir = resolveProjectDir(argv);
+        const extractedDir = await resolveExtractedDir(rootDir);
+        const plan = planLayoutScaffold({
+          rootDir,
+          layoutsDir: openProject(rootDir).layoutsDir,
+          extractedDirAbs: path.join(rootDir, extractedDir),
+          pathBase: "project-root",
+          source: argv.source,
+          out: argv.out,
+          name: argv.name,
+          eventSheet: argv.eventSheet,
+        });
+        if (!plan.ok) {
+          console.error(plan.message);
+          process.exitCode = 1;
+          return;
+        }
+        writeLayoutScaffold(plan, console.log);
+        runSync(rootDir, false, console.log);
+        if (argv.regenerate) {
+          runGenerators(rootDir, extractedDir);
+        }
+      } catch (e) {
+        console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
         process.exitCode = 1;
-        return;
-      }
-      const existingUids = collectAllUids(openProject(rootDir).layoutsDir);
-      // Seed clone-SID minting against the project-wide registry so cloned SIDs can't
-      // collide with anything in eventSheets/, layouts/, or objectTypes/.
-      const registryPath = path.join(rootDir, extractedDir, "sid-registry.txt");
-      const existingSids = existsSync(registryPath) ? readRegistryFile(registryPath) : new Set<number>();
-      const cloned = cloneLayout(source, { name: argv.name, eventSheet: argv.eventSheet, existingUids, existingSids });
-      writeSourceJson(outPath, cloned);
-      console.log(`Scaffolded ${argv.name} → ${path.relative(rootDir, outPath)}`);
-      runSync(rootDir, false, console.log);
-      if (!argv.noRegenerate) {
-        runGenerators(rootDir, extractedDir);
       }
     },
   )
@@ -291,36 +299,38 @@ yargs(hideBin(process.argv))
     "Clone a sprite/objectType with new SIDs and images",
     (y) =>
       y
-        .option("source", { type: "string", demandOption: true, describe: "Source objectType name" })
-        .option("name", { type: "string", demandOption: true, describe: "Target objectType name" }),
+        .option("source", {
+          type: "string",
+          demandOption: true,
+          describe: "Source objectType name (a plain name, no path separators)",
+        })
+        .option("name", {
+          type: "string",
+          demandOption: true,
+          describe: "Target objectType name (a plain name, no path separators)",
+        }),
     (argv) => {
-      const rootDir = resolveProjectDir(argv);
-      const objectTypesDir = openProject(rootDir).objectTypesDir;
-      const imagesDir = openProject(rootDir).imagesDir;
-      const sourceFile = path.join(objectTypesDir, `${argv.source}.json`);
-      const source = JSON.parse(readFileSync(sourceFile, "utf-8")) as Record<string, unknown>;
-      const conflicts = findSpriteScaffoldConflicts(rootDir, objectTypesDir, imagesDir, argv.source, argv.name);
-      if (conflicts.length > 0) {
-        console.error(formatScaffoldRefusal("scaffold-sprite", conflicts));
+      try {
+        const rootDir = resolveProjectDir(argv);
+        const project = openProject(rootDir);
+        const plan = planSpriteScaffold({
+          rootDir,
+          objectTypesDir: project.objectTypesDir,
+          imagesDir: project.imagesDir,
+          source: argv.source,
+          name: argv.name,
+        });
+        if (!plan.ok) {
+          console.error(plan.message);
+          process.exitCode = 1;
+          return;
+        }
+        writeSpriteScaffold(plan, console.log);
+        runSync(rootDir, false, console.log);
+      } catch (e) {
+        console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
         process.exitCode = 1;
-        return;
       }
-      const existingSids = collectAllObjectTypeSids(objectTypesDir);
-      const maxImageSpriteId = collectMaxImageSpriteId(objectTypesDir);
-      const cloned = cloneSprite(source, {
-        name: argv.name,
-        existingSids,
-        nextImageSpriteId: maxImageSpriteId + 1,
-      });
-      const outFile = path.join(objectTypesDir, `${argv.name}.json`);
-      writeSourceJson(outFile, cloned);
-      console.log(`Scaffolded ${argv.name} → objectTypes/${argv.name}.json`);
-      const imageCopies = discoverAndPlanImageCopies(imagesDir, argv.source, argv.name);
-      for (const { sourcePath, targetPath, sourceBasename, targetBasename } of imageCopies) {
-        copyFileSync(sourcePath, targetPath);
-        console.log(`Copied images/${sourceBasename} → images/${targetBasename}`);
-      }
-      runSync(rootDir, false, console.log);
     },
   )
   .command(

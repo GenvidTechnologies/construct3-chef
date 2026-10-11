@@ -24,6 +24,11 @@ import { reportStrayFiles } from "../../src/c3/projectSync.js";
 import { seedManifestDrift } from "../helpers/seedManifestDrift.js";
 import { runCli } from "../helpers/runCli.js";
 import { formatScaffoldRefusal } from "../../src/c3/scaffoldGuard.js";
+import {
+  formatScaffoldPathRejection,
+  formatScaffoldNameRejection,
+  formatScaffoldSourceNotFound,
+} from "../../src/c3/scaffoldPlan.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = path.join(__dirname, "..", "fixtures", "construct3-chef-sample");
@@ -1360,6 +1365,89 @@ describe("MCP server handler response shaping", () => {
       expect(cli.exitCode).to.equal(1);
       expect(cli.stderr.trimEnd()).to.equal(mcpMessage);
       expect(mcpMessage).to.equal(expected);
+    });
+
+    it("T19: CLI and MCP scaffold rejections are byte-identical to the shared formatters (a) output path (b) missing source (c) sprite name", async function () {
+      this.timeout(60_000);
+      // Strips the trailing txId line (asserted, not discarded). "default:5" is
+      // hardcoded exactly as in C4/H1/H3: the harness fixes the counter at 5.
+      const mcpMessage = (result: any): string => {
+        expect(result.isError).to.be.true;
+        const lines = textOf(result).split("\n");
+        expect(lines.pop()).to.equal("txId: default:5");
+        return lines.join("\n");
+      };
+      const layoutHandler = __getHandler("scaffold-layout")!;
+      const spriteHandler = __getHandler("scaffold-sprite")!;
+
+      // (a) output path escaping the layouts dir
+      const mcpA = mcpMessage(
+        await layoutHandler(
+          {
+            source: "Gameplay/Main Layout.json",
+            name: "T19a",
+            path: "../../x.json",
+            eventSheet: "Event sheet 1",
+            regenerate: false,
+          },
+          makeExtra(),
+        ),
+      );
+      const cliA = runCli([
+        "scaffold-layout",
+        "--project-dir",
+        tmp,
+        "--source",
+        "layouts/Gameplay/Main Layout.json",
+        "--out",
+        "../../x.json",
+        "--name",
+        "T19a",
+        "--event-sheet",
+        "Event sheet 1",
+        "--no-regenerate",
+      ]);
+      expect(cliA.exitCode).to.equal(1);
+      expect(cliA.stderr.trimEnd()).to.equal(mcpA);
+      expect(mcpA).to.equal(formatScaffoldPathRejection("output", "../../x.json"));
+
+      // (b) missing source layout
+      const mcpB = mcpMessage(
+        await layoutHandler(
+          {
+            source: "Nope.json",
+            name: "T19b",
+            path: "Gameplay/T19b.json",
+            eventSheet: "Event sheet 1",
+            regenerate: false,
+          },
+          makeExtra(),
+        ),
+      );
+      const cliB = runCli([
+        "scaffold-layout",
+        "--project-dir",
+        tmp,
+        "--source",
+        "layouts/Nope.json",
+        "--out",
+        "layouts/Gameplay/T19b.json",
+        "--name",
+        "T19b",
+        "--event-sheet",
+        "Event sheet 1",
+        "--no-regenerate",
+      ]);
+      expect(cliB.exitCode).to.equal(1);
+      expect(cliB.stderr.trimEnd()).to.equal(mcpB);
+      expect(mcpB).to.equal(formatScaffoldSourceNotFound("layout", "layouts/Nope.json"));
+
+      // (c) sprite name escaping the objectTypes dir
+      const mcpC = mcpMessage(await spriteHandler({ source: "Text", name: "../X" }, makeExtra()));
+      const cliC = runCli(["scaffold-sprite", "--project-dir", tmp, "--source", "Text", "--name", "../X"]);
+      expect(cliC.exitCode).to.equal(1);
+      expect(cliC.stderr.trimEnd()).to.equal(mcpC);
+      expect(mcpC).to.equal(formatScaffoldNameRejection("name", "../X"));
     });
   });
 });

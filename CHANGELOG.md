@@ -28,6 +28,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`scaffold-layout --no-regenerate` now works.** It was rejected as an unknown
+  argument; `--regenerate=false` is also accepted
+  ([#261](https://github.com/GenvidTechnologies/construct3-chef/issues/261)).
+- **CLI `scaffold-layout` now resolves `--source` and `--out` against the project
+  root and keeps them within `layouts/`.** **Behaviour change:** they were
+  resolved against the current directory. An out-of-tree `--out` or an
+  event-sheet `--source` used to write outside the project or corrupt it; both
+  are now rejected, and missing output folders are created
+  ([#259](https://github.com/GenvidTechnologies/construct3-chef/issues/259)).
+- **CLI `scaffold-sprite` rejects names and sources containing path separators
+  or `..`** (including a subfolder `--source` such as `images/Sprite`), works
+  without an `images/` folder, and prints `Source objectType not found: …`
+  instead of a stack trace. On both scaffold commands a rejection is one
+  message line, and any other error prints one `Error: <message>` line instead
+  of a stack or help dump; success lines use `/` separators on Windows,
+  and the MCP scaffold tools render not-found and success paths normalized and
+  relative to the project root
+  ([#259](https://github.com/GenvidTechnologies/construct3-chef/issues/259)).
 - **The post-apply reminder now names a command that exists.** After
   `apply-recipe`, the CLI output and the MCP tool result both told you to run
   `npm run sync-c3proj`, a script this package does not define. The reminder now
