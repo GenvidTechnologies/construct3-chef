@@ -23,6 +23,7 @@ import { SID_SOURCE_DIRS } from "../../src/c3/generators.js";
 import { reportStrayFiles } from "../../src/c3/projectSync.js";
 import { seedManifestDrift } from "../helpers/seedManifestDrift.js";
 import { runCli } from "../helpers/runCli.js";
+import { applyParsed } from "../../src/c3/recipeApplier.js";
 import { formatScaffoldRefusal } from "../../src/c3/scaffoldGuard.js";
 import {
   formatScaffoldPathRejection,
@@ -334,6 +335,49 @@ describe("MCP server handler response shaping", () => {
     expect(result.isError).to.be.true;
     expect(watcher.bumped).to.equal(0);
     expect(fs.readFileSync(sheet).equals(before)).to.be.true;
+  });
+
+  // R9 (#252): one sheet under two spellings is refused on MCP validate-recipe AND apply-recipe, with the group
+  // line byte-identical to the one applyParsed (CLI path) throws.
+  it("KI9: validate-recipe and apply-recipe refuse two spellings of one sheet, same group line as applyParsed", async () => {
+    const GROUP_LINE =
+      'files: 2 keys name the same event sheet eventSheets/Gameplay/Event sheet 1.json — "Gameplay/Event sheet 1", ' +
+      '"eventSheets/Gameplay/Event sheet 1.json". Merge their entries under one key.';
+    const twoSpellings = JSON.stringify({
+      files: {
+        "Gameplay/Event sheet 1": [{ op: "insert-event", comment: "FIRST-SPELLING" }],
+        "eventSheets/Gameplay/Event sheet 1.json": [{ op: "insert-event", comment: "SECOND-SPELLING" }],
+      },
+    });
+    const sheet = path.join(tmp, "eventSheets", "Gameplay", "Event sheet 1.json");
+    const before = fs.readFileSync(sheet);
+    __setExtractedDirty(true); // skip registry freshness scan
+
+    const validated = (await __getHandler("validate-recipe")!({ recipe: twoSpellings }, makeExtra())) as any;
+    const validatedText = validated.content.map((b: any) => b.text).join("\n");
+    expect(validated.isError, validatedText).to.be.true;
+    expect(validatedText).to.include(GROUP_LINE);
+    expect(validatedText).to.include("txId: default:5");
+
+    const applied = (await __getHandler("apply-recipe")!(
+      { recipe: twoSpellings, txId: "default:5", regenerate: false },
+      makeExtra(),
+    )) as any;
+    const appliedText = applied.content.map((b: any) => b.text).join("\n");
+    expect(applied.isError, appliedText).to.be.true;
+    expect(appliedText).to.include(GROUP_LINE);
+    expect(appliedText).to.include("txId: default:5");
+    expect(watcher.bumped).to.equal(0);
+    expect(fs.readFileSync(sheet).equals(before)).to.be.true;
+
+    // The CLI/library path (applyParsed) throws the same line, byte for byte.
+    let libMessage = "";
+    try {
+      applyParsed(tmp, JSON.parse(twoSpellings), { regenerate: false, log: () => {} });
+    } catch (e) {
+      libMessage = (e as Error).message;
+    }
+    expect(libMessage).to.include(GROUP_LINE);
   });
 
   // R2 (#245): a workflow tool routes through applyParsed too; it only edits an existing
