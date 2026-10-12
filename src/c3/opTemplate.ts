@@ -231,9 +231,15 @@ function substituteNode(node: unknown, effective: Record<string, unknown>, known
   }
   if (node !== null && typeof node === "object") {
     const result: Record<string, unknown> = {};
+    const renderedFrom = new Map<string, string>();
     for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
       // Interpolate object keys as text (keys are always strings)
       const substitutedKey = substituteStringAsText(key, effective);
+      const earlier = renderedFrom.get(substitutedKey);
+      if (earlier !== undefined) {
+        throw new Error(`op template keys "${earlier}" and "${key}" both render to "${substitutedKey}"`);
+      }
+      renderedFrom.set(substitutedKey, key);
       result[substitutedKey] = substituteNode(value, effective, knownNames);
     }
     return result;
