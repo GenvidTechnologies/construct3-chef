@@ -48,6 +48,7 @@ import {
 import { collectAllUids, collectLayoutSids } from "./layoutScaffold.js";
 import { readRegistryFile, makeSidGen, freshSidGen, type SidGenerator } from "./sidUtils.js";
 import { diffScripts } from "./previewDiff.js";
+import { findSpellingMismatches, type SpellingRef } from "./recipeKeys.js";
 import { expandWorkflows, type LoadLayout } from "./workflowExpansion.js";
 import { buildCustomAceIndex, validateInsertedCustomActions, type CustomAceIndex } from "./customAceIndex.js";
 import {
@@ -477,6 +478,59 @@ function checkCreateTargets(rootDir: string, files: NonNullable<Recipe["files"]>
 }
 
 /**
+ * Refuse a recipe path whose letter case differs from what is on disk (#253). Runs on the canonical
+ * (post-validateRecipe) keys: `files` keys (a CREATE checks folders only), `layouts` keys, and the cross-layout op
+ * fields (`from`, `sourceLayout`, `templatesLayout`, `targets[].layout`). Fires before expandWorkflows and before
+ * any write, in dry-run too, so a miscased `templatesLayout` is refused rather than read.
+ */
+function checkKeySpelling(rootDir: string, recipe: Recipe): void {
+  const refs: SpellingRef[] = [];
+  const addLayoutRef = (p: unknown): void => {
+    if (typeof p === "string") refs.push({ path: p, kind: "file" });
+  };
+  for (const [filePath, entry] of Object.entries(recipe.files ?? {})) {
+    refs.push({ path: filePath, kind: isFileCreate(entry) ? "create" : "file" });
+  }
+  for (const [layoutPath, ops] of Object.entries(recipe.layouts ?? {})) {
+    addLayoutRef(layoutPath);
+    for (const op of ops as unknown[]) {
+      if (typeof op !== "object" || op === null) continue;
+      const o = op as Record<string, unknown>;
+      addLayoutRef(o.from);
+      addLayoutRef(o.sourceLayout);
+      addLayoutRef(o.templatesLayout);
+      if (Array.isArray(o.targets)) {
+        for (const t of o.targets) addLayoutRef((t as { layout?: unknown } | null)?.layout);
+      }
+    }
+  }
+  if (refs.length === 0) return;
+
+  const project = openProject(rootDir);
+  const listing = [...project.findAllEventSheets(), ...project.findAllLayouts()].map((p) =>
+    path.relative(rootDir, p).split(path.sep).join("/"),
+  );
+  const mismatches = findSpellingMismatches(refs, listing);
+  if (mismatches.length === 0) return;
+
+  // Show the whole path in its on-disk spelling: a listed file that equals the ref ignoring case wins, else the
+  // matched on-disk prefix followed by the ref's remaining segments as written (a new tail).
+  const fullSpellings = (m: (typeof mismatches)[number]): string[] => {
+    const lowerRef = m.path.toLowerCase();
+    const exactFold = listing.filter((p) => p.toLowerCase() === lowerRef);
+    if (exactFold.length > 0) return exactFold.sort();
+    const tail = m.path.slice(m.prefix.length);
+    return m.onDisk.map((d) => `${d}${tail}`);
+  };
+  const lines = [...new Set(mismatches.map((m) => `  - ${m.path} → on disk: ${fullSpellings(m).join(" | ")}`))].sort();
+  throw new Error(
+    `recipe path refused: ${lines.length} path(s) match an existing file or folder only when letter case is ignored, ` +
+      "and a recipe path must use the on-disk spelling so it behaves the same on every filesystem. Nothing was written.\n" +
+      lines.join("\n"),
+  );
+}
+
+/**
  * Refuse a global → local demotion when the variable is referenced from other
  * event sheets — a project-wide global cannot be confined to a single local
  * scope. The check is conservative: it matches the variable name as a whole
@@ -772,6 +826,10 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   if (errors.length > 0) {
     throw new Error("Recipe validation failed:\n" + errors.map((e) => `  - ${e}`).join("\n"));
   }
+
+  // Letter-case spelling check against the on-disk listing (#253): before expandWorkflows (which reads layouts)
+  // and before any write, in dry-run too.
+  checkKeySpelling(rootDir, recipe);
 
   // Composite workflow ops (extract-template, templatize-in-place,
   // clone-replica-to-layouts, replace-instance-with-replica) expand into
