@@ -89,6 +89,9 @@ same refuse-don't-overwrite rule now covers `scaffold-layout` and
 - On a case-insensitive filesystem (Windows) a case-variant key of an
   existing sheet is now refused. On a case-sensitive filesystem it still
   creates a second file; that is tracked as a follow-up.
+  *Superseded:* ADR [0046](0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md)
+  closes this on every host by matching the sheet and layout listing with
+  letter case ignored.
 - Library consumers who call the pure `executeRecipe` and write its `created`
   map themselves bypass the check. That is out of scope: callers own their
   I/O.

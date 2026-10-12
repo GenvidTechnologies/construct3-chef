@@ -35,7 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every spelling ([#252](https://github.com/GenvidTechnologies/construct3-chef/issues/252)).
   (2) Keys, and cross-layout field values (`from`, `sourceLayout`,
   `templatesLayout`, `targets[].layout`), containing `..`, an absolute or
-  drive-letter path, or an empty name are rejected ([#273](https://github.com/GenvidTechnologies/construct3-chef/issues/273)).
+  drive-letter path, or an empty name are rejected, as are a key ending in `/`,
+  a `:` in any segment (an NTFS alternate data stream on Windows, a literal
+  name elsewhere), and a segment made only of dots and spaces (`.. `, `...`),
+  which Windows strips to `.`/`..` ([#273](https://github.com/GenvidTechnologies/construct3-chef/issues/273)).
   (3) A key that matches an existing sheet or layout only when letter case is
   ignored is refused against the disk, on every host and in dry-run too, and a
   CREATE target matching an existing file that way is refused with
@@ -44,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its validation error. (5) Op-template keys that render to one key throw at
   substitution. Layout SIDs now seed from normalized keys. The exported
   `normalizeRecipePaths` keeps its signature but now **throws** on a collision.
+  The public `normalizeFileKey`/`normalizeLayoutKey` now return the canonical
+  form for backslash, `./`, `//` and `.JSON` inputs.
   See ADR [0046](wiki/decisions/0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md).
 - **`scaffold-layout` and `scaffold-sprite` compare names with letter case
   ignored.** **Behaviour change:** a case-only name conflict is now refused and
