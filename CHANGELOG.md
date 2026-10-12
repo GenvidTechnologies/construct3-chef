@@ -28,6 +28,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Recipe `files`/`layouts` keys now have one canonical, case-insensitive identity.**
+  **Behaviour change:** these recipes are now rejected. (1) Two spellings of one
+  key (`"a"` and `"eventSheets/a.json"`, or a `\` and a `/` form) used to
+  collapse silently; `validateRecipe` now reports one error per group naming
+  every spelling ([#252](https://github.com/GenvidTechnologies/construct3-chef/issues/252)).
+  (2) Keys, and cross-layout field values (`from`, `sourceLayout`,
+  `templatesLayout`, `targets[].layout`), containing `..`, an absolute or
+  drive-letter path, or an empty name are rejected ([#273](https://github.com/GenvidTechnologies/construct3-chef/issues/273)).
+  (3) A key that matches an existing sheet or layout only when letter case is
+  ignored is refused against the disk, on every host and in dry-run too, and a
+  CREATE target matching an existing file that way is refused with
+  `(on disk: …)` ([#253](https://github.com/GenvidTechnologies/construct3-chef/issues/253)).
+  (4) A `files` array, or any non-object `files`/`layouts` section, now reaches
+  its validation error. (5) Op-template keys that render to one key throw at
+  substitution. Layout SIDs now seed from normalized keys. The exported
+  `normalizeRecipePaths` keeps its signature but now **throws** on a collision.
+  See ADR [0046](wiki/decisions/0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md).
+- **`scaffold-layout` and `scaffold-sprite` compare names with letter case
+  ignored.** **Behaviour change:** a case-only name conflict is now refused and
+  names the on-disk spelling; `output-exists` uses the exact name on disk. Part
+  of [#260](https://github.com/GenvidTechnologies/construct3-chef/issues/260) (item 3), which stays open.
+
 - **The `.dsl.idx.txt` header now names commands that exist.** It told readers to
   regenerate with `npm run generate-dsl`, a script that has never existed. It now
   names the CLI `construct3-chef generate --only dsl` and the `regenerate` MCP

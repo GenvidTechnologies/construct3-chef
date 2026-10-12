@@ -41,7 +41,7 @@ Each op is a single JSON file in the ops directory. The file name (without `.jso
 }
 ```
 
-A `create: true` entry is refused if the sheet already exists ([File Creation](./recipe-reference.md#file-creation)), so running this op twice with the same `SCREEN_NAME` fails instead of overwriting.
+A `create: true` entry is refused if the sheet already exists ([File Creation](./recipe-reference.md#file-creation)), so running this op twice with the same `SCREEN_NAME` fails instead of overwriting. Template keys that render to the same key (for example `"{{A}}"` and `"{{B}}"` with equal values) are refused at substitution, since one would silently overwrite the other ([#252](https://github.com/GenvidTechnologies/construct3-chef/issues/252)).
 
 ### Top-level fields
 

@@ -62,6 +62,8 @@ carry no content a SKIP would drop. A `files` CREATE carries events.
 same refuse-don't-overwrite rule now covers `scaffold-layout` and
 `scaffold-sprite`.
 
+**Amended by ADR [0046](0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md):** the CREATE leaf is matched case-insensitively against the c3source listing (not only `existsSync`), and the refusal message names the on-disk file as `(on disk: …)`.
+
 ## Rejected alternatives
 
 - **SKIP the CREATE, mirroring `createObjectType`.** It silently drops the

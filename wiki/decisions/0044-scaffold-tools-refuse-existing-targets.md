@@ -64,6 +64,8 @@ on a second surface that decision did not reach.
 5. **No overwrite flag**, as in ADR 0043. It can be a later issue if a need
    appears.
 
+**Amended by ADR [0046](0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md):** layout and objectType name conflicts are now compared with letter case ignored and report the on-disk spelling, and `output-exists` is decided by the exact basename in the directory listing.
+
 ## Rejected alternatives
 
 - **Export the guard from the `src/index.ts` barrel.** Every barrel export is
@@ -82,8 +84,8 @@ on a second surface that decision did not reach.
   fails. It is called out in the CHANGELOG.
 - The dedupe compares lowercased paths. Two distinct case-variant files on a
   case-sensitive filesystem are therefore listed once, though both are still
-  refused. Case-insensitive *name* matching is not part of this record; it is
-  [#253](https://github.com/GenvidTechnologies/construct3-chef/issues/253).
+  refused. Case-insensitive *name* matching was not part of this record; it landed in
+  ADR [0046](0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md).
 - Declined here, filed separately:
   - [#259](https://github.com/GenvidTechnologies/construct3-chef/issues/259):
     CLI path containment and separators, an ENOENT partial write when `images/`
