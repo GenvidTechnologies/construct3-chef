@@ -97,3 +97,87 @@ export function collisionMessage(
     "Merge their entries under one key."
   );
 }
+
+/** A canonical POSIX recipe reference to check against the disk (#253). */
+export interface SpellingRef {
+  /** Canonical project-relative POSIX path, e.g. `eventSheets/Gameplay/Event sheet 1.json`. */
+  path: string;
+  /**
+   * `file` names a file that should already exist: every segment, leaf included, is checked. `create` names a file
+   * the recipe will write: only its FOLDER segments are checked (the leaf is the CREATE-leaf fold's business,
+   * see {@link findCaseFoldedMatch}).
+   */
+  kind: "file" | "create";
+}
+
+/** A ref whose spelling matches the disk only after case-folding (#253). */
+export interface SpellingMismatch {
+  /** The ref as written. */
+  path: string;
+  /** The ref's leading segments up to and including the first segment that only matches case-folded. */
+  prefix: string;
+  /** On-disk spelling(s) of `prefix`, sorted; more than one when several differ only in letter case. */
+  onDisk: string[];
+}
+
+/** Child names of the directory `dir` ("" = root) derived from a POSIX file listing. */
+function childNames(dir: string, existingRelPaths: readonly string[]): Set<string> {
+  const base = dir === "" ? "" : `${dir}/`;
+  const names = new Set<string>();
+  for (const p of existingRelPaths) {
+    if (!p.startsWith(base)) continue;
+    const name = p.slice(base.length).split("/")[0];
+    if (name) names.add(name);
+  }
+  return names;
+}
+
+/**
+ * Detect refs whose letter case differs from what is on disk (#253), purely, from an injected listing of existing
+ * project-relative POSIX files (ancestor folders are derived from it). Per ref, segment by segment from the root:
+ * an exact name at that level continues the walk (exact beats fold, so a listing holding both `Foo.json` and
+ * `foo.json` is never flagged for either); only a case-folded match records a mismatch carrying the on-disk
+ * spelling(s) of the path so far and stops; no match stops with no mismatch (a new path). `create` refs check
+ * folder segments only. Results follow `refs` order.
+ */
+export function findSpellingMismatches(
+  refs: readonly SpellingRef[],
+  existingRelPaths: readonly string[],
+): SpellingMismatch[] {
+  const out: SpellingMismatch[] = [];
+  for (const ref of refs) {
+    const segments = ref.path.split("/").filter((s) => s !== "");
+    const checked = ref.kind === "create" ? segments.slice(0, -1) : segments;
+    let dir = "";
+    for (let i = 0; i < checked.length; i++) {
+      const seg = checked[i]!;
+      const names = childNames(dir, existingRelPaths);
+      if (names.has(seg)) {
+        dir = dir === "" ? seg : `${dir}/${seg}`;
+        continue;
+      }
+      const folded = [...names].filter((n) => n.toLowerCase() === seg.toLowerCase()).sort();
+      if (folded.length > 0) {
+        const parent = dir === "" ? "" : `${dir}/`;
+        out.push({
+          path: ref.path,
+          prefix: checked.slice(0, i + 1).join("/"),
+          onDisk: folded.map((n) => `${parent}${n}`),
+        });
+      }
+      break;
+    }
+  }
+  return out;
+}
+
+/**
+ * The on-disk spelling(s) of `relPath` when a listed file equals it ignoring letter case but NOT exactly
+ * (#253); `[]` when `relPath` exists exactly, or nothing matches even case-folded. Sorted. Used for the
+ * CREATE-leaf fold, where a recipe would write a leaf that a case-insensitive filesystem sees as an existing file.
+ */
+export function findCaseFoldedMatch(relPath: string, existingRelPaths: readonly string[]): string[] {
+  if (existingRelPaths.includes(relPath)) return [];
+  const lower = relPath.toLowerCase();
+  return existingRelPaths.filter((p) => p.toLowerCase() === lower).sort();
+}
