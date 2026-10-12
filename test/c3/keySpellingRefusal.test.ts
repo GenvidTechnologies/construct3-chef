@@ -162,5 +162,28 @@ describe("case-only key-spelling refusal (#253)", () => {
     assert.include(err!.message, REFUSAL);
     assert.include(err!.message, "→ on disk: layouts/Templates Layout.json");
     assert.isTrue(readFileSync(path.join(tmp, LAYOUT_REL)).equals(layoutBefore), "layout bytes unchanged");
+
+    // Host-independent ordering proof: this op's expansion throws its own "instance ... not found" error on EVERY
+    // host (the type is absent from the layout), so only a spelling check that runs BEFORE expandWorkflows yields
+    // the refusal. A case-insensitive host (NTFS) would let expansion read the miscased path fine, so the
+    // assertions above cannot tell the two orders apart there.
+    const err2 = apply(tmp, {
+      layouts: {
+        [LAYOUT_REL]: [
+          {
+            op: "replace-instance-with-replica",
+            type: "NoSuchTypeForKs12",
+            templatesLayout: "templates layout",
+            templateName: "default",
+          },
+        ],
+      },
+    } as unknown as Recipe);
+    assert.instanceOf(err2, Error, "apply must throw");
+    assert.include(err2!.message, REFUSAL);
+    assert.notInclude(err2!.message, "replace-instance-with-replica: instance of type", "expansion must not run first");
+    assert.notInclude(err2!.message, "not found in", "expansion must not run first");
+    assert.notMatch(err2!.message, /ENOENT/, "must not surface a raw ENOENT");
+    assert.isTrue(readFileSync(path.join(tmp, LAYOUT_REL)).equals(layoutBefore), "layout bytes unchanged");
   });
 });
