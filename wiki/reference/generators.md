@@ -111,7 +111,7 @@ The index file maps every event tree node to its JSON path and SID. This is the 
 
 ```
 # GoalsEvents — DSL Coordinate Index
-# Regenerate: npm run generate-dsl
+# Regenerate: CLI `construct3-chef generate --only dsl`, or the `regenerate` MCP tool
 #
 # Event | JSON Path | SID              | DSL Line | Description
 #-------|-----------|------------------|----------|-----------

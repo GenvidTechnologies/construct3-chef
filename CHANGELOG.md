@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The `.dsl.idx.txt` header now names commands that exist.** It told readers to
+  regenerate with `npm run generate-dsl`, a script that has never existed. It now
+  names the CLI `construct3-chef generate --only dsl` and the `regenerate` MCP
+  tool. Regenerating `extracted/` changes line 2 of every index file
+  ([#246](https://github.com/GenvidTechnologies/construct3-chef/issues/246)).
 - **`scaffold-layout --no-regenerate` now works.** It was rejected as an unknown
   argument; `--regenerate=false` is also accepted
   ([#261](https://github.com/GenvidTechnologies/construct3-chef/issues/261)).

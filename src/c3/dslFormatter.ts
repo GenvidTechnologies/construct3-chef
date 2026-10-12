@@ -391,7 +391,7 @@ export function formatEventSheet(sheet: EventSheet, sourcePath: string): DslResu
 export function formatIndex(sheetName: string, entries: DslIndexEntry[]): string {
   const lines: string[] = [];
   lines.push(`# ${sheetName} — DSL Coordinate Index`);
-  lines.push(`# Regenerate: npm run generate-dsl`);
+  lines.push("# Regenerate: CLI `construct3-chef generate --only dsl`, or the `regenerate` MCP tool");
   lines.push(`#`);
 
   // Compute column widths (minimum widths match header labels)

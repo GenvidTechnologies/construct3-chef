@@ -72,7 +72,7 @@ describe("parseIndexText — SEARCH_SENTINEL stripping", () => {
     const row = `  1     | events[0]         | §100000000000001 | 4        | ${fullDesc}`;
     const indexText = [
       "# TestSheet — DSL Coordinate Index",
-      "# Regenerate: npm run generate-dsl",
+      "# Regenerate: CLI `construct3-chef generate --only dsl`, or the `regenerate` MCP tool",
       "#",
       "# Event | JSON Path | SID | DSL Line | Description",
       "#-------|-----------|-----|----------|-----------",
