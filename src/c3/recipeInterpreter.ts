@@ -54,6 +54,7 @@ import {
 } from "./eventSheetMutator.js";
 
 import type { SidGenerator } from "./sidUtils.js";
+import { canonicalizeRecipeKey, collisionMessage, identity, keyIssue, type RecipeKeySection } from "./recipeKeys.js";
 
 // ─── Part 1: Recipe Format Types ───
 
@@ -2458,72 +2459,188 @@ export function validateConditionParams(condition: Record<string, unknown>, pref
 
 /** Expand a bare eventSheet key to full path: "Goals/GoalsEvents" → "eventSheets/Goals/GoalsEvents.json" */
 export function normalizeFileKey(key: string): string {
-  let result = key;
-  if (!result.startsWith("eventSheets/")) {
-    result = `eventSheets/${result}`;
-  }
-  if (!result.endsWith(".json")) {
-    result = `${result}.json`;
-  }
-  return result;
+  return canonicalizeRecipeKey(key, "eventSheets");
 }
 
 /** Expand a bare layout key to full path: "Login/LoginLayout" → "layouts/Login/LoginLayout.json" */
 export function normalizeLayoutKey(key: string): string {
-  let result = key;
-  if (!result.startsWith("layouts/")) {
-    result = `layouts/${result}`;
-  }
-  if (!result.endsWith(".json")) {
-    result = `${result}.json`;
-  }
-  return result;
+  return canonicalizeRecipeKey(key, "layouts");
 }
 
-/** Normalize all bare keys in a recipe to full paths. Mutates the recipe in place. */
-export function normalizeRecipePaths(recipe: Recipe): void {
-  // Normalize files keys
-  if (recipe.files) {
-    const normalized: Record<string, (typeof recipe.files)[string]> = {};
-    for (const [key, value] of Object.entries(recipe.files)) {
-      normalized[normalizeFileKey(key)] = value;
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Canonicalize one recipe section's keys (#252/#253/#273). Returns the rebuilt record (first entry kept per identity,
+ * invalid keys kept under their backslash-converted spelling only) plus this section's errors.
+ */
+function canonicalizeSection<V>(
+  section: RecipeKeySection,
+  label: string,
+  source: Record<string, V>,
+  mapValue: (value: V, key: string) => V,
+  errors: string[],
+  collisions: string[],
+): { out: Record<string, V>; originals: Map<string, string[]>; canonicalOf: Map<string, string> } {
+  const out: Record<string, V> = {};
+  // identity -> original keys in recipe order (valid keys only); identity -> first canonical form
+  const originals = new Map<string, string[]>();
+  const canonicalOf = new Map<string, string>();
+  const canonicals = new Map<string, Set<string>>();
+  for (const [key, value] of Object.entries(source)) {
+    const canonical = canonicalizeRecipeKey(key, section);
+    const issue = keyIssue(key, section);
+    if (issue !== undefined) {
+      errors.push(`${label}: key ${JSON.stringify(key)} ${issue}`);
+      if (!(canonical in out)) out[canonical] = mapValue(value, key);
+      continue;
     }
-    recipe.files = normalized;
+    const id = identity(canonical);
+    const group = originals.get(id);
+    if (group === undefined) {
+      originals.set(id, [key]);
+      canonicalOf.set(id, canonical);
+      canonicals.set(id, new Set([canonical]));
+      out[canonical] = mapValue(value, key);
+    } else {
+      group.push(key);
+      canonicals.get(id)!.add(canonical);
+    }
+  }
+  for (const [id, group] of originals) {
+    if (group.length < 2) continue;
+    const message = collisionMessage(label, section, canonicalOf.get(id)!, group, canonicals.get(id)!.size > 1);
+    errors.push(message);
+    collisions.push(message);
+  }
+  return { out, originals, canonicalOf };
+}
+
+/** Does `op` carry cross-layout path fields? Calls `visit(field description, current value)` for each. */
+function eachCrossLayoutRef(
+  op: unknown,
+  visit: (field: string, value: string, rewrite: (canonical: string) => unknown) => void,
+): unknown {
+  if (!isPlainObject(op)) return op;
+  const o = op as Record<string, unknown>;
+  const rewrites: Record<string, unknown> = {};
+  const one = (field: string): void => {
+    const v = o[field];
+    if (typeof v === "string") visit(field, v, (c) => (rewrites[field] = c));
+  };
+  if (o.op === "copy-instance" || o.op === "add-replica") one("from");
+  else if (o.op === "extract-template") one("sourceLayout");
+  else if (o.op === "replace-instance-with-replica") one("templatesLayout");
+  else if (o.op === "clone-replica-to-layouts" && Array.isArray(o.targets)) {
+    const targets = o.targets.map((t: unknown, ti: number) => {
+      if (isPlainObject(t) && typeof t.layout === "string") {
+        let replaced: unknown = t;
+        visit(`targets[${ti}].layout`, t.layout, (c) => (replaced = { ...t, layout: c }));
+        return replaced;
+      }
+      return t;
+    });
+    return { ...o, targets };
+  }
+  return Object.keys(rewrites).length > 0 ? { ...o, ...rewrites } : op;
+}
+
+/**
+ * Canonicalize `files` and `layouts` keys (and the cross-layout op fields) in place, while the original keys are
+ * still in hand, and return the errors (#252/#253/#273): a validity error per bad key, one collision error per group
+ * of keys sharing an identity, and cross-reference spelling splits. A non-object section, or a layouts value that is
+ * not an array, is left for validateRecipe's own guards to report.
+ */
+function normalizeRecipePathsChecked(recipe: Recipe): CheckedKeys {
+  const errors: string[] = [];
+  const collisions: string[] = [];
+
+  // The rebuilt maps are assigned only when no KEY is invalid or colliding. Otherwise the recipe's files/layouts are
+  // left exactly as written, so a second call re-detects the same problems (W3: the MCP validate-recipe path calls
+  // validateRecipe twice) instead of seeing a merged, already-collapsed map. Cross-reference errors (a spelling split
+  // or an invalid cross-layout value) do not block the rewrite: they are re-detected on a canonical recipe anyway,
+  // and the rewrite keeps the later self-checks (e.g. KI16) comparing canonical forms.
+  let newFiles: Recipe["files"];
+  let newLayouts: Recipe["layouts"];
+  let keyErrorCount = 0;
+
+  if (isPlainObject(recipe.files)) {
+    newFiles = canonicalizeSection("eventSheets", "files", recipe.files, (v) => v, errors, collisions).out;
+    keyErrorCount = errors.length;
   }
 
-  // Normalize layouts keys and cross-layout path fields on ops
-  if (recipe.layouts) {
-    const normalized: Record<string, (typeof recipe.layouts)[string]> = {};
-    for (const [key, ops] of Object.entries(recipe.layouts)) {
-      const normalizedOps = ops.map((op) => {
-        if ((op.op === "copy-instance" || op.op === "add-replica") && "from" in op && typeof op.from === "string") {
-          return { ...op, from: normalizeLayoutKey(op.from) };
-        }
-        if (op.op === "extract-template" && typeof op.sourceLayout === "string") {
-          return { ...op, sourceLayout: normalizeLayoutKey(op.sourceLayout) };
-        }
-        if (op.op === "replace-instance-with-replica" && typeof op.templatesLayout === "string") {
-          return { ...op, templatesLayout: normalizeLayoutKey(op.templatesLayout) };
-        }
-        if (op.op === "clone-replica-to-layouts" && Array.isArray(op.targets)) {
-          return {
-            ...op,
-            targets: op.targets.map((t) =>
-              t && typeof t.layout === "string" ? { ...t, layout: normalizeLayoutKey(t.layout) } : t,
-            ),
-          };
-        }
-        return op;
-      });
-      normalized[normalizeLayoutKey(key)] = normalizedOps;
+  if (isPlainObject(recipe.layouts)) {
+    const crossErrors: string[] = [];
+    // First pass: key identities, so cross-references can be compared against them.
+    const keyInfo = new Map<string, { canonical: string; original: string }>();
+    for (const key of Object.keys(recipe.layouts)) {
+      if (keyIssue(key, "layouts") !== undefined) continue;
+      const canonical = canonicalizeRecipeKey(key, "layouts");
+      if (!keyInfo.has(identity(canonical))) keyInfo.set(identity(canonical), { canonical, original: key });
     }
-    recipe.layouts = normalized;
+    const layoutsIn = recipe.layouts as Record<string, unknown>;
+    const section = canonicalizeSection(
+      "layouts",
+      "layouts",
+      layoutsIn,
+      (value, currentKey) => {
+        if (!Array.isArray(value)) return value;
+        return value.map((op, i) => {
+          return eachCrossLayoutRef(op, (field, v, rewrite) => {
+            const canonical = canonicalizeRecipeKey(v, "layouts");
+            const issue = keyIssue(v, "layouts");
+            if (issue !== undefined) {
+              // Same class as an invalid key (#273): report it, and leave the value as written.
+              crossErrors.push(
+                `layouts[${JSON.stringify(currentKey)}][${i}].${field}: value ${JSON.stringify(v)} ${issue}`,
+              );
+              return;
+            }
+            const known = keyInfo.get(identity(canonical));
+            if (known !== undefined && known.canonical !== canonical) {
+              crossErrors.push(
+                `layouts[${JSON.stringify(currentKey)}][${i}].${field}: ${JSON.stringify(v)} names the same layout as ` +
+                  `the layouts key ${JSON.stringify(known.original)} under a different spelling. Use one spelling.`,
+              );
+            }
+            rewrite(canonical);
+          });
+        });
+      },
+      errors,
+      collisions,
+    );
+    newLayouts = section.out as typeof recipe.layouts;
+    keyErrorCount = errors.length;
+    errors.push(...crossErrors);
   }
+
+  if (keyErrorCount === 0) {
+    if (newFiles !== undefined) recipe.files = newFiles;
+    if (newLayouts !== undefined) recipe.layouts = newLayouts;
+  }
+  return { errors, collisions };
+}
+
+/** What {@link normalizeRecipePathsChecked} found: every error, and the subset that are identity collisions. */
+interface CheckedKeys {
+  errors: string[];
+  collisions: string[];
+}
+
+/**
+ * Normalize all bare keys in a recipe to full canonical paths. Mutates the recipe in place. THROWS an Error when two
+ * keys of one section name the same file (the message carries each collision group's line, as validateRecipe
+ * reports it) instead of silently keeping the last one.
+ */
+export function normalizeRecipePaths(recipe: Recipe): void {
+  const { collisions } = normalizeRecipePathsChecked(recipe);
+  if (collisions.length > 0) throw new Error(collisions.join("\n"));
 }
 
 export function validateRecipe(recipe: Recipe): string[] {
-  normalizeRecipePaths(recipe);
-  const errors: string[] = [];
+  const errors: string[] = normalizeRecipePathsChecked(recipe).errors;
 
   const hasSections =
     recipe.objectTypes !== undefined ||
@@ -3025,7 +3142,10 @@ export function validateRecipe(recipe: Recipe): string[] {
               // sourceLayout has been normalized; filePath is the normalized key.
               // A same-layout extraction is not extract-template — direct the
               // author to templatize-in-place instead.
-              if (typeof op.sourceLayout === "string" && op.sourceLayout === filePath) {
+              if (
+                typeof op.sourceLayout === "string" &&
+                identity(canonicalizeRecipeKey(op.sourceLayout, "layouts")) === identity(filePath)
+              ) {
                 errors.push(
                   `layouts["${filePath}"][${i}]: extract-template "sourceLayout" must differ from the layouts key (use templatize-in-place to convert an existing instance to a template on the same layout)`,
                 );
@@ -3069,12 +3189,13 @@ export function validateRecipe(recipe: Recipe): string[] {
                     errors.push(`layouts["${filePath}"][${i}].targets[${t}]: "layer" field is required`);
                   }
                   if (typeof target.layout === "string") {
-                    if (seenLayouts.has(target.layout)) {
+                    const targetId = identity(canonicalizeRecipeKey(target.layout, "layouts"));
+                    if (seenLayouts.has(targetId)) {
                       errors.push(
                         `layouts["${filePath}"][${i}].targets[${t}]: duplicate target layout "${target.layout}" — each target must reference a distinct layout`,
                       );
                     }
-                    seenLayouts.add(target.layout);
+                    seenLayouts.add(targetId);
                   }
                 }
               }

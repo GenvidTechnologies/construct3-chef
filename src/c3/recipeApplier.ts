@@ -46,8 +46,10 @@ import {
   type LayoutJson as MutatorLayoutJson,
 } from "./layoutMutator.js";
 import { collectAllUids, collectLayoutSids } from "./layoutScaffold.js";
+import { seedLayoutSids } from "./layoutSidSeed.js";
 import { readRegistryFile, makeSidGen, freshSidGen, type SidGenerator } from "./sidUtils.js";
 import { diffScripts } from "./previewDiff.js";
+import { findCaseFoldedMatch, findSpellingMismatches, type SpellingRef } from "./recipeKeys.js";
 import { expandWorkflows, type LoadLayout } from "./workflowExpansion.js";
 import { buildCustomAceIndex, validateInsertedCustomActions, type CustomAceIndex } from "./customAceIndex.js";
 import {
@@ -464,15 +466,83 @@ function findVariableNameBySidRef(sheet: EventSheet, ref: string): string | null
  * as apply, and no objectType/layout write from Steps 1–2 can land first. Resolves
  * each target exactly as Step 3's write does: path.join(rootDir, <normalized key>).
  */
-function checkCreateTargets(rootDir: string, files: NonNullable<Recipe["files"]>): void {
-  const existing = Object.entries(files)
-    .filter(([filePath, entry]) => isFileCreate(entry) && existsSync(path.join(rootDir, filePath)))
+function checkCreateTargets(rootDir: string, files: NonNullable<Recipe["files"]>, getListing: () => string[]): void {
+  const creates = Object.entries(files)
+    .filter(([, entry]) => isFileCreate(entry))
     .map(([filePath]) => filePath);
-  if (existing.length === 0) return;
+  if (creates.length === 0) return;
+  // existsSync covers any existing path the listing does not (it lists event sheets and layouts only); the listing
+  // decides the case-folded matches, which existsSync alone misses where the filesystem is case-sensitive (Linux).
+  const listing = getListing();
+  const lines: string[] = [];
+  for (const filePath of creates) {
+    const folded = findCaseFoldedMatch(filePath, listing);
+    if (!existsSync(path.join(rootDir, filePath)) && folded.length === 0) continue;
+    lines.push(folded.length > 0 ? `  - ${filePath} (on disk: ${folded.join(" | ")})` : `  - ${filePath}`);
+  }
+  if (lines.length === 0) return;
   throw new Error(
-    `files CREATE refused: ${existing.length} target(s) already exist on disk, and { "create": true } never overwrites an existing event sheet. Nothing was written.\n` +
-      existing.map((p) => `  - ${p}`).join("\n") +
+    `files CREATE refused: ${lines.length} target(s) already exist on disk, and { "create": true } never overwrites an existing event sheet. Nothing was written.\n` +
+      lines.join("\n") +
       `\nTo edit an existing sheet, give its files entry an ops array instead, e.g. [{ "op": "insert-event", ... }].`,
+  );
+}
+
+/** Event-sheet and layout paths on disk, root-relative with "/" separators: the corpus spelling checks compare against. */
+function listSpellingCorpus(rootDir: string): string[] {
+  const project = openProject(rootDir);
+  return [...project.findAllEventSheets(), ...project.findAllLayouts()].map((p) =>
+    path.relative(rootDir, p).split(path.sep).join("/"),
+  );
+}
+
+/**
+ * Refuse a recipe path whose letter case differs from what is on disk (#253). Runs on the canonical
+ * (post-validateRecipe) keys: `files` keys (a CREATE checks folders only), `layouts` keys, and the cross-layout op
+ * fields (`from`, `sourceLayout`, `templatesLayout`, `targets[].layout`). Fires before expandWorkflows and before
+ * any write, in dry-run too, so a miscased `templatesLayout` is refused rather than read.
+ */
+function checkKeySpelling(recipe: Recipe, getListing: () => string[]): void {
+  const refs: SpellingRef[] = [];
+  const addLayoutRef = (p: unknown): void => {
+    if (typeof p === "string") refs.push({ path: p, kind: "file" });
+  };
+  for (const [filePath, entry] of Object.entries(recipe.files ?? {})) {
+    refs.push({ path: filePath, kind: isFileCreate(entry) ? "create" : "file" });
+  }
+  for (const [layoutPath, ops] of Object.entries(recipe.layouts ?? {})) {
+    addLayoutRef(layoutPath);
+    for (const op of ops as unknown[]) {
+      if (typeof op !== "object" || op === null) continue;
+      const o = op as Record<string, unknown>;
+      addLayoutRef(o.from);
+      addLayoutRef(o.sourceLayout);
+      addLayoutRef(o.templatesLayout);
+      if (Array.isArray(o.targets)) {
+        for (const t of o.targets) addLayoutRef((t as { layout?: unknown } | null)?.layout);
+      }
+    }
+  }
+  if (refs.length === 0) return;
+
+  const listing = getListing();
+  const mismatches = findSpellingMismatches(refs, listing);
+  if (mismatches.length === 0) return;
+
+  // Show the whole path in its on-disk spelling: a listed file that equals the ref ignoring case wins, else the
+  // matched on-disk prefix followed by the ref's remaining segments as written (a new tail).
+  const fullSpellings = (m: (typeof mismatches)[number]): string[] => {
+    const lowerRef = m.path.toLowerCase();
+    const exactFold = listing.filter((p) => p.toLowerCase() === lowerRef);
+    if (exactFold.length > 0) return exactFold.sort();
+    const tail = m.path.slice(m.prefix.length);
+    return m.onDisk.map((d) => `${d}${tail}`);
+  };
+  const lines = [...new Set(mismatches.map((m) => `  - ${m.path} → on disk: ${fullSpellings(m).join(" | ")}`))].sort();
+  throw new Error(
+    `recipe path refused: ${lines.length} path(s) match an existing file or folder only when letter case is ignored, ` +
+      "and a recipe path must use the on-disk spelling so it behaves the same on every filesystem. Nothing was written.\n" +
+      lines.join("\n"),
   );
 }
 
@@ -773,6 +843,13 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
     throw new Error("Recipe validation failed:\n" + errors.map((e) => `  - ${e}`).join("\n"));
   }
 
+  // Letter-case spelling check against the on-disk listing (#253): before expandWorkflows (which reads layouts)
+  // and before any write, in dry-run too.
+  // The listing is built at most once per apply and shared by checkKeySpelling and checkCreateTargets.
+  let spellingListing: string[] | undefined;
+  const getSpellingListing = (): string[] => (spellingListing ??= listSpellingCorpus(rootDir));
+  checkKeySpelling(recipe, getSpellingListing);
+
   // Composite workflow ops (extract-template, templatize-in-place,
   // clone-replica-to-layouts, replace-instance-with-replica) expand into
   // primitive layout ops here so dry-run and apply share one expansion and
@@ -823,7 +900,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   // sheet (#249); (b) a move-variable global → local demotion is only valid when
   // the global is not referenced from other event sheets.
   if (recipe.files && Object.keys(recipe.files).length > 0) {
-    checkCreateTargets(rootDir, recipe.files);
+    checkCreateTargets(rootDir, recipe.files, getSpellingListing);
     checkMoveVariableDemotions(rootDir, recipe.files, log);
   }
 
@@ -1186,18 +1263,9 @@ export function applyParsed(rootDir: string, recipe: Recipe, opts: ApplyOptions 
   // union the on-disk SIDs into `used` so layout ops can't mint a SID already present
   // in the file. The registry covers layouts/ but may lag behind a prior apply with
   // `regenerate: false` or a watcher-missed external edit.
-  if (recipe.layouts) {
-    for (const layoutPath of Object.keys(recipe.layouts)) {
-      const fullPath = path.join(rootDir, layoutPath);
-      if (!existsSync(fullPath)) continue;
-      try {
-        const layoutJson = JSON.parse(readFileSync(fullPath, "utf-8")) as Record<string, unknown>;
-        for (const sid of collectLayoutSids(layoutJson)) used.add(sid);
-      } catch {
-        // Unparseable layout — skip the defensive seed; the recipe op will surface a real error.
-      }
-    }
-  }
+  // The keys are canonicalized by `seedLayoutSids` (a bare `Gameplay/Main Layout` is read from `layouts/…json`):
+  // this runs before `normalizeRecipePaths`, so a raw join would miss every bare key (#253).
+  seedLayoutSids(rootDir, recipe.layouts, used);
 
   const sidGen = makeSidGen(used);
   applyRecipeInner(sidGen, rootDir, recipe, resolved);

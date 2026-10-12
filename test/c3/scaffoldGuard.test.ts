@@ -76,18 +76,12 @@ describe("scaffoldGuard (#254)", () => {
       expect(got).to.deep.equal([{ relPath: "objectTypes/tsconfig.json", reason: "output-exists" }]);
     });
 
-    it("U5b: on a case-insensitive filesystem, Text.json collides with name 'text'", function () {
-      put("objectTypes/CaseProbe.json");
-      if (!existsSync(path.join(objectTypesDir(), "caseprobe.json"))) {
-        this.skip(); // case-sensitive filesystem: the flat existsSync does not match
-      }
+    it("U5b: Text.json collides with name 'text' as an objectType-name conflict on every host (#253, #260)", () => {
       put("objectTypes/Text.json");
 
       const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), "Src", "text");
 
-      expect(got).to.have.length(1);
-      expect(got[0].reason).to.equal("output-exists");
-      expect(got[0].relPath.toLowerCase()).to.equal("objecttypes/text.json");
+      expect(got).to.deep.equal([{ relPath: "objectTypes/Text.json", reason: "objectType-name" }]);
     });
 
     it("U6: an objectType with the same name in a subfolder is an objectType-name conflict", () => {
@@ -114,6 +108,36 @@ describe("scaffoldGuard (#254)", () => {
       const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), "Src", "Fresh");
 
       expect(got).to.deep.equal([]);
+    });
+  });
+
+  // #260 item 3 / #253: a case-only match is a NAME conflict reported under its on-disk
+  // spelling, identically on case-folding (Windows) and case-sensitive (Linux) hosts.
+  describe("case-only matches (#260)", () => {
+    it("SC1: a layout whose basename differs only by case is a layout-name conflict naming the on-disk file", () => {
+      put("layouts/Gameplay/Foo.json");
+      const out = path.join(layoutsDir(), "Other", "foo.json");
+
+      const got = findLayoutScaffoldConflicts(root, layoutsDir(), out);
+
+      expect(got).to.deep.equal([{ relPath: "layouts/Gameplay/Foo.json", reason: "layout-name" }]);
+    });
+
+    it("SC2: an objectType whose name differs only by case is an objectType-name conflict naming the on-disk file", () => {
+      put("objectTypes/Foo.json");
+
+      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), "Src", "foo");
+
+      expect(got).to.deep.equal([{ relPath: "objectTypes/Foo.json", reason: "objectType-name" }]);
+    });
+
+    it("SC3: a layout output differing from an existing file only by case reports exactly the on-disk name conflict", () => {
+      put("layouts/Foo.json");
+      const out = path.join(layoutsDir(), "foo.json");
+
+      const got = findLayoutScaffoldConflicts(root, layoutsDir(), out);
+
+      expect(got).to.deep.equal([{ relPath: "layouts/Foo.json", reason: "layout-name" }]);
     });
   });
 

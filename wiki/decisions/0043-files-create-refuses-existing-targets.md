@@ -62,6 +62,8 @@ carry no content a SKIP would drop. A `files` CREATE carries events.
 same refuse-don't-overwrite rule now covers `scaffold-layout` and
 `scaffold-sprite`.
 
+**Amended by ADR [0046](0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md):** the CREATE leaf is matched case-insensitively against the c3source listing (not only `existsSync`), and the refusal message names the on-disk file as `(on disk: …)`.
+
 ## Rejected alternatives
 
 - **SKIP the CREATE, mirroring `createObjectType`.** It silently drops the
@@ -87,6 +89,9 @@ same refuse-don't-overwrite rule now covers `scaffold-layout` and
 - On a case-insensitive filesystem (Windows) a case-variant key of an
   existing sheet is now refused. On a case-sensitive filesystem it still
   creates a second file; that is tracked as a follow-up.
+  *Superseded:* ADR [0046](0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md)
+  closes this on every host by matching the sheet and layout listing with
+  letter case ignored.
 - Library consumers who call the pure `executeRecipe` and write its `created`
   map themselves bypass the check. That is out of scope: callers own their
   I/O.

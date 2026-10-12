@@ -414,3 +414,16 @@ See the [wiki index](../index.md) for the other sections.
   absolute path
   ([#259](https://github.com/GenvidTechnologies/construct3-chef/issues/259),
   [#261](https://github.com/GenvidTechnologies/construct3-chef/issues/261))
+* [0046. Recipe and scaffold paths have one canonical, case-insensitive identity](0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md) -
+  Amends ADRs 0043 and 0044. A recipe `files`/`layouts` key now has one
+  canonical form (forward slashes, section folder, `.json`), and its identity
+  is that form lowercased on every host. Two keys with one identity are a
+  `validateRecipe` error; `..`, absolute and empty keys are rejected; op
+  templates whose keys render to one string throw. Against the disk, the
+  applier refuses a key that matches an existing sheet or layout only when
+  letter case is ignored, before workflow expansion, using the c3source
+  listing so the answer is the same on every filesystem. The CREATE-target
+  check and the scaffold name conflicts use the same case-insensitive match
+  ([#252](https://github.com/GenvidTechnologies/construct3-chef/issues/252),
+  [#253](https://github.com/GenvidTechnologies/construct3-chef/issues/253),
+  [#273](https://github.com/GenvidTechnologies/construct3-chef/issues/273))

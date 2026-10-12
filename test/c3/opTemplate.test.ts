@@ -390,6 +390,44 @@ describe("substituteOp", () => {
     assert.isDefined(result.files);
     assert.isDefined((result.files as Record<string, unknown>)["eventSheets/Splash.json"]);
   });
+
+  // #252: two template keys that render to one string used to collapse silently (last write wins).
+  const twoKeyDef = (): OpDefinition => ({
+    description: "two template keys",
+    params: [
+      { name: "A", type: "string", required: true },
+      { name: "B", type: "string", required: true },
+    ],
+    recipe: {
+      files: {
+        "eventSheets/{{A}}.json": [{ op: "insert-event", comment: "from A" }],
+        "eventSheets/{{B}}.json": [{ op: "insert-event", comment: "from B" }],
+      },
+    },
+  });
+
+  it("KI10: two template keys rendering to the identical string throw, naming both template keys", () => {
+    assert.throws(
+      () => substituteOp(twoKeyDef(), { A: "X", B: "X" }),
+      /op template keys "eventSheets\/\{\{A\}\}\.json" and "eventSheets\/\{\{B\}\}\.json" both render to "eventSheets\/X\.json"/,
+    );
+  });
+
+  it("KI11: template keys rendering to different strings with one canonical path throw the group line", () => {
+    let message: string | undefined;
+    try {
+      substituteOp(twoKeyDef(), { A: "Foo", B: "./Foo" });
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    assert.isDefined(message, "substituteOp must throw");
+    assert.include(message, "recipe invalid after substitution");
+    assert.include(
+      message,
+      'files: 2 keys name the same event sheet eventSheets/Foo.json — "eventSheets/Foo.json", ' +
+        '"eventSheets/./Foo.json". Merge their entries under one key.',
+    );
+  });
 });
 
 // ─── formatOpsList ─────────────────────────────────────────────────────────────

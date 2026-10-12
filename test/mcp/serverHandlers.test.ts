@@ -23,6 +23,7 @@ import { SID_SOURCE_DIRS } from "../../src/c3/generators.js";
 import { reportStrayFiles } from "../../src/c3/projectSync.js";
 import { seedManifestDrift } from "../helpers/seedManifestDrift.js";
 import { runCli } from "../helpers/runCli.js";
+import { applyParsed } from "../../src/c3/recipeApplier.js";
 import { formatScaffoldRefusal } from "../../src/c3/scaffoldGuard.js";
 import {
   formatScaffoldPathRejection,
@@ -332,6 +333,78 @@ describe("MCP server handler response shaping", () => {
     )) as any;
 
     expect(result.isError).to.be.true;
+    expect(watcher.bumped).to.equal(0);
+    expect(fs.readFileSync(sheet).equals(before)).to.be.true;
+  });
+
+  // R9 (#252): one sheet under two spellings is refused on MCP validate-recipe AND apply-recipe, with the group
+  // line byte-identical to the one applyParsed (CLI path) throws.
+  it("KI9: validate-recipe and apply-recipe refuse two spellings of one sheet, same group line as applyParsed", async () => {
+    const GROUP_LINE =
+      'files: 2 keys name the same event sheet eventSheets/Gameplay/Event sheet 1.json — "Gameplay/Event sheet 1", ' +
+      '"eventSheets/Gameplay/Event sheet 1.json". Merge their entries under one key.';
+    const twoSpellings = JSON.stringify({
+      files: {
+        "Gameplay/Event sheet 1": [{ op: "insert-event", comment: "FIRST-SPELLING" }],
+        "eventSheets/Gameplay/Event sheet 1.json": [{ op: "insert-event", comment: "SECOND-SPELLING" }],
+      },
+    });
+    const sheet = path.join(tmp, "eventSheets", "Gameplay", "Event sheet 1.json");
+    const before = fs.readFileSync(sheet);
+    __setExtractedDirty(true); // skip registry freshness scan
+
+    const validated = (await __getHandler("validate-recipe")!({ recipe: twoSpellings }, makeExtra())) as any;
+    const validatedText = validated.content.map((b: any) => b.text).join("\n");
+    expect(validated.isError, validatedText).to.be.true;
+    expect(validatedText).to.include(GROUP_LINE);
+    expect(validatedText).to.include("txId: default:5");
+
+    const applied = (await __getHandler("apply-recipe")!(
+      { recipe: twoSpellings, txId: "default:5", regenerate: false },
+      makeExtra(),
+    )) as any;
+    const appliedText = applied.content.map((b: any) => b.text).join("\n");
+    expect(applied.isError, appliedText).to.be.true;
+    expect(appliedText).to.include(GROUP_LINE);
+    expect(appliedText).to.include("txId: default:5");
+    expect(watcher.bumped).to.equal(0);
+    expect(fs.readFileSync(sheet).equals(before)).to.be.true;
+
+    // The CLI/library path (applyParsed) throws the same line, byte for byte.
+    let libMessage = "";
+    try {
+      applyParsed(tmp, JSON.parse(twoSpellings), { regenerate: false, log: () => {} });
+    } catch (e) {
+      libMessage = (e as Error).message;
+    }
+    expect(libMessage).to.include(GROUP_LINE);
+  });
+
+  // #253: a key that matches an existing sheet only when letter case is ignored is refused on both MCP paths with
+  // the same text. Host independent: asserts the refusal and the bump count, not whether a case-folding host edits.
+  it("KS11: validate-recipe and apply-recipe refuse a miscased key with the same text, no bump", async () => {
+    const REFUSAL =
+      "recipe path refused: 1 path(s) match an existing file or folder only when letter case is ignored, and a recipe " +
+      "path must use the on-disk spelling so it behaves the same on every filesystem. Nothing was written.";
+    const miscased = JSON.stringify({
+      files: { "gameplay/EVENT SHEET 1": [{ op: "insert-event", comment: "MISCASED" }] },
+    });
+    const sheet = path.join(tmp, "eventSheets", "Gameplay", "Event sheet 1.json");
+    const before = fs.readFileSync(sheet);
+    __setExtractedDirty(true); // skip registry freshness scan
+
+    const validated = (await __getHandler("validate-recipe")!({ recipe: miscased }, makeExtra())) as any;
+    const validatedText = validated.content.map((b: any) => b.text).join("\n");
+    expect(validated.isError, validatedText).to.be.true;
+    expect(validatedText).to.include(REFUSAL);
+
+    const applied = (await __getHandler("apply-recipe")!(
+      { recipe: miscased, txId: "default:5", regenerate: false },
+      makeExtra(),
+    )) as any;
+    const appliedText = applied.content.map((b: any) => b.text).join("\n");
+    expect(applied.isError, appliedText).to.be.true;
+    expect(appliedText).to.include(REFUSAL);
     expect(watcher.bumped).to.equal(0);
     expect(fs.readFileSync(sheet).equals(before)).to.be.true;
   });
@@ -1365,6 +1438,47 @@ describe("MCP server handler response shaping", () => {
       expect(cli.exitCode).to.equal(1);
       expect(cli.stderr.trimEnd()).to.equal(mcpMessage);
       expect(mcpMessage).to.equal(expected);
+    });
+
+    it("SC4: a case-only layout name collision renders byte-identically on CLI and MCP, naming the on-disk file", async function () {
+      this.timeout(60_000);
+      const handler = __getHandler("scaffold-layout")!;
+      const mcp = (await handler(
+        {
+          source: "Gameplay/Main Layout.json",
+          name: "SC4Layout",
+          path: "NewDir/main layout.json",
+          eventSheet: "Event sheet 1",
+          regenerate: false,
+        },
+        makeExtra(),
+      )) as any;
+      expect(mcp.isError).to.be.true;
+      const lines = textOf(mcp).split("\n");
+      expect(lines.pop()).to.equal("txId: default:5");
+      const mcpMessage = lines.join("\n");
+
+      const cli = runCli([
+        "scaffold-layout",
+        "--project-dir",
+        tmp,
+        "--source",
+        "layouts/Gameplay/Main Layout.json",
+        "--out",
+        "layouts/NewDir2/main layout.json",
+        "--name",
+        "SC4Layout",
+        "--event-sheet",
+        "Event sheet 1",
+        "--no-regenerate",
+      ]);
+
+      const expected = formatScaffoldRefusal("scaffold-layout", [
+        { relPath: "layouts/Gameplay/Main Layout.json", reason: "layout-name" },
+      ]);
+      expect(mcpMessage).to.equal(expected);
+      expect(cli.exitCode).to.equal(1);
+      expect(cli.stderr.trimEnd()).to.equal(expected);
     });
 
     it("T19: CLI and MCP scaffold rejections are byte-identical to the shared formatters (a) output path (b) missing source (c) sprite name", async function () {

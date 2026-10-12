@@ -9,7 +9,7 @@
  * export is a permanent public-API commitment).
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import * as path from "node:path";
 import { find_all_layouts_path, find_all_objectTypes_path } from "@genvidtech/c3source";
 import { discoverAndPlanImageCopies } from "./spriteScaffold.js";
@@ -41,6 +41,20 @@ const REASON_RANK: Record<ScaffoldConflictReason, number> = {
   "image-target": 2,
 };
 
+/**
+ * True when the exact basename of `file` is listed in its directory. Deliberately
+ * not `existsSync`, which folds case on Windows but not on Linux: a case-only
+ * match is reported as a name conflict instead (#253, #260), so the result is
+ * the same on every host. A missing directory means no.
+ */
+function exactBasenameExists(file: string): boolean {
+  try {
+    return readdirSync(path.dirname(file)).includes(path.basename(file));
+  } catch {
+    return false;
+  }
+}
+
 /** Dedupe by resolved path (first/highest-priority reason wins), then order by reason rank and relPath. */
 function finish(rootDir: string, found: Found[]): ScaffoldConflict[] {
   const seen = new Set<string>();
@@ -60,20 +74,21 @@ function finish(rootDir: string, found: Found[]): ScaffoldConflict[] {
 /**
  * Conflicts for a layout scaffold writing to `outPath`.
  *
- * - `output-exists` if `outPath` already exists.
+ * - `output-exists` if the exact basename of `outPath` is present in its directory.
  * - `layout-name` for any c3source `find_all_layouts_path(layoutsDir)` entry
- *   with the same basename as `outPath`.
+ *   whose basename equals that of `outPath` ignoring letter case (#253, #260),
+ *   reported under its on-disk spelling.
  *
  * Results are deduped and ordered deterministically; `relPath` is a POSIX
  * path relative to `rootDir`.
  */
 export function findLayoutScaffoldConflicts(rootDir: string, layoutsDir: string, outPath: string): ScaffoldConflict[] {
   const found: Found[] = [];
-  if (existsSync(outPath)) found.push({ abs: outPath, reason: "output-exists" });
+  if (exactBasenameExists(outPath)) found.push({ abs: outPath, reason: "output-exists" });
   if (existsSync(layoutsDir)) {
-    const base = path.basename(outPath);
+    const base = path.basename(outPath).toLowerCase();
     for (const p of find_all_layouts_path(layoutsDir)) {
-      if (path.basename(p) === base) found.push({ abs: p, reason: "layout-name" });
+      if (path.basename(p).toLowerCase() === base) found.push({ abs: p, reason: "layout-name" });
     }
   }
   return finish(rootDir, found);
@@ -82,9 +97,10 @@ export function findLayoutScaffoldConflicts(rootDir: string, layoutsDir: string,
 /**
  * Conflicts for a sprite scaffold cloning `sourceName` to `targetName`.
  *
- * - `output-exists` if `objectTypes/<targetName>.json` exists.
+ * - `output-exists` if `objectTypes/<targetName>.json` is present with exactly that spelling.
  * - `objectType-name` for any `find_all_objectTypes_path` entry whose
- *   basename is `<targetName>.json` (case-sensitive).
+ *   basename is `<targetName>.json` ignoring letter case (#253, #260),
+ *   reported under its on-disk spelling.
  * - `image-target` for each existing target of `discoverAndPlanImageCopies`,
  *   when `imagesDir` exists.
  *
@@ -100,10 +116,11 @@ export function findSpriteScaffoldConflicts(
 ): ScaffoldConflict[] {
   const found: Found[] = [];
   const flat = path.join(objectTypesDir, `${targetName}.json`);
-  if (existsSync(flat)) found.push({ abs: flat, reason: "output-exists" });
+  if (exactBasenameExists(flat)) found.push({ abs: flat, reason: "output-exists" });
   if (existsSync(objectTypesDir)) {
     for (const p of find_all_objectTypes_path(objectTypesDir)) {
-      if (path.basename(p) === `${targetName}.json`) found.push({ abs: p, reason: "objectType-name" });
+      if (path.basename(p).toLowerCase() === `${targetName}.json`.toLowerCase())
+        found.push({ abs: p, reason: "objectType-name" });
     }
   }
   if (existsSync(imagesDir)) {
