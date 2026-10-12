@@ -233,7 +233,7 @@ describe("formatIndex", () => {
     const result = formatIndex("TestSheet", []);
     const lines = result.split("\n");
     assert.equal(lines[0], "# TestSheet — DSL Coordinate Index");
-    assert.equal(lines[1], "# Regenerate: npm run generate-dsl");
+    assert.equal(lines[1], "# Regenerate: CLI `construct3-chef generate --only dsl`, or the `regenerate` MCP tool");
     assert.equal(lines[2], "#");
     // Header and separator should still be present
     assert.include(lines[3], "Event");
@@ -467,7 +467,7 @@ System.go-to-layout(layout="Main Layout")`;
     const blockRowDesc = `block${SEARCH_SENTINEL}System.go-to-layout(layout="Main Layout")`;
     const indexLines = [
       "# TestSheet — DSL Coordinate Index",
-      "# Regenerate: npm run generate-dsl",
+      "# Regenerate: CLI `construct3-chef generate --only dsl`, or the `regenerate` MCP tool",
       "#",
       "# Event | JSON Path | SID              | DSL Line | Description",
       "#-------|-----------|------------------|----------|-----------",
@@ -487,7 +487,7 @@ System.go-to-layout(layout="Main Layout")`;
 describe("filterIndex", () => {
   const sampleIndex = [
     "# TestSheet — DSL Coordinate Index",
-    "# Regenerate: npm run generate-dsl",
+    "# Regenerate: CLI `construct3-chef generate --only dsl`, or the `regenerate` MCP tool",
     "#",
     "# Event | JSON Path        | SID              | DSL Line | Description",
     "#-------|-------------------|------------------|----------|------------",
@@ -1974,7 +1974,7 @@ describe("global vs local variable scope markers", () => {
     const row = `  -     | events[0]         | §100000000000020 | 4        | ${descStr}`;
     const indexText = [
       "# ScopeSheet — DSL Coordinate Index",
-      "# Regenerate: npm run generate-dsl",
+      "# Regenerate: CLI `construct3-chef generate --only dsl`, or the `regenerate` MCP tool",
       "#",
       "# Event | JSON Path | SID | DSL Line | Description",
       "#-------|-----------|-----|----------|-----------",
@@ -1996,7 +1996,7 @@ describe("global vs local variable scope markers", () => {
     const row = `  -     | events[0]         | §100000000000020 | 4        | ${descStr}`;
     const indexText = [
       "# ScopeSheet — DSL Coordinate Index",
-      "# Regenerate: npm run generate-dsl",
+      "# Regenerate: CLI `construct3-chef generate --only dsl`, or the `regenerate` MCP tool",
       "#",
       "# Event | JSON Path | SID | DSL Line | Description",
       "#-------|-----------|-----|----------|-----------",
@@ -2014,7 +2014,7 @@ describe("global vs local variable scope markers", () => {
     const row = `  -     | events[0]         | §100000000000020 | 4        | ${descStr}`;
     const indexText = [
       "# ScopeSheet — DSL Coordinate Index",
-      "# Regenerate: npm run generate-dsl",
+      "# Regenerate: CLI `construct3-chef generate --only dsl`, or the `regenerate` MCP tool",
       "#",
       "# Event | JSON Path | SID | DSL Line | Description",
       "#-------|-----------|-----|----------|-----------",
