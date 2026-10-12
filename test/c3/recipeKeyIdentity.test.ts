@@ -212,6 +212,43 @@ describe("recipe key identity (#252/#253/#273)", () => {
       );
     }
 
+    // (c) cross-layout field VALUES get the same validity check, and an invalid value is not rewritten.
+    const badFrom = "../../x";
+    const fromRecipe = {
+      layouts: { L: [{ op: "copy-instance", from: badFrom, type: "Sprite3", targetLayer: "layer 0" }] },
+    };
+    const fromErrors = validateRecipe(fromRecipe as never);
+    assert.isTrue(
+      fromErrors.some((e) => e.includes(JSON.stringify(badFrom)) && e.includes(keyIssue(badFrom, "layouts")!)),
+      `from: ${JSON.stringify(fromErrors)}`,
+    );
+    assert.strictEqual(
+      ((Object.values(fromRecipe.layouts)[0] as { from: string }[])[0] as { from: string }).from,
+      badFrom,
+    );
+    const badTarget = "/abs/Layout";
+    const targetErrors = validateRecipe({
+      layouts: {
+        L: [
+          {
+            op: "clone-replica-to-layouts",
+            templateName: "default",
+            sourceType: "Sprite3",
+            targets: [{ layout: badTarget, layer: "layer 0" }],
+          },
+        ],
+      },
+    } as never);
+    assert.isTrue(
+      targetErrors.some(
+        (e) =>
+          e.includes("targets[0].layout") &&
+          e.includes(JSON.stringify(badTarget)) &&
+          e.includes(keyIssue(badTarget, "layouts")!),
+      ),
+      `targets: ${JSON.stringify(targetErrors)}`,
+    );
+
     // (b) normalization must not paper over a wrongly-typed section: the existing guards must fire.
     const filesArray = validateRecipe({ files: [{ create: true, events: [{ comment: "ARRAY-CREATE" }] }] } as never);
     assert.isTrue(
@@ -230,23 +267,26 @@ describe("recipe key identity (#252/#253/#273)", () => {
   });
 
   it("KI16: extract-template whose sourceLayout is its own key under another spelling hits the self-check", () => {
-    const errors = validateRecipe({
-      layouts: {
-        "Gameplay/Main Layout": [
-          {
-            op: "extract-template",
-            sourceLayout: "./Gameplay/Main Layout",
-            sourceType: "Text2",
-            templateName: "T2",
-            templatesLayer: "layer 0",
-          },
-        ],
-      },
-    });
-    assert.isTrue(
-      errors.some((e) => e.includes('"sourceLayout" must differ from the layouts key')),
-      JSON.stringify(errors),
-    );
+    // "./" is removed by canonicalization; the case-only variant differs in canonical form and is caught by identity.
+    for (const sourceLayout of ["./Gameplay/Main Layout", "gameplay/main layout"]) {
+      const errors = validateRecipe({
+        layouts: {
+          "Gameplay/Main Layout": [
+            {
+              op: "extract-template",
+              sourceLayout,
+              sourceType: "Text2",
+              templateName: "T2",
+              templatesLayer: "layer 0",
+            },
+          ],
+        },
+      });
+      assert.isTrue(
+        errors.some((e) => e.includes('"sourceLayout" must differ from the layouts key')),
+        `sourceLayout ${JSON.stringify(sourceLayout)}: ${JSON.stringify(errors)}`,
+      );
+    }
   });
 
   it("KI17: clone-replica-to-layouts targets differing by case or `./` hit the duplicate-target error", () => {

@@ -2575,14 +2575,20 @@ function normalizeRecipePathsChecked(recipe: Recipe): string[] {
         return value.map((op, i) => {
           return eachCrossLayoutRef(op, (field, v, rewrite) => {
             const canonical = canonicalizeRecipeKey(v, "layouts");
-            if (keyIssue(v, "layouts") === undefined) {
-              const known = keyInfo.get(identity(canonical));
-              if (known !== undefined && known.canonical !== canonical) {
-                crossErrors.push(
-                  `layouts[${JSON.stringify(currentKey)}][${i}].${field}: ${JSON.stringify(v)} names the same layout as ` +
-                    `the layouts key ${JSON.stringify(known.original)} under a different spelling. Use one spelling.`,
-                );
-              }
+            const issue = keyIssue(v, "layouts");
+            if (issue !== undefined) {
+              // Same class as an invalid key (#273): report it, and leave the value as written.
+              crossErrors.push(
+                `layouts[${JSON.stringify(currentKey)}][${i}].${field}: value ${JSON.stringify(v)} ${issue}`,
+              );
+              return;
+            }
+            const known = keyInfo.get(identity(canonical));
+            if (known !== undefined && known.canonical !== canonical) {
+              crossErrors.push(
+                `layouts[${JSON.stringify(currentKey)}][${i}].${field}: ${JSON.stringify(v)} names the same layout as ` +
+                  `the layouts key ${JSON.stringify(known.original)} under a different spelling. Use one spelling.`,
+              );
             }
             rewrite(canonical);
           });
@@ -3110,7 +3116,10 @@ export function validateRecipe(recipe: Recipe): string[] {
               // sourceLayout has been normalized; filePath is the normalized key.
               // A same-layout extraction is not extract-template — direct the
               // author to templatize-in-place instead.
-              if (typeof op.sourceLayout === "string" && op.sourceLayout === filePath) {
+              if (
+                typeof op.sourceLayout === "string" &&
+                identity(canonicalizeRecipeKey(op.sourceLayout, "layouts")) === identity(filePath)
+              ) {
                 errors.push(
                   `layouts["${filePath}"][${i}]: extract-template "sourceLayout" must differ from the layouts key (use templatize-in-place to convert an existing instance to a template on the same layout)`,
                 );
@@ -3154,12 +3163,13 @@ export function validateRecipe(recipe: Recipe): string[] {
                     errors.push(`layouts["${filePath}"][${i}].targets[${t}]: "layer" field is required`);
                   }
                   if (typeof target.layout === "string") {
-                    if (seenLayouts.has(target.layout)) {
+                    const targetId = identity(canonicalizeRecipeKey(target.layout, "layouts"));
+                    if (seenLayouts.has(targetId)) {
                       errors.push(
                         `layouts["${filePath}"][${i}].targets[${t}]: duplicate target layout "${target.layout}" — each target must reference a distinct layout`,
                       );
                     }
-                    seenLayouts.add(target.layout);
+                    seenLayouts.add(targetId);
                   }
                 }
               }
