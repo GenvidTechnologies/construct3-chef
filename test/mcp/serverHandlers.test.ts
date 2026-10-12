@@ -380,6 +380,35 @@ describe("MCP server handler response shaping", () => {
     expect(libMessage).to.include(GROUP_LINE);
   });
 
+  // #253: a key that matches an existing sheet only when letter case is ignored is refused on both MCP paths with
+  // the same text. Host independent: asserts the refusal and the bump count, not whether a case-folding host edits.
+  it("KS11: validate-recipe and apply-recipe refuse a miscased key with the same text, no bump", async () => {
+    const REFUSAL =
+      "recipe path refused: 1 path(s) match an existing file or folder only when letter case is ignored, and a recipe " +
+      "path must use the on-disk spelling so it behaves the same on every filesystem. Nothing was written.";
+    const miscased = JSON.stringify({
+      files: { "gameplay/EVENT SHEET 1": [{ op: "insert-event", comment: "MISCASED" }] },
+    });
+    const sheet = path.join(tmp, "eventSheets", "Gameplay", "Event sheet 1.json");
+    const before = fs.readFileSync(sheet);
+    __setExtractedDirty(true); // skip registry freshness scan
+
+    const validated = (await __getHandler("validate-recipe")!({ recipe: miscased }, makeExtra())) as any;
+    const validatedText = validated.content.map((b: any) => b.text).join("\n");
+    expect(validated.isError, validatedText).to.be.true;
+    expect(validatedText).to.include(REFUSAL);
+
+    const applied = (await __getHandler("apply-recipe")!(
+      { recipe: miscased, txId: "default:5", regenerate: false },
+      makeExtra(),
+    )) as any;
+    const appliedText = applied.content.map((b: any) => b.text).join("\n");
+    expect(applied.isError, appliedText).to.be.true;
+    expect(appliedText).to.include(REFUSAL);
+    expect(watcher.bumped).to.equal(0);
+    expect(fs.readFileSync(sheet).equals(before)).to.be.true;
+  });
+
   // R2 (#245): a workflow tool routes through applyParsed too; it only edits an existing
   // layout (creates no new file), so no reminder.
   it("clone-replica-to-layouts (workflow) succeeds with no sync-project reminder", async () => {
