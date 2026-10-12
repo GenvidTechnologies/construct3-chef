@@ -101,7 +101,15 @@ copyTracked(archiveSources, path.join(dest, "archive-sources"));
 const sha = execSync("git rev-parse HEAD", { cwd: submodule }).toString().trim();
 let tag = sha;
 try {
-	tag = execSync("git describe --tags --exact-match HEAD", { cwd: submodule }).toString().trim();
+	// stderr is discarded: on an untagged pin git prints "fatal: no tag exactly
+	// matches …", which this catch handles, but which reads as a failure in every
+	// `npm test` run (prep is the pretest hook).
+	tag = execSync("git describe --tags --exact-match HEAD", {
+		cwd: submodule,
+		stdio: ["ignore", "pipe", "ignore"],
+	})
+		.toString()
+		.trim();
 } catch {
 	// Detached at a non-tag commit — fall back to the bare SHA in the log line.
 }
