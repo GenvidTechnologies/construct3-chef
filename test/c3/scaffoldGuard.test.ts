@@ -117,6 +117,36 @@ describe("scaffoldGuard (#254)", () => {
     });
   });
 
+  // #260 item 3 / #253: a case-only match is a NAME conflict reported under its on-disk
+  // spelling, identically on case-folding (Windows) and case-sensitive (Linux) hosts.
+  describe("case-only matches (#260)", () => {
+    it("SC1: a layout whose basename differs only by case is a layout-name conflict naming the on-disk file", () => {
+      put("layouts/Gameplay/Foo.json");
+      const out = path.join(layoutsDir(), "Other", "foo.json");
+
+      const got = findLayoutScaffoldConflicts(root, layoutsDir(), out);
+
+      expect(got).to.deep.equal([{ relPath: "layouts/Gameplay/Foo.json", reason: "layout-name" }]);
+    });
+
+    it("SC2: an objectType whose name differs only by case is an objectType-name conflict naming the on-disk file", () => {
+      put("objectTypes/Foo.json");
+
+      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), "Src", "foo");
+
+      expect(got).to.deep.equal([{ relPath: "objectTypes/Foo.json", reason: "objectType-name" }]);
+    });
+
+    it("SC3: a layout output differing from an existing file only by case reports exactly the on-disk name conflict", () => {
+      put("layouts/Foo.json");
+      const out = path.join(layoutsDir(), "foo.json");
+
+      const got = findLayoutScaffoldConflicts(root, layoutsDir(), out);
+
+      expect(got).to.deep.equal([{ relPath: "layouts/Foo.json", reason: "layout-name" }]);
+    });
+  });
+
   describe("formatScaffoldRefusal", () => {
     it("U9: lists every conflict with a count header, POSIX paths and the nothing-written line", () => {
       const conflicts: ScaffoldConflict[] = [

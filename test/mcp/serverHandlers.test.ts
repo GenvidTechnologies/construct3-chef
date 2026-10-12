@@ -1440,6 +1440,47 @@ describe("MCP server handler response shaping", () => {
       expect(mcpMessage).to.equal(expected);
     });
 
+    it("SC4: a case-only layout name collision renders byte-identically on CLI and MCP, naming the on-disk file", async function () {
+      this.timeout(60_000);
+      const handler = __getHandler("scaffold-layout")!;
+      const mcp = (await handler(
+        {
+          source: "Gameplay/Main Layout.json",
+          name: "SC4Layout",
+          path: "NewDir/main layout.json",
+          eventSheet: "Event sheet 1",
+          regenerate: false,
+        },
+        makeExtra(),
+      )) as any;
+      expect(mcp.isError).to.be.true;
+      const lines = textOf(mcp).split("\n");
+      expect(lines.pop()).to.equal("txId: default:5");
+      const mcpMessage = lines.join("\n");
+
+      const cli = runCli([
+        "scaffold-layout",
+        "--project-dir",
+        tmp,
+        "--source",
+        "layouts/Gameplay/Main Layout.json",
+        "--out",
+        "layouts/NewDir2/main layout.json",
+        "--name",
+        "SC4Layout",
+        "--event-sheet",
+        "Event sheet 1",
+        "--no-regenerate",
+      ]);
+
+      const expected = formatScaffoldRefusal("scaffold-layout", [
+        { relPath: "layouts/Gameplay/Main Layout.json", reason: "layout-name" },
+      ]);
+      expect(mcpMessage).to.equal(expected);
+      expect(cli.exitCode).to.equal(1);
+      expect(cli.stderr.trimEnd()).to.equal(expected);
+    });
+
     it("T19: CLI and MCP scaffold rejections are byte-identical to the shared formatters (a) output path (b) missing source (c) sprite name", async function () {
       this.timeout(60_000);
       // Strips the trailing txId line (asserted, not discarded). "default:5" is
