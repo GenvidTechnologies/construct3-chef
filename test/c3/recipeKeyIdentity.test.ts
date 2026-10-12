@@ -198,7 +198,7 @@ describe("recipe key identity (#252/#253/#273)", () => {
   });
 
   it("KI15: invalid keys name the original key; (b) a non-object files / non-array layouts value reports the guard", () => {
-    const badKeys = ["../x", "a/../b", "/abs/path", "C:/x", "C:\\x", ""];
+    const badKeys = ["../x", "a/../b", "/abs/path", "C:/x", "C:\\x", "", "Gameplay/", "Gameplay/C:foo"];
     for (const key of badKeys) {
       const fileErrors = validateRecipe({ files: { [key]: ins("c") } });
       assert.isTrue(
@@ -247,6 +247,53 @@ describe("recipe key identity (#252/#253/#273)", () => {
           e.includes(keyIssue(badTarget, "layouts")!),
       ),
       `targets: ${JSON.stringify(targetErrors)}`,
+    );
+
+    // W4: the other two cross-layout fields get the same validity check.
+    const badSource = "../src/Layout";
+    const sourceErrors = validateRecipe({
+      layouts: {
+        L: [
+          {
+            op: "extract-template",
+            sourceLayout: badSource,
+            sourceType: "Text2",
+            templateName: "T",
+            templatesLayer: "l",
+          },
+        ],
+      },
+    } as never);
+    assert.isTrue(
+      sourceErrors.some(
+        (e) =>
+          e.includes(".sourceLayout") &&
+          e.includes(JSON.stringify(badSource)) &&
+          e.includes(keyIssue(badSource, "layouts")!),
+      ),
+      `sourceLayout: ${JSON.stringify(sourceErrors)}`,
+    );
+    const badTemplates = "C:/Templates";
+    const templatesErrors = validateRecipe({
+      layouts: {
+        L: [
+          {
+            op: "replace-instance-with-replica",
+            templatesLayout: badTemplates,
+            templateName: "T",
+            sourceType: "Sprite3",
+          },
+        ],
+      },
+    } as never);
+    assert.isTrue(
+      templatesErrors.some(
+        (e) =>
+          e.includes(".templatesLayout") &&
+          e.includes(JSON.stringify(badTemplates)) &&
+          e.includes(keyIssue(badTemplates, "layouts")!),
+      ),
+      `templatesLayout: ${JSON.stringify(templatesErrors)}`,
     );
 
     // (b) normalization must not paper over a wrongly-typed section: the existing guards must fire.
@@ -344,6 +391,43 @@ describe("recipe key identity (#252/#253/#273)", () => {
       targetSplit.some((e) => e.includes('"Gameplay/Main Layout"') && e.includes('"gameplay/main layout"')),
       `targets: ${JSON.stringify(targetSplit)}`,
     );
+
+    // W4: the same split for sourceLayout (extract-template) and templatesLayout (replace-instance-with-replica).
+    const sourceSplit = validateRecipe({
+      layouts: {
+        "Gameplay/Main Layout": addLayer("X"),
+        "Gameplay/Other": [
+          {
+            op: "extract-template",
+            sourceLayout: "gameplay/main layout",
+            sourceType: "Text2",
+            templateName: "T2",
+            templatesLayer: "layer 0",
+          },
+        ],
+      },
+    } as never);
+    assert.isTrue(
+      sourceSplit.some((e) => e.includes('"Gameplay/Main Layout"') && e.includes('"gameplay/main layout"')),
+      `sourceLayout: ${JSON.stringify(sourceSplit)}`,
+    );
+    const templatesSplit = validateRecipe({
+      layouts: {
+        "Templates Layout": addLayer("X"),
+        "Gameplay/Other": [
+          {
+            op: "replace-instance-with-replica",
+            templatesLayout: "templates layout",
+            templateName: "T",
+            sourceType: "Sprite3",
+          },
+        ],
+      },
+    } as never);
+    assert.isTrue(
+      templatesSplit.some((e) => e.includes('"Templates Layout"') && e.includes('"templates layout"')),
+      `templatesLayout: ${JSON.stringify(templatesSplit)}`,
+    );
   });
 
   it("KI19: validateRecipe canonicalizes keys once and is idempotent on a second call", () => {
@@ -354,6 +438,21 @@ describe("recipe key identity (#252/#253/#273)", () => {
     const second = validateRecipe(recipe);
     assert.deepEqual(second, []);
     assert.deepEqual(Object.keys(recipe.files!), ["eventSheets/A.json", "eventSheets/B/C.json"]);
+
+    // W3: a COLLIDING recipe reports the collision on every call (the MCP validate path calls twice).
+    const colliding: Recipe = { files: { "Gameplay/Sheet": ins("a"), "eventSheets/Gameplay/Sheet.json": ins("b") } };
+    const firstColliding = validateRecipe(colliding);
+    assert.isTrue(
+      firstColliding.some((e) => e.includes("name the same event sheet")),
+      JSON.stringify(firstColliding),
+    );
+    const secondColliding = validateRecipe(colliding);
+    assert.deepEqual(secondColliding, firstColliding);
+    // An invalid key is likewise re-reported rather than rewritten away.
+    const invalid: Recipe = { files: { "Gameplay/": ins("a") } };
+    const firstInvalid = validateRecipe(invalid);
+    assert.isAbove(firstInvalid.length, 0);
+    assert.deepEqual(validateRecipe(invalid), firstInvalid);
   });
 
   it("KI20: the public normalizeRecipePaths throws on a collision instead of collapsing it", () => {

@@ -41,6 +41,18 @@ describe("recipeKeys", () => {
       "",
       "eventSheets/",
       ".json",
+      // W1: a trailing slash names a folder, not a file (interior `//` is still collapsed, see KI12).
+      "Gameplay/",
+      "Gameplay/Sheet.json/",
+      "Gameplay\\",
+      // W2: ':' is an NTFS alternate data stream on Windows and a literal name elsewhere.
+      "Gameplay/C:foo",
+      "a:b",
+      "Gameplay/Sheet.json:stream",
+      // S3: Windows strips trailing spaces and dots, so these segments are '.' / '..' in disguise.
+      "a/.. /b",
+      "a/.../b",
+      "a/. /b",
     ];
     for (const key of bad) {
       assert.isString(keyIssue(key, "eventSheets"), `expected an issue for ${JSON.stringify(key)}`);

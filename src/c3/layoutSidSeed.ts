@@ -2,8 +2,8 @@
  * Layout SID seeding for `applyParsed` (#253). Off-barrel.
  *
  * `applyParsed` unions the on-disk SIDs of every layout a recipe touches into the used-SID set. It must derive the
- * layout paths WITHOUT `normalizeRecipePaths`, which throws on (or collapses) bad keys before `validateRecipe`
- * reports them: an invalid key is skipped here, and the recipe op surfaces the real error later.
+ * layout paths WITHOUT `normalizeRecipePaths`, which throws on identity collisions (and never collapses keys
+ * in place) before `validateRecipe` reports them: an invalid key is skipped here, and the recipe op surfaces the real error later.
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";

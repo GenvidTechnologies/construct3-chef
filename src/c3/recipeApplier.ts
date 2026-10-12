@@ -466,13 +466,14 @@ function findVariableNameBySidRef(sheet: EventSheet, ref: string): string | null
  * as apply, and no objectType/layout write from Steps 1–2 can land first. Resolves
  * each target exactly as Step 3's write does: path.join(rootDir, <normalized key>).
  */
-function checkCreateTargets(rootDir: string, files: NonNullable<Recipe["files"]>): void {
+function checkCreateTargets(rootDir: string, files: NonNullable<Recipe["files"]>, getListing: () => string[]): void {
   const creates = Object.entries(files)
     .filter(([, entry]) => isFileCreate(entry))
     .map(([filePath]) => filePath);
   if (creates.length === 0) return;
-  // The case-folded decision comes from the listing, so it is the same where existsSync is case-sensitive (Linux).
-  const listing = listSpellingCorpus(rootDir);
+  // existsSync covers any existing path the listing does not (it lists event sheets and layouts only); the listing
+  // decides the case-folded matches, which existsSync alone misses where the filesystem is case-sensitive (Linux).
+  const listing = getListing();
   const lines: string[] = [];
   for (const filePath of creates) {
     const folded = findCaseFoldedMatch(filePath, listing);
@@ -501,7 +502,7 @@ function listSpellingCorpus(rootDir: string): string[] {
  * fields (`from`, `sourceLayout`, `templatesLayout`, `targets[].layout`). Fires before expandWorkflows and before
  * any write, in dry-run too, so a miscased `templatesLayout` is refused rather than read.
  */
-function checkKeySpelling(rootDir: string, recipe: Recipe): void {
+function checkKeySpelling(recipe: Recipe, getListing: () => string[]): void {
   const refs: SpellingRef[] = [];
   const addLayoutRef = (p: unknown): void => {
     if (typeof p === "string") refs.push({ path: p, kind: "file" });
@@ -524,7 +525,7 @@ function checkKeySpelling(rootDir: string, recipe: Recipe): void {
   }
   if (refs.length === 0) return;
 
-  const listing = listSpellingCorpus(rootDir);
+  const listing = getListing();
   const mismatches = findSpellingMismatches(refs, listing);
   if (mismatches.length === 0) return;
 
@@ -844,7 +845,10 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
 
   // Letter-case spelling check against the on-disk listing (#253): before expandWorkflows (which reads layouts)
   // and before any write, in dry-run too.
-  checkKeySpelling(rootDir, recipe);
+  // The listing is built at most once per apply and shared by checkKeySpelling and checkCreateTargets.
+  let spellingListing: string[] | undefined;
+  const getSpellingListing = (): string[] => (spellingListing ??= listSpellingCorpus(rootDir));
+  checkKeySpelling(recipe, getSpellingListing);
 
   // Composite workflow ops (extract-template, templatize-in-place,
   // clone-replica-to-layouts, replace-instance-with-replica) expand into
@@ -896,7 +900,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   // sheet (#249); (b) a move-variable global → local demotion is only valid when
   // the global is not referenced from other event sheets.
   if (recipe.files && Object.keys(recipe.files).length > 0) {
-    checkCreateTargets(rootDir, recipe.files);
+    checkCreateTargets(rootDir, recipe.files, getSpellingListing);
     checkMoveVariableDemotions(rootDir, recipe.files, log);
   }
 

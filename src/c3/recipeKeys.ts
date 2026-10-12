@@ -56,6 +56,16 @@ export function keyIssue(key: string, section: RecipeKeySection): string | undef
   const slashed = toSlashes(key);
   if (hasDotDotSegment(slashed)) return "must not contain a '..' segment";
   if (isAbsoluteOrDrive(slashed)) return "must be a relative path, not an absolute or drive-letter path";
+  // A trailing slash (an empty LAST segment) names a folder, not a file. Interior `//` is still accepted and
+  // collapsed by canonicalizeRecipeKey (KI12).
+  if (slashed.endsWith("/")) return "must name a file, not a folder (it ends with '/')";
+  const raw = slashed.split("/");
+  // ':' is an NTFS alternate data stream on Windows but a literal name elsewhere, so it is host-dependent.
+  if (raw.some((s) => s.includes(":"))) return "must not contain ':' (host-dependent on Windows)";
+  // Windows strips trailing spaces and dots, so `.. ` or `...` is a '.'/'..' in disguise. A bare '.' is fine.
+  if (raw.some((s) => s !== "." && s !== "" && s.replace(/[ .]+$/, "") === "")) {
+    return "must not contain a segment that is only dots and spaces";
+  }
   const segments = path.posix
     .normalize(slashed)
     .split("/")

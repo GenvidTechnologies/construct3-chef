@@ -2481,6 +2481,7 @@ function canonicalizeSection<V>(
   source: Record<string, V>,
   mapValue: (value: V, key: string) => V,
   errors: string[],
+  collisions: string[],
 ): { out: Record<string, V>; originals: Map<string, string[]>; canonicalOf: Map<string, string> } {
   const out: Record<string, V> = {};
   // identity -> original keys in recipe order (valid keys only); identity -> first canonical form
@@ -2509,7 +2510,9 @@ function canonicalizeSection<V>(
   }
   for (const [id, group] of originals) {
     if (group.length < 2) continue;
-    errors.push(collisionMessage(label, section, canonicalOf.get(id)!, group, canonicals.get(id)!.size > 1));
+    const message = collisionMessage(label, section, canonicalOf.get(id)!, group, canonicals.get(id)!.size > 1);
+    errors.push(message);
+    collisions.push(message);
   }
   return { out, originals, canonicalOf };
 }
@@ -2549,11 +2552,22 @@ function eachCrossLayoutRef(
  * of keys sharing an identity, and cross-reference spelling splits. A non-object section, or a layouts value that is
  * not an array, is left for validateRecipe's own guards to report.
  */
-function normalizeRecipePathsChecked(recipe: Recipe): string[] {
+function normalizeRecipePathsChecked(recipe: Recipe): CheckedKeys {
   const errors: string[] = [];
+  const collisions: string[] = [];
+
+  // The rebuilt maps are assigned only when no KEY is invalid or colliding. Otherwise the recipe's files/layouts are
+  // left exactly as written, so a second call re-detects the same problems (W3: the MCP validate-recipe path calls
+  // validateRecipe twice) instead of seeing a merged, already-collapsed map. Cross-reference errors (a spelling split
+  // or an invalid cross-layout value) do not block the rewrite: they are re-detected on a canonical recipe anyway,
+  // and the rewrite keeps the later self-checks (e.g. KI16) comparing canonical forms.
+  let newFiles: Recipe["files"];
+  let newLayouts: Recipe["layouts"];
+  let keyErrorCount = 0;
 
   if (isPlainObject(recipe.files)) {
-    recipe.files = canonicalizeSection("eventSheets", "files", recipe.files, (v) => v, errors).out;
+    newFiles = canonicalizeSection("eventSheets", "files", recipe.files, (v) => v, errors, collisions).out;
+    keyErrorCount = errors.length;
   }
 
   if (isPlainObject(recipe.layouts)) {
@@ -2595,12 +2609,24 @@ function normalizeRecipePathsChecked(recipe: Recipe): string[] {
         });
       },
       errors,
+      collisions,
     );
-    recipe.layouts = section.out as typeof recipe.layouts;
+    newLayouts = section.out as typeof recipe.layouts;
+    keyErrorCount = errors.length;
     errors.push(...crossErrors);
   }
 
-  return errors;
+  if (keyErrorCount === 0) {
+    if (newFiles !== undefined) recipe.files = newFiles;
+    if (newLayouts !== undefined) recipe.layouts = newLayouts;
+  }
+  return { errors, collisions };
+}
+
+/** What {@link normalizeRecipePathsChecked} found: every error, and the subset that are identity collisions. */
+interface CheckedKeys {
+  errors: string[];
+  collisions: string[];
 }
 
 /**
@@ -2609,12 +2635,12 @@ function normalizeRecipePathsChecked(recipe: Recipe): string[] {
  * reports it) instead of silently keeping the last one.
  */
 export function normalizeRecipePaths(recipe: Recipe): void {
-  const errors = normalizeRecipePathsChecked(recipe).filter((e) => e.includes(" keys name the same "));
-  if (errors.length > 0) throw new Error(errors.join("\n"));
+  const { collisions } = normalizeRecipePathsChecked(recipe);
+  if (collisions.length > 0) throw new Error(collisions.join("\n"));
 }
 
 export function validateRecipe(recipe: Recipe): string[] {
-  const errors: string[] = normalizeRecipePathsChecked(recipe);
+  const errors: string[] = normalizeRecipePathsChecked(recipe).errors;
 
   const hasSections =
     recipe.objectTypes !== undefined ||
