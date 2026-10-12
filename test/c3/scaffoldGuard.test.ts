@@ -76,18 +76,12 @@ describe("scaffoldGuard (#254)", () => {
       expect(got).to.deep.equal([{ relPath: "objectTypes/tsconfig.json", reason: "output-exists" }]);
     });
 
-    it("U5b: on a case-insensitive filesystem, Text.json collides with name 'text'", function () {
-      put("objectTypes/CaseProbe.json");
-      if (!existsSync(path.join(objectTypesDir(), "caseprobe.json"))) {
-        this.skip(); // case-sensitive filesystem: the flat existsSync does not match
-      }
+    it("U5b: Text.json collides with name 'text' as an objectType-name conflict on every host (#253, #260)", () => {
       put("objectTypes/Text.json");
 
       const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), "Src", "text");
 
-      expect(got).to.have.length(1);
-      expect(got[0].reason).to.equal("output-exists");
-      expect(got[0].relPath.toLowerCase()).to.equal("objecttypes/text.json");
+      expect(got).to.deep.equal([{ relPath: "objectTypes/Text.json", reason: "objectType-name" }]);
     });
 
     it("U6: an objectType with the same name in a subfolder is an objectType-name conflict", () => {
