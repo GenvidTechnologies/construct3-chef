@@ -46,6 +46,7 @@ import {
   type LayoutJson as MutatorLayoutJson,
 } from "./layoutMutator.js";
 import { collectAllUids, collectLayoutSids } from "./layoutScaffold.js";
+import { seedLayoutSids } from "./layoutSidSeed.js";
 import { readRegistryFile, makeSidGen, freshSidGen, type SidGenerator } from "./sidUtils.js";
 import { diffScripts } from "./previewDiff.js";
 import { findCaseFoldedMatch, findSpellingMismatches, type SpellingRef } from "./recipeKeys.js";
@@ -1258,18 +1259,9 @@ export function applyParsed(rootDir: string, recipe: Recipe, opts: ApplyOptions 
   // union the on-disk SIDs into `used` so layout ops can't mint a SID already present
   // in the file. The registry covers layouts/ but may lag behind a prior apply with
   // `regenerate: false` or a watcher-missed external edit.
-  if (recipe.layouts) {
-    for (const layoutPath of Object.keys(recipe.layouts)) {
-      const fullPath = path.join(rootDir, layoutPath);
-      if (!existsSync(fullPath)) continue;
-      try {
-        const layoutJson = JSON.parse(readFileSync(fullPath, "utf-8")) as Record<string, unknown>;
-        for (const sid of collectLayoutSids(layoutJson)) used.add(sid);
-      } catch {
-        // Unparseable layout — skip the defensive seed; the recipe op will surface a real error.
-      }
-    }
-  }
+  // The keys are canonicalized by `seedLayoutSids` (a bare `Gameplay/Main Layout` is read from `layouts/…json`):
+  // this runs before `normalizeRecipePaths`, so a raw join would miss every bare key (#253).
+  seedLayoutSids(rootDir, recipe.layouts, used);
 
   const sidGen = makeSidGen(used);
   applyRecipeInner(sidGen, rootDir, recipe, resolved);
