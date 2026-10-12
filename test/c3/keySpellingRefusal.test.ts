@@ -98,7 +98,7 @@ describe("case-only key-spelling refusal (#253)", () => {
 
   it("KS8: a CREATE over an existing sheet under another case is the #249 refusal, naming the on-disk file", () => {
     const before = readFileSync(path.join(tmp, SHEET_REL));
-    const err = apply(tmp, { files: { "gameplay/EVENT SHEET 1": { create: true, events: [] } } });
+    const err = apply(tmp, { files: { "Gameplay/EVENT SHEET 1": { create: true, events: [] } } });
     assert.instanceOf(err, Error, "apply must throw");
     assert.include(err!.message, "files CREATE refused");
     // Today's guard (existsSync) may refuse on a case-insensitive host, but never says which spelling is on disk.

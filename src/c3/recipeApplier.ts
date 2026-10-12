@@ -48,7 +48,7 @@ import {
 import { collectAllUids, collectLayoutSids } from "./layoutScaffold.js";
 import { readRegistryFile, makeSidGen, freshSidGen, type SidGenerator } from "./sidUtils.js";
 import { diffScripts } from "./previewDiff.js";
-import { findSpellingMismatches, type SpellingRef } from "./recipeKeys.js";
+import { findCaseFoldedMatch, findSpellingMismatches, type SpellingRef } from "./recipeKeys.js";
 import { expandWorkflows, type LoadLayout } from "./workflowExpansion.js";
 import { buildCustomAceIndex, validateInsertedCustomActions, type CustomAceIndex } from "./customAceIndex.js";
 import {
@@ -466,14 +466,31 @@ function findVariableNameBySidRef(sheet: EventSheet, ref: string): string | null
  * each target exactly as Step 3's write does: path.join(rootDir, <normalized key>).
  */
 function checkCreateTargets(rootDir: string, files: NonNullable<Recipe["files"]>): void {
-  const existing = Object.entries(files)
-    .filter(([filePath, entry]) => isFileCreate(entry) && existsSync(path.join(rootDir, filePath)))
+  const creates = Object.entries(files)
+    .filter(([, entry]) => isFileCreate(entry))
     .map(([filePath]) => filePath);
-  if (existing.length === 0) return;
+  if (creates.length === 0) return;
+  // The case-folded decision comes from the listing, so it is the same where existsSync is case-sensitive (Linux).
+  const listing = listSpellingCorpus(rootDir);
+  const lines: string[] = [];
+  for (const filePath of creates) {
+    const folded = findCaseFoldedMatch(filePath, listing);
+    if (!existsSync(path.join(rootDir, filePath)) && folded.length === 0) continue;
+    lines.push(folded.length > 0 ? `  - ${filePath} (on disk: ${folded.join(" | ")})` : `  - ${filePath}`);
+  }
+  if (lines.length === 0) return;
   throw new Error(
-    `files CREATE refused: ${existing.length} target(s) already exist on disk, and { "create": true } never overwrites an existing event sheet. Nothing was written.\n` +
-      existing.map((p) => `  - ${p}`).join("\n") +
+    `files CREATE refused: ${lines.length} target(s) already exist on disk, and { "create": true } never overwrites an existing event sheet. Nothing was written.\n` +
+      lines.join("\n") +
       `\nTo edit an existing sheet, give its files entry an ops array instead, e.g. [{ "op": "insert-event", ... }].`,
+  );
+}
+
+/** Event-sheet and layout paths on disk, root-relative with "/" separators: the corpus spelling checks compare against. */
+function listSpellingCorpus(rootDir: string): string[] {
+  const project = openProject(rootDir);
+  return [...project.findAllEventSheets(), ...project.findAllLayouts()].map((p) =>
+    path.relative(rootDir, p).split(path.sep).join("/"),
   );
 }
 
@@ -506,10 +523,7 @@ function checkKeySpelling(rootDir: string, recipe: Recipe): void {
   }
   if (refs.length === 0) return;
 
-  const project = openProject(rootDir);
-  const listing = [...project.findAllEventSheets(), ...project.findAllLayouts()].map((p) =>
-    path.relative(rootDir, p).split(path.sep).join("/"),
-  );
+  const listing = listSpellingCorpus(rootDir);
   const mismatches = findSpellingMismatches(refs, listing);
   if (mismatches.length === 0) return;
 
