@@ -73,3 +73,27 @@ export function keyIssue(key: string, section: RecipeKeySection): string | undef
 export function identity(canonical: string): string {
   return canonical.toLowerCase();
 }
+
+/** The noun a recipe section's keys name, for messages. */
+const SECTION_NOUN: Record<RecipeKeySection, string> = { eventSheets: "event sheet", layouts: "layout" };
+
+/**
+ * The one validateRecipe line for a group of two or more keys sharing an identity (#252/#253). `label` is the
+ * section prefix as the author wrote it (`files` / `layouts`), `canonical` the group's first canonical path, and
+ * `spellings` the original keys in recipe order (JSON-quoted here). `caseOnly` adds `(letter case is ignored)`
+ * when the members' canonical forms differ only in letter case.
+ */
+export function collisionMessage(
+  label: string,
+  section: RecipeKeySection,
+  canonical: string,
+  spellings: string[],
+  caseOnly: boolean,
+): string {
+  const note = caseOnly ? " (letter case is ignored)" : "";
+  const quoted = spellings.map((s) => JSON.stringify(s)).join(", ");
+  return (
+    `${label}: ${spellings.length} keys name the same ${SECTION_NOUN[section]} ${canonical}${note} — ${quoted}. ` +
+    "Merge their entries under one key."
+  );
+}
