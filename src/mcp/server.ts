@@ -27,6 +27,7 @@ import { applyParsed } from "../c3/recipeApplier.js";
 import { validateRecipe, type Recipe } from "../c3/recipeInterpreter.js";
 import { findJsonFiles, SID_SOURCE_DIRS } from "../c3/generators.js";
 import { runSync, reportImageDrift, reportStrayFiles } from "../c3/projectSync.js";
+import { newWriteLedger, failureEffects, type WriteLedger } from "./writeLedger.js";
 import { isEditorLocalPathUnder } from "../c3/editorLocal.js";
 import { readRegistryFile, mintUniqueSid } from "../c3/sidUtils.js";
 import { filterIndex, buildShallowSidMap, type SidMapEntry } from "../c3/dslFormatter.js";
@@ -215,6 +216,24 @@ class CancelledError extends Error {
 
 function checkCancelled(extra?: Extra): void {
   if (extra?.signal?.aborted) throw new CancelledError();
+}
+
+/**
+ * Failure bookkeeping for a mutating tool (#255, ADR 0047). A cancel always
+ * bumps the txId and marks `extracted/` stale (the recipe was applied, only
+ * regeneration was interrupted). Any other failure acts on what the call's
+ * ledger says it MAY have written: source or manifest writes move the txId,
+ * source or generator writes mark `extracted/` stale.
+ */
+function recordFailedMutation(ctx: ProjectContext, e: unknown, writes: WriteLedger): void {
+  if (e instanceof CancelledError) {
+    ctx.watcher.bump();
+    ctx.extractedDirty = true;
+    return;
+  }
+  const { bump, dirty } = failureEffects(writes);
+  if (bump) ctx.watcher.bump();
+  if (dirty) ctx.extractedDirty = true;
 }
 
 async function runGenerators(
@@ -1015,6 +1034,7 @@ async function applyRecipeWithConcurrency(
   opts: { expectedTxId?: string; regenerate?: boolean; label?: string },
   extra: Extra,
 ): Promise<CallToolResult> {
+  const writes = newWriteLedger();
   return ctx.rwlock.write(
     withMcpErrors(
       async () => {
@@ -1031,8 +1051,15 @@ async function applyRecipeWithConcurrency(
         // Suppress ctx.watcher during writes — we manage txId/ctx.extractedDirty ourselves
         await ctx.watcher.suppress(async () => {
           await sendProgress(extra, 0, totalSteps, label);
-          applyParsed(ctx.root, recipe, { regenerate: false, log });
+          applyParsed(ctx.root, recipe, {
+            regenerate: false,
+            log,
+            beforeSourceWrite: () => {
+              writes.source = true;
+            },
+          });
           if (shouldRegenerate) {
+            writes.extracted = true;
             await runGenerators(ctx, log, extra, 1, totalSteps);
           }
         });
@@ -1044,13 +1071,7 @@ async function applyRecipeWithConcurrency(
       },
       {
         prefix: "Error:",
-        onError: (e) => {
-          if (e instanceof CancelledError) {
-            // Recipe already applied (source files modified) but regeneration interrupted
-            ctx.watcher.bump();
-            ctx.extractedDirty = true;
-          }
-        },
+        onError: (e) => recordFailedMutation(ctx, e, writes),
         extraLines: () => [txIdLine(ctx)],
       },
     ),
@@ -1106,11 +1127,9 @@ regP(
         },
         {
           prefix: "Error:",
-          onError: (e) => {
-            if (e instanceof CancelledError) {
-              // Partially regenerated — stale. No ctx.watcher.bump() (regenerate doesn't modify source files)
-              ctx.extractedDirty = true;
-            }
+          // Every failure leaves extracted/ stale; none bumps (no source changed).
+          onError: () => {
+            ctx.extractedDirty = true;
           },
         },
       ),
@@ -1555,8 +1574,9 @@ regP(
       regenerate: z.boolean().optional().describe("Regenerate extracted/ files after scaffolding (default: true)"),
     },
   },
-  async (ctx, { source, name, path: outRelPath, eventSheet, txId: expectedTxId, regenerate }, extra: Extra) =>
-    ctx.rwlock.write(
+  async (ctx, { source, name, path: outRelPath, eventSheet, txId: expectedTxId, regenerate }, extra: Extra) => {
+    const writes = newWriteLedger();
+    return ctx.rwlock.write(
       withMcpErrors(
         async () => {
           const shouldRegenerate = regenerate !== false;
@@ -1580,15 +1600,18 @@ regP(
           // Write output
           await ctx.watcher.suppress(async () => {
             ctx.watcher.expect(plan.outPath);
+            writes.source = true;
             writeLayoutScaffold(plan, log);
             await sendProgress(extra, 0, totalSteps, "Cloning layout");
 
             // Sync project.c3proj
             await sendProgress(extra, 1, totalSteps, "Syncing project.c3proj");
+            writes.manifest = true;
             runSync(ctx.root, false, log);
 
             // Regenerate extracted/ files
             if (shouldRegenerate) {
+              writes.extracted = true;
               await runGenerators(ctx, log, extra, 2, totalSteps);
             }
           });
@@ -1601,17 +1624,12 @@ regP(
         },
         {
           prefix: "Error:",
-          onError: (e) => {
-            if (e instanceof CancelledError) {
-              // Layout was already written — source files changed, extracted/ is stale
-              ctx.watcher.bump();
-              ctx.extractedDirty = true;
-            }
-          },
+          onError: (e) => recordFailedMutation(ctx, e, writes),
           extraLines: () => [txIdLine(ctx)],
         },
       ),
-    ),
+    );
+  },
 );
 
 regP(
@@ -1627,8 +1645,9 @@ regP(
       txId: z.string().optional().describe("Expected txId — if stale, scaffold is rejected"),
     },
   },
-  async (ctx, { source, name: targetName, txId: expectedTxId }) =>
-    ctx.rwlock.write(
+  async (ctx, { source, name: targetName, txId: expectedTxId }) => {
+    const writes = newWriteLedger();
+    return ctx.rwlock.write(
       withMcpErrors(
         async () => {
           const { log, text } = bufferingLogger();
@@ -1650,9 +1669,11 @@ regP(
             // still leaves the JSON accounted for. images/ is NOT watched — only the
             // objectType JSON needs an expect.
             ctx.watcher.expect(plan.outPath);
+            writes.source = true;
             writeSpriteScaffold(plan, log);
 
             // Sync project.c3proj
+            writes.manifest = true;
             runSync(ctx.root, false, log);
           });
 
@@ -1661,17 +1682,12 @@ regP(
         },
         {
           prefix: "Error:",
-          onError: (e) => {
-            if (e instanceof CancelledError) {
-              // Sprite was already written — source files changed, extracted/ may be stale
-              ctx.watcher.bump();
-              ctx.extractedDirty = true;
-            }
-          },
+          onError: (e) => recordFailedMutation(ctx, e, writes),
           extraLines: () => [txIdLine(ctx)],
         },
       ),
-    ),
+    );
+  },
 );
 
 // ── Template Workflow Tools ─────────────────────────────────────────────────
@@ -1693,6 +1709,7 @@ async function runWorkflowRecipe(
   regenerate: boolean | undefined,
   extra: Extra,
 ): Promise<CallToolResult> {
+  const writes = newWriteLedger();
   return withMcpErrors(
     async () => {
       checkRegistryFreshness(ctx, path.join(ctx.extractedDir, "sid-registry.txt"));
@@ -1703,8 +1720,15 @@ async function runWorkflowRecipe(
       if (txCheck) return txCheck;
       await ctx.watcher.suppress(async () => {
         await sendProgress(extra, 0, totalSteps, "Applying workflow");
-        applyParsed(ctx.root, recipe, { regenerate: false, log });
+        applyParsed(ctx.root, recipe, {
+          regenerate: false,
+          log,
+          beforeSourceWrite: () => {
+            writes.source = true;
+          },
+        });
         if (shouldRegenerate) {
+          writes.extracted = true;
           await runGenerators(ctx, log, extra, 1, totalSteps);
         }
       });
@@ -1716,12 +1740,7 @@ async function runWorkflowRecipe(
     },
     {
       prefix: "Error:",
-      onError: (e) => {
-        if (e instanceof CancelledError) {
-          ctx.watcher.bump();
-          ctx.extractedDirty = true;
-        }
-      },
+      onError: (e) => recordFailedMutation(ctx, e, writes),
       extraLines: () => [txIdLine(ctx)],
     },
   )();

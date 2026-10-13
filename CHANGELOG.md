@@ -40,6 +40,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   log no longer prints the step lines that came before the error.
   `validate-recipe` and dry-run output are unchanged.
 
+- **A failed MCP mutation now reports what it may have written.** When an MCP
+  mutation (`apply-recipe`, the op tools, the workflow/layer tools,
+  `scaffold-layout`, `scaffold-sprite`) fails after it may have written source
+  files, it now moves the txId (the error response carries the new token) and
+  marks `extracted/` stale. A failure that wrote only `project.c3proj` moves the
+  txId only; a failure before any write changes neither. A `regenerate` failure
+  marks `extracted/` stale without moving the txId
+  ([#255](https://github.com/GenvidTechnologies/construct3-chef/issues/255)).
+  Also adds the optional `ApplyOptions.beforeSourceWrite` hook (additive public
+  API).
+
 - **Recipe `files`/`layouts` keys now have one canonical, case-insensitive identity.**
   **Behaviour change:** these recipes are now rejected. (1) Two spellings of one
   key (`"a"` and `"eventSheets/a.json"`, or a `\` and a `/` form) used to
