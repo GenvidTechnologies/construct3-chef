@@ -47,7 +47,7 @@ This fits ADR 0004's rule that both surfaces share the library: the apply result
 ## Consequences
 
 - A seventh generator is picked up automatically, so `recipeApplier.ts` is not a lockstep site.
-- Each CLI apply now runs six full-project scans instead of two or three. The cost is indicative only: under 0.4 s on the sample fixture, and MCP users already paid it.
+- Each CLI apply now runs six full-project scans instead of two or three. The cost was not measured; MCP users already paid it, since the MCP path has always run every generator after an apply.
 - `generateLayoutSummaries` now runs even on recipes that touched no layout, which exposes its `project.c3proj` read on those runs.
 - It is a behaviour change to a public function with the same signature, so it ships as a minor release with a CHANGELOG note, not a major.
 - ADR 0022's decline paragraph is reversed; it carries an amendment note pointing here.
