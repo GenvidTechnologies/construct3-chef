@@ -21,5 +21,14 @@ import { writeFileSync } from "node:fs";
  * / `src/c3/editorLocal.ts` for the same pattern.
  */
 export function writeSourceJson(filePath: string, value: unknown): void {
-  writeFileSync(filePath, JSON.stringify(value, null, "\t"));
+  writeFileSync(filePath, serializeSourceJson(value));
+}
+
+/**
+ * The canonical source-JSON serialization (tab-indented, no trailing
+ * newline) as a string. `writeSourceJson` and the in-memory `SourceIo`
+ * overlay share this one serializer so the bytes cannot diverge.
+ */
+export function serializeSourceJson(value: unknown): string {
+  return JSON.stringify(value, null, "\t");
 }

@@ -28,6 +28,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A refused `apply-recipe` now writes nothing.** Apply used to write each step
+  as it went, so a refusal at a later step (a bad layout op, an editor-validation
+  or custom-action failure on a sheet) left the earlier objectTypes, layouts and
+  sheets on disk. Apply now computes every step in memory and writes only once all
+  of them have succeeded
+  ([#278](https://github.com/GenvidTechnologies/construct3-chef/issues/278),
+  [#279](https://github.com/GenvidTechnologies/construct3-chef/issues/279)).
+  Only a file-system error during those writes (for example a read-only file)
+  can still leave the earlier files of the same apply written.
+  **Behaviour change:** a refused `apply-recipe` (CLI or MCP) writes no file;
+  new folders are created only when the apply succeeds; and a refused apply's
+  log no longer prints the step lines that came before the error.
+  `validate-recipe` and dry-run output are unchanged.
+
+- **A failed MCP mutation now reports what it may have written.** When an MCP
+  mutation (`apply-recipe`, the op tools, the workflow/layer tools,
+  `scaffold-layout`, `scaffold-sprite`) fails after it may have written source
+  files, it now moves the txId (the error response carries the new token) and
+  marks `extracted/` stale. A failure that wrote only `project.c3proj` moves the
+  txId only; a failure before any write changes neither. A `regenerate` failure
+  marks `extracted/` stale without moving the txId
+  ([#255](https://github.com/GenvidTechnologies/construct3-chef/issues/255)).
+  **Behaviour change:** before, only a cancelled call moved the txId or marked
+  `extracted/` stale, so an error response could now carry a newer txId than the
+  one the client sent, and a failed `regenerate` now marks `extracted/` stale.
+  Also adds the optional `ApplyOptions.beforeSourceWrite` hook (additive public
+  API).
+
 - **Recipe `files`/`layouts` keys now have one canonical, case-insensitive identity.**
   **Behaviour change:** these recipes are now rejected. (1) Two spellings of one
   key (`"a"` and `"eventSheets/a.json"`, or a `\` and a `/` form) used to

@@ -23,6 +23,13 @@ import { SID_SOURCE_DIRS } from "../../src/c3/generators.js";
 import { reportStrayFiles } from "../../src/c3/projectSync.js";
 import { seedManifestDrift } from "../helpers/seedManifestDrift.js";
 import { runCli } from "../helpers/runCli.js";
+import {
+  snapshotTree,
+  plantBrokenSheet,
+  plantBrokenLayout,
+  breakManifest,
+  makeReadOnly,
+} from "../helpers/applyFixtures.js";
 import { applyParsed } from "../../src/c3/recipeApplier.js";
 import { formatScaffoldRefusal } from "../../src/c3/scaffoldGuard.js";
 import {
@@ -326,7 +333,6 @@ describe("MCP server handler response shaping", () => {
     const sheet = path.join(tmp, "eventSheets", "Gameplay", "Event sheet 1.json");
     const before = fs.readFileSync(sheet);
 
-    __setExtractedDirty(true); // skip registry freshness scan
     const result = (await handler(
       { recipe: CREATE_EXISTING_RECIPE, txId: "default:5", regenerate: false },
       makeExtra(),
@@ -335,6 +341,7 @@ describe("MCP server handler response shaping", () => {
     expect(result.isError).to.be.true;
     expect(watcher.bumped).to.equal(0);
     expect(fs.readFileSync(sheet).equals(before)).to.be.true;
+    expect(__getExtractedDirty()).to.be.false;
   });
 
   // R9 (#252): one sheet under two spellings is refused on MCP validate-recipe AND apply-recipe, with the group
@@ -351,7 +358,6 @@ describe("MCP server handler response shaping", () => {
     });
     const sheet = path.join(tmp, "eventSheets", "Gameplay", "Event sheet 1.json");
     const before = fs.readFileSync(sheet);
-    __setExtractedDirty(true); // skip registry freshness scan
 
     const validated = (await __getHandler("validate-recipe")!({ recipe: twoSpellings }, makeExtra())) as any;
     const validatedText = validated.content.map((b: any) => b.text).join("\n");
@@ -369,6 +375,7 @@ describe("MCP server handler response shaping", () => {
     expect(appliedText).to.include("txId: default:5");
     expect(watcher.bumped).to.equal(0);
     expect(fs.readFileSync(sheet).equals(before)).to.be.true;
+    expect(__getExtractedDirty()).to.be.false;
 
     // The CLI/library path (applyParsed) throws the same line, byte for byte.
     let libMessage = "";
@@ -391,7 +398,6 @@ describe("MCP server handler response shaping", () => {
     });
     const sheet = path.join(tmp, "eventSheets", "Gameplay", "Event sheet 1.json");
     const before = fs.readFileSync(sheet);
-    __setExtractedDirty(true); // skip registry freshness scan
 
     const validated = (await __getHandler("validate-recipe")!({ recipe: miscased }, makeExtra())) as any;
     const validatedText = validated.content.map((b: any) => b.text).join("\n");
@@ -407,6 +413,7 @@ describe("MCP server handler response shaping", () => {
     expect(appliedText).to.include(REFUSAL);
     expect(watcher.bumped).to.equal(0);
     expect(fs.readFileSync(sheet).equals(before)).to.be.true;
+    expect(__getExtractedDirty()).to.be.false;
   });
 
   // R2 (#245): a workflow tool routes through applyParsed too; it only edits an existing
@@ -776,7 +783,6 @@ describe("MCP server handler response shaping", () => {
     const handler = __getHandler("apply-recipe")!;
     expect(handler).to.exist;
 
-    __setExtractedDirty(true); // skip registry freshness scan
     const result = (await handler({ recipe: VALID_RECIPE }, makeExtra(true))) as any;
 
     expect(result.isError).to.be.true;
@@ -1562,6 +1568,230 @@ describe("MCP server handler response shaping", () => {
       expect(cliC.exitCode).to.equal(1);
       expect(cliC.stderr.trimEnd()).to.equal(mcpC);
       expect(mcpC).to.equal(formatScaffoldNameRejection("name", "../X"));
+    });
+  });
+
+  // ── a refused apply writes nothing (#279) ─────────────────────────────────
+  // Each row asserts the refusal (error text, txId line, bumped, dirty) FIRST and the
+  // file state LAST, so a red run names which half failed.
+
+  describe("a refused apply writes nothing (#279)", () => {
+    const a1 = JSON.stringify({
+      layouts: {
+        "layouts/Templates Layout.json": [{ op: "add-layer", name: "P" }],
+        "layouts/UI/Second Layout.json": [{ op: "rename-layer", currentName: "NoSuchLayer", newName: "X" }],
+      },
+    });
+    const a2 = JSON.stringify({
+      layouts: { "layouts/Templates Layout.json": [{ op: "add-layer", name: "P" }] },
+      files: { "eventSheets/Gameplay/Event sheet 1.json": [{ op: "remove-event", path: "sid:123456789012345" }] },
+    });
+
+    async function check(tool: string, args: Record<string, unknown>, errorText: string): Promise<void> {
+      const before = snapshotTree(tmp);
+      const result = (await __getHandler(tool)!(args, makeExtra())) as any;
+      const text = result.content.map((b: any) => b.text).join("\n") as string;
+      expect(result.isError).to.be.true;
+      expect(text).to.include(errorText);
+      expect(text.split("\n").pop()).to.equal("txId: default:5");
+      expect(watcher.bumped).to.equal(0);
+      expect(__getExtractedDirty()).to.be.false;
+      const after = snapshotTree(tmp);
+      const changed = [...new Set([...before.keys(), ...after.keys()])].filter((k) => before.get(k) !== after.get(k));
+      expect(changed, "files changed by a refused apply").to.deep.equal([]);
+    }
+
+    it("T1: a layout op that fails after an earlier layout was edited leaves every file unchanged", async () => {
+      await check(
+        "apply-recipe",
+        { recipe: a1, txId: "default:5", regenerate: false },
+        'renameLayer: layer "NoSuchLayer" not found',
+      );
+    });
+
+    it("T2b: a files op that fails after a layout edit leaves every file unchanged", async () => {
+      await check(
+        "apply-recipe",
+        { recipe: a2, txId: "default:5", regenerate: false },
+        'Cannot split node path "sid:123456789012345"',
+      );
+    });
+
+    it("T4: clone-replica-to-layouts with a bad second target layer leaves every file unchanged", async () => {
+      await check(
+        "clone-replica-to-layouts",
+        {
+          templatesLayout: "layouts/Templates Layout.json",
+          templateName: "default",
+          sourceType: "Sprite3",
+          targets: [
+            { layout: "layouts/UI/Second Layout.json", layer: "layer 1" },
+            { layout: "layouts/Gameplay/Main Layout.json", layer: "NoSuchLayer" },
+          ],
+          txId: "default:5",
+          regenerate: false,
+        },
+        "NoSuchLayer",
+      );
+    });
+  });
+
+  // ── a failed mutation reports what it may have written (#255) ─────────────
+  // Each row asserts in order: error text, the last-line txId, bumped, dirty, so a red run
+  // names which half failed.
+
+  describe("a failed mutation reports what it may have written (#255)", () => {
+    const twoSheets = JSON.stringify({
+      files: {
+        "eventSheets/Gameplay/Event sheet 1.json": [{ op: "insert-event", comment: "T2A" }],
+        "eventSheets/UI/Event sheet 2.json": [{ op: "insert-event", comment: "T2B" }],
+      },
+    });
+    const sheet1Only = JSON.stringify({
+      files: { "eventSheets/Gameplay/Event sheet 1.json": [{ op: "insert-event", comment: "T3B" }] },
+    });
+    const addInstVars = JSON.stringify({
+      addInstVars: [{ type: "Text", instanceVariables: [{ name: "probeVar", type: "number" }] }],
+    });
+    const singleLayoutFail = JSON.stringify({
+      layouts: {
+        "layouts/UI/Second Layout.json": [{ op: "rename-layer", currentName: "NoSuchLayer", newName: "X" }],
+      },
+    });
+    const cloneArgs = {
+      templatesLayout: "layouts/Templates Layout.json",
+      templateName: "default",
+      sourceType: "Sprite3",
+      targets: [{ layout: "layouts/UI/Second Layout.json", layer: "layer 1" }],
+      txId: "default:5",
+    };
+    const scaffoldLayoutArgs = {
+      source: "Gameplay/Main Layout.json",
+      name: "ProbeLayout",
+      path: "Probe/ProbeLayout.json",
+      eventSheet: "Event sheet 1",
+    };
+
+    const run = async (tool: string, args: Record<string, unknown>): Promise<{ result: any; text: string }> => {
+      const result = (await __getHandler(tool)!(args, makeExtra())) as any;
+      return { result, text: result.content.map((b: any) => b.text).join("\n") as string };
+    };
+    const lastLine = (text: string): string => text.split("\n").pop()!;
+
+    let restoreReadOnly: (() => void) | undefined;
+    afterEach(() => {
+      restoreReadOnly?.();
+      restoreReadOnly = undefined;
+    });
+    const makeSheet2ReadOnly = (): void => {
+      restoreReadOnly = makeReadOnly(path.join(tmp, "eventSheets", "UI", "Event sheet 2.json"));
+    };
+
+    it("T2: a write that fails after an earlier sheet landed bumps txId and marks extracted dirty", async function () {
+      if (process.getuid?.() === 0) this.skip();
+      makeSheet2ReadOnly();
+      const { result, text } = await run("apply-recipe", { recipe: twoSheets, txId: "default:5", regenerate: false });
+      expect(result.isError, text).to.be.true;
+      expect(lastLine(text)).to.equal("txId: default:6");
+      expect(watcher.bumped).to.equal(1);
+      expect(__getExtractedDirty()).to.be.true;
+    });
+
+    it("T3: addInstVars with a broken event sheet bumps txId and marks extracted dirty", async () => {
+      plantBrokenSheet(tmp);
+      const { result, text } = await run("apply-recipe", { recipe: addInstVars, txId: "default:5" });
+      expect(result.isError, text).to.be.true;
+      expect(lastLine(text)).to.equal("txId: default:6");
+      expect(watcher.bumped).to.equal(1);
+      expect(__getExtractedDirty()).to.be.true;
+    });
+
+    it("T3b: a files-only insert with a broken layout (regenerate fails) bumps txId and marks extracted dirty", async () => {
+      plantBrokenLayout(tmp);
+      const { result, text } = await run("apply-recipe", { recipe: sheet1Only, txId: "default:5" });
+      expect(result.isError, text).to.be.true;
+      expect(lastLine(text)).to.equal("txId: default:6");
+      expect(watcher.bumped).to.equal(1);
+      expect(__getExtractedDirty()).to.be.true;
+    });
+
+    it("T4b: clone-replica-to-layouts whose regenerate fails bumps txId and marks extracted dirty", async () => {
+      plantBrokenSheet(tmp);
+      const { result, text } = await run("clone-replica-to-layouts", cloneArgs);
+      expect(result.isError, text).to.be.true;
+      expect(watcher.bumped).to.equal(1);
+      expect(__getExtractedDirty()).to.be.true;
+    });
+
+    it("T5: scaffold-layout with a broken manifest bumps txId and marks extracted dirty", async () => {
+      breakManifest(tmp);
+      const { result, text } = await run("scaffold-layout", { ...scaffoldLayoutArgs, regenerate: false });
+      expect(result.isError, text).to.be.true;
+      expect(lastLine(text)).to.equal("txId: default:6");
+      expect(watcher.bumped).to.equal(1);
+      expect(__getExtractedDirty()).to.be.true;
+    });
+
+    it("T6: scaffold-layout whose regenerate fails bumps txId and marks extracted dirty", async () => {
+      plantBrokenSheet(tmp);
+      const { result, text } = await run("scaffold-layout", { ...scaffoldLayoutArgs, regenerate: true });
+      expect(result.isError, text).to.be.true;
+      expect(watcher.bumped).to.equal(1);
+      expect(__getExtractedDirty()).to.be.true;
+    });
+
+    it("T7: scaffold-sprite with a broken manifest bumps txId and marks extracted dirty", async () => {
+      breakManifest(tmp);
+      const { result, text } = await run("scaffold-sprite", { source: "Text", name: "ProbeSprite" });
+      expect(result.isError, text).to.be.true;
+      expect(lastLine(text)).to.equal("txId: default:6");
+      expect(watcher.bumped).to.equal(1);
+      expect(__getExtractedDirty()).to.be.true;
+    });
+
+    it("T8: regenerate that fails marks extracted dirty without bumping txId", async () => {
+      plantBrokenSheet(tmp);
+      const { result, text } = await run("regenerate", {});
+      expect(result.isError, text).to.be.true;
+      expect(watcher.bumped).to.equal(0);
+      expect(__getExtractedDirty()).to.be.true;
+    });
+
+    it("T9: a single-layout op refused during compute leaves txId and dirty alone", async () => {
+      const { result, text } = await run("apply-recipe", {
+        recipe: singleLayoutFail,
+        txId: "default:5",
+        regenerate: false,
+      });
+      expect(result.isError, text).to.be.true;
+      expect(lastLine(text)).to.equal("txId: default:5");
+      expect(watcher.bumped).to.equal(0);
+      expect(__getExtractedDirty()).to.be.false;
+    });
+
+    it("T10: remove-layer on a missing layer leaves txId and dirty alone", async () => {
+      const { result, text } = await run("remove-layer", {
+        layout: "layouts/UI/Second Layout.json",
+        layer: "NoSuchLayer",
+        txId: "default:5",
+        regenerate: false,
+      });
+      expect(result.isError, text).to.be.true;
+      expect(lastLine(text)).to.equal("txId: default:5");
+      expect(watcher.bumped).to.equal(0);
+      expect(__getExtractedDirty()).to.be.false;
+    });
+
+    it("T13: a refused call after a failed write does not bump again (ledger is per call)", async function () {
+      if (process.getuid?.() === 0) this.skip();
+      makeSheet2ReadOnly();
+      const first = await run("apply-recipe", { recipe: twoSheets, txId: "default:5", regenerate: false });
+      expect(first.result.isError, first.text).to.be.true;
+      expect(watcher.bumped).to.equal(1);
+      const second = await run("apply-recipe", { recipe: singleLayoutFail, txId: "default:6", regenerate: false });
+      expect(second.result.isError, second.text).to.be.true;
+      expect(lastLine(second.text)).to.equal("txId: default:6");
+      expect(watcher.bumped).to.equal(1);
     });
   });
 });
