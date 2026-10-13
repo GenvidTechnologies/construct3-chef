@@ -1070,9 +1070,8 @@ async function applyRecipeWithConcurrency(
           }
         });
         ctx.watcher.bump();
-        if (shouldRegenerate) {
-          ctx.extractedDirty = false;
-        }
+        // regenerate:false still wrote source, so extracted/ is now stale (#256 D1).
+        ctx.extractedDirty = !shouldRegenerate;
         return mcpContent(text(), txIdLine(ctx));
       },
       {
@@ -1623,9 +1622,8 @@ regP(
           });
 
           ctx.watcher.bump();
-          if (shouldRegenerate) {
-            ctx.extractedDirty = false;
-          }
+          // regenerate:false still wrote source, so extracted/ is now stale (#256 D1).
+          ctx.extractedDirty = !shouldRegenerate;
           return mcpContent(text(), txIdLine(ctx));
         },
         {
@@ -1750,9 +1748,8 @@ async function runWorkflowRecipe(
         }
       });
       ctx.watcher.bump();
-      if (shouldRegenerate) {
-        ctx.extractedDirty = false;
-      }
+      // regenerate:false still wrote source, so extracted/ is now stale (#256 D1).
+      ctx.extractedDirty = !shouldRegenerate;
       return mcpContent(text(), txIdLine(ctx));
     },
     {

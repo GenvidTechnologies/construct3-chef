@@ -65,6 +65,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   used to return the stale content silently
   ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)).
 
+- **An MCP mutation called with `regenerate: false` now marks `extracted/`
+  stale.** `apply-recipe`, the workflow and layer tools, and `scaffold-layout`
+  wrote source without regenerating and still left `extractedDirty` false, so
+  read tools served the old `extracted/` with no warning until something else
+  noticed. A successful call with `regenerate: false` now sets the flag; a
+  refused call still leaves it untouched
+  ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)).
+
 - **A refused `apply-recipe` now writes nothing.** Apply used to write each step
   as it went, so a refusal at a later step (a bad layout op, an editor-validation
   or custom-action failure on a sheet) left the earlier objectTypes, layouts and

@@ -1462,6 +1462,68 @@ describe("MCP server handler response shaping", () => {
     });
   });
 
+  // ── regenerate:false marks extracted/ dirty (#256 D1) ─────────────────────
+
+  describe("regenerate:false marks extracted/ dirty (#256 D1)", () => {
+    function snapshotExtracted(): Map<string, string> {
+      const snap = new Map<string, string>();
+      const walk = (dir: string): void => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) walk(full);
+          else
+            snap.set(
+              toPosixPath(path.relative(tmp, full)),
+              createHash("sha256").update(fs.readFileSync(full)).digest("hex"),
+            );
+        }
+      };
+      walk(path.join(tmp, "extracted"));
+      return snap;
+    }
+
+    const D1_RECIPE = JSON.stringify({ files: { "eventSheets/D1.json": { create: true, events: [] } } });
+    const WORKFLOW_ARGS = {
+      layout: "layouts/Gameplay/Main Layout.json",
+      type: "Sprite3",
+      templateName: "D1Tpl",
+    };
+    const LAYOUT_ARGS = {
+      source: "Gameplay/Main Layout.json",
+      name: "D1Layout",
+      path: "D1/D1Layout.json",
+      eventSheet: "Event sheet 1",
+    };
+    const CALLS: Array<{ id: string; tool: string; args: Record<string, unknown> }> = [
+      { id: "apply-recipe", tool: "apply-recipe", args: { recipe: D1_RECIPE } },
+      { id: "workflow", tool: "templatize-in-place", args: WORKFLOW_ARGS },
+      { id: "scaffold-layout", tool: "scaffold-layout", args: LAYOUT_ARGS },
+    ];
+    const R26_TO_R28 = ["R26", "R27", "R28"];
+
+    CALLS.forEach((c, i) => {
+      it(`${R26_TO_R28[i]} ${c.id}: regenerate:false marks dirty, leaves extracted/ unchanged, bumps once`, async () => {
+        __setExtractedDirty(false);
+        const before = snapshotExtracted();
+        const result = (await __getHandler(c.tool)!({ ...c.args, regenerate: false }, makeExtra())) as any;
+        expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+        expect(__getExtractedDirty()).to.be.true;
+        expect(snapshotExtracted()).to.deep.equal(before);
+        expect(watcher.bumped).to.equal(1);
+      });
+
+      it(`R34 (${c.id}): regenerate:true still clears dirty`, async () => {
+        __setExtractedDirty(true);
+        const before = snapshotExtracted();
+        const result = (await __getHandler(c.tool)!({ ...c.args, regenerate: true }, makeExtra())) as any;
+        expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+        expect(__getExtractedDirty()).to.be.false;
+        expect(snapshotExtracted()).to.not.deep.equal(before);
+        expect(watcher.bumped).to.equal(1);
+      });
+    });
+  });
+
   // ── scaffold-layout / scaffold-sprite refuse to overwrite or collide (#254) ──
   // `tmp` is a fresh fixture copy per test (beforeEach), so planted images and any
   // writes here cannot leak into other rows.
