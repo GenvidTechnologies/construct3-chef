@@ -2,7 +2,7 @@
 type: decision-record
 title: "0022. `generators.ts` owns the generator inventory as a single exported source of truth"
 description: >-
-  `GENERATORS` in `src/c3/generators.ts` becomes the single source of truth for the six generators, replacing `cli.ts`'s private `GENERATOR_NAMES`/`generators` array and letting `server.ts`'s `GENERATOR_STEPS` derive rather than hand-list; this is what makes `test/c3/generatorOutDir.test.ts`'s structural "every generator creates its own outDir" guard self-extending; rejects hoisting a single `mkdirSync` into the caller and hand-enumerating generators inside the test; `recipeApplier.ts`'s fixed three-generator sequence stays deliberately unrouted; does not fix [#181](https://github.com/GenvidTechnologies/construct3-chef/issues/181) (`extractScripts` still requires a pre-existing `importsForEvents.ts`) ([#178](https://github.com/GenvidTechnologies/construct3-chef/issues/178))
+  `GENERATORS` in `src/c3/generators.ts` becomes the single source of truth for the six generators, replacing `cli.ts`'s private `GENERATOR_NAMES`/`generators` array and letting `server.ts`'s `GENERATOR_STEPS` derive rather than hand-list; this is what makes `test/c3/generatorOutDir.test.ts`'s structural "every generator creates its own outDir" guard self-extending; rejects hoisting a single `mkdirSync` into the caller and hand-enumerating generators inside the test; `recipeApplier.ts`'s fixed three-generator sequence stays deliberately unrouted (reversed by ADR 0049, [#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)); does not fix [#181](https://github.com/GenvidTechnologies/construct3-chef/issues/181) (`extractScripts` still requires a pre-existing `importsForEvents.ts`) ([#178](https://github.com/GenvidTechnologies/construct3-chef/issues/178))
 tags: [decision, architecture]
 status: stable
 generated: { by: process:maintain-wiki, at: 2026-08-20T15:29:10Z }
@@ -91,6 +91,8 @@ filtered run over the full inventory. It predates
 this ADR and stays local: recording the decline here so it doesn't later
 read as an oversight, per this repo's habit of recording declines rather
 than leaving them to be rediscovered (see ADR 0016, ADR 0021).
+
+**Amended by ADR [0049](0049-regenerate-extracted-runs-the-whole-generator-inventory.md):** the decline above is reversed; `regenerateExtracted` now runs the whole `GENERATORS` inventory.
 
 **This does not fix [#181](https://github.com/GenvidTechnologies/construct3-chef/issues/181).**
 `extractScripts` still cannot run on a project lacking

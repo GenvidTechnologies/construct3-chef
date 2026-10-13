@@ -28,6 +28,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A CLI or library apply now regenerates all six `extracted/` outputs.**
+  `apply-recipe`, `apply-op`, `remove-layer` and `rename-symbol` on the CLI, and
+  `applyParsed` and `regenerateExtracted` in the library, used to run only the
+  scripts and DSL generators (plus layout summaries when a layout was touched), so
+  `extracted/` could differ from a full regeneration. They now run every
+  generator, as the MCP path already did: `sid-registry.txt`,
+  `template-scope.txt` and `global-layers.txt` are kept current, and the layout
+  summaries are refreshed after an addInstVars-only apply
+  ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)).
+  **Behaviour change:** each CLI apply now scans the project six times instead of
+  two or three, and rewrites those three files on every run.
+  `regenerateExtracted`'s `withLayouts` parameter is deprecated and ignored.
+
+- **A regeneration failure after an apply or rename now says the source was
+  written.** When `apply-recipe`, `apply-op`, `remove-layer` or `rename-symbol`
+  wrote its source files and then failed to regenerate `extracted/`, it printed
+  a raw error with no sign that the source had changed. The error now reads
+  `Regenerating <extractedDir>/ failed after writing <N> source file(s): …` and
+  names `construct3-chef generate` as the recovery step; the original error is
+  kept as its `cause`
+  ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)).
+
+- **`scaffold-sprite` now regenerates `extracted/` by default, on both the CLI
+  and the MCP tool.** It used to leave `extracted/` untouched, so
+  `sid-registry.txt` omitted the new objectType's SIDs. `--no-regenerate`
+  (CLI) and `regenerate: false` (MCP) skip the regeneration; the CLI used to
+  reject `--no-regenerate` as an unknown argument. With `regenerate: false` the MCP
+  tool now marks `extracted/` stale, so read tools warn until the next
+  regenerate
+  ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)).
+
+- **`read-sid-registry`, `read-template-scope` and `list-global-layers` now warn
+  when their `extracted/` output is older than the project source.** This
+  happens, for example, after a CLI apply made before the server started; they
+  used to return the stale content silently
+  ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)).
+
+- **An MCP mutation called with `regenerate: false` now marks `extracted/`
+  stale.** `apply-recipe`, the workflow and layer tools, and `scaffold-layout`
+  wrote source without regenerating and still left `extractedDirty` false, so
+  read tools served the old `extracted/` with no warning until something else
+  noticed. A successful call with `regenerate: false` now sets the flag; a
+  refused call still leaves it untouched
+  ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)).
+
 - **A refused `apply-recipe` now writes nothing.** Apply used to write each step
   as it went, so a refusal at a later step (a bad layout op, an editor-validation
   or custom-action failure on a sheet) left the earlier objectTypes, layouts and

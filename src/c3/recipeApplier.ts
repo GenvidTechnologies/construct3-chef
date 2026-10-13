@@ -1,6 +1,6 @@
 import { readFileSync, mkdirSync, existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { extractScripts, generateDSL, generateLayoutSummaries } from "./generators.js";
+import { GENERATORS } from "./generators.js";
 import { writeSourceJson, serializeSourceJson } from "./sourceJson.js";
 import { diskIo, OverlayIo } from "./sourceIo.js";
 import {
@@ -130,25 +130,44 @@ function writeEventSheet(fullPath: string, sheet: EventSheet): void {
   writeSourceJson(fullPath, sheet);
 }
 
+/**
+ * Regenerate `extracted/` in place by running every entry of `GENERATORS`: the same full inventory the MCP
+ * path and `construct3-chef generate` run (#256, ADR 0049).
+ *
+ * @param withLayouts @deprecated Ignored since #256: every generator always runs. Kept so the published
+ *   signature is unchanged.
+ */
 export function regenerateExtracted(
   rootDir: string,
   withLayouts = false,
   extractedDir = "extracted",
   log: Logger = console.log,
 ) {
+  void withLayouts;
   const outDir = path.join(rootDir, extractedDir);
 
   log("\n--- Regenerating extracted files ---\n");
 
-  log("Extracting scripts...");
-  extractScripts(rootDir, outDir, log);
+  GENERATORS.forEach((g, i) => {
+    log(`${i > 0 ? "\n" : ""}${g.label}...`);
+    g.run(rootDir, outDir, log);
+  });
+}
 
-  log("\nGenerating DSL...");
-  generateDSL(rootDir, outDir, log);
-
-  if (withLayouts) {
-    log("\nGenerating layout summaries...");
-    generateLayoutSummaries(rootDir, outDir, log);
+/**
+ * Regenerate after the source write has landed (#256 D2). A failure here is raised with the written-source
+ * count and the recovery command, so the caller knows source changed while `extracted/` did not. Wraps ONLY
+ * the regeneration; errors raised before the write are untouched.
+ */
+function regenerateAfterWrite(rootDir: string, extractedDir: string, written: number, log: Logger): void {
+  try {
+    regenerateExtracted(rootDir, true, extractedDir, log);
+  } catch (e) {
+    const cause = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `Regenerating ${extractedDir}/ failed after writing ${written} source file(s): ${cause}. Run \`construct3-chef generate\` once the cause is fixed.`,
+      { cause: e },
+    );
   }
 }
 
@@ -1092,7 +1111,8 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   }
 
   if (regenerate) {
-    regenerateExtracted(rootDir, layoutsForLoop.size > 0, extractedDir, log);
+    const written = new Set(io.journal.flatMap((j) => (j.kind === "write" ? [j.abs] : []))).size;
+    regenerateAfterWrite(rootDir, extractedDir, written, log);
   }
 }
 
@@ -1202,6 +1222,6 @@ export function renameSymbols(
   log(`\nDone. ${matched.length} file(s) modified, ${totalActions} script action(s) updated.`);
 
   if (regenerate) {
-    regenerateExtracted(rootDir, false, extractedDir, log);
+    regenerateAfterWrite(rootDir, extractedDir, matched.length, log);
   }
 }

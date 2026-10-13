@@ -123,7 +123,7 @@ function makeExtractedNewerThanSource(root: string): void {
   if (fs.existsSync(extractedDir)) walk(extractedDir);
 }
 
-// Deterministic mtime control for the checkRegistryFreshness tests below:
+// Deterministic mtime control for the checkDerivedFreshness tests below:
 // stamps every file under `dir` (recursively) with an explicit mtime, so the
 // freshness comparison isn't at the mercy of cpSync/wall-clock ordering.
 function setAllMtimesRecursive(dir: string, time: Date): void {
@@ -458,6 +458,21 @@ describe("MCP server handler response shaping", () => {
     expect(watcher.bumped).to.equal(1);
     // a full regenerate clears the stale flag
     expect(__getExtractedDirty()).to.be.false;
+  });
+
+  // R12/R37 (#256): the handler's own full regenerate is the only one, and the D2 wrap adds no failure text.
+  it("R12/R37: a create-sheet apply regenerates once and reports no partial-write failure", async () => {
+    const handler = __getHandler("apply-recipe")!;
+    __setExtractedDirty(true); // skip registry freshness scan
+    const recipe = JSON.stringify({ files: { "eventSheets/R12Probe.json": { create: true, events: [] } } });
+    const result = (await handler({ recipe, txId: "default:5" }, makeExtra())) as any;
+
+    expect(result.isError).to.be.undefined;
+    const text: string = result.content.map((b: any) => b.text).join("\n");
+    const count = (needle: string): number => text.split(needle).length - 1;
+    expect(count("--- Regenerating extracted files ---")).to.equal(0);
+    expect(count("Generated sid-registry.txt")).to.equal(1);
+    expect(count("failed after writing")).to.equal(0);
   });
 
   // ── 8. list-event-sheets pagination ──────────────────────────────────────
@@ -961,14 +976,14 @@ describe("MCP server handler response shaping", () => {
     });
   });
 
-  // ── 14. checkRegistryFreshness excludes editor-local paths (ADR 0018 site 2) ─
+  // ── 14. checkDerivedFreshness excludes editor-local paths (ADR 0018 site 2) ─
   // generate-sids is the only handler whose response surfaces the effect of
-  // checkRegistryFreshness's own scan directly (via appendStaleWarning), rather
+  // checkDerivedFreshness's own scan directly (via appendStaleWarning), rather
   // than a stale flag set earlier by something else — so it's the right probe.
   // Mtimes are set explicitly (utimesSync) on every real source file plus the
   // registry, never relying on wall-clock/cpSync ordering.
 
-  describe("checkRegistryFreshness (generate-sids probe)", () => {
+  describe("checkDerivedFreshness (generate-sids probe)", () => {
     const BASELINE = new Date(2020, 0, 1);
     const NEWER = new Date(BASELINE.getTime() + 100_000);
 
@@ -1005,6 +1020,98 @@ describe("MCP server handler response shaping", () => {
       expect(__getExtractedDirty()).to.equal(true);
       expect(watcher.bumped).to.equal(1);
     });
+  });
+
+  describe("derived freshness on read tools (#256)", () => {
+    const BASELINE = new Date(2020, 0, 1);
+    const NEWER = new Date(BASELINE.getTime() + 100_000);
+    const TOOLS: ReadonlyArray<{ tool: string; file: string }> = [
+      { tool: "read-sid-registry", file: "sid-registry.txt" },
+      { tool: "read-template-scope", file: "template-scope.txt" },
+      { tool: "list-global-layers", file: "global-layers.txt" },
+    ];
+
+    // Pin every source file and every extracted/ artifact to BASELINE.
+    function pinBaseline(): void {
+      for (const dir of SID_SOURCE_DIRS) {
+        setAllMtimesRecursive(path.join(tmp, dir), BASELINE);
+      }
+      setAllMtimesRecursive(path.join(tmp, "extracted"), BASELINE);
+    }
+
+    async function call(tool: string, args: Record<string, unknown> = {}): Promise<string> {
+      const handler = __getHandler(tool)!;
+      expect(handler, `handler ${tool}`).to.exist;
+      const result = (await handler(args, makeExtra())) as any;
+      return result.content[0].text as string;
+    }
+
+    for (const { tool, file } of TOOLS) {
+      it(`R9 ${tool}: a newer real layout makes ${file} stale (warning, dirty, bumped 1)`, async () => {
+        pinBaseline();
+        expect(__getExtractedDirty()).to.equal(false);
+        expect(watcher.bumped).to.equal(0);
+        const layoutPath = path.join(tmp, "layouts", "Gameplay", "Main Layout.json");
+        fs.utimesSync(layoutPath, NEWER, NEWER);
+
+        const text = await call(tool);
+
+        expect(text).to.include(STALE_WARNING);
+        expect(__getExtractedDirty()).to.equal(true);
+        expect(watcher.bumped).to.equal(1);
+      });
+    }
+
+    it("R9 read-dsl (positive control): a newer sheet makes its DSL stale (warning, dirty, bumped 1)", async () => {
+      pinBaseline();
+      const sheetPath = path.join(tmp, "eventSheets", "Gameplay", "Event sheet 1.json");
+      fs.utimesSync(sheetPath, NEWER, NEWER);
+
+      const text = await call("read-dsl", { sheet: "Gameplay/Event sheet 1" });
+
+      expect(text).to.include(STALE_WARNING);
+      expect(__getExtractedDirty()).to.equal(true);
+      expect(watcher.bumped).to.equal(1);
+    });
+
+    for (const { tool, file } of TOOLS) {
+      it(`R9n ${tool}: a newer uistate sibling leaves ${file} fresh (no warning, bumped 0)`, async () => {
+        pinBaseline();
+        const uistatePath = path.join(tmp, "layouts", "Main Layout.uistate.json");
+        fs.writeFileSync(uistatePath, "{}");
+        fs.utimesSync(uistatePath, NEWER, NEWER);
+
+        const text = await call(tool);
+
+        expect(text).to.not.include(STALE_WARNING);
+        expect(__getExtractedDirty()).to.equal(false);
+        expect(watcher.bumped).to.equal(0);
+      });
+    }
+
+    it("R9i read-template-scope: calling twice on a stale source leaves bumped at 1", async () => {
+      pinBaseline();
+      fs.utimesSync(path.join(tmp, "layouts", "Gameplay", "Main Layout.json"), NEWER, NEWER);
+
+      await call("read-template-scope");
+      const second = await call("read-template-scope");
+
+      expect(second).to.include(STALE_WARNING);
+      expect(__getExtractedDirty()).to.equal(true);
+      expect(watcher.bumped).to.equal(1);
+    });
+
+    for (const { tool, file } of TOOLS) {
+      it(`R10 ${tool}: nothing newer than ${file} gives no warning and bumped 0`, async () => {
+        pinBaseline();
+
+        const text = await call(tool);
+
+        expect(text).to.not.include(STALE_WARNING);
+        expect(__getExtractedDirty()).to.equal(false);
+        expect(watcher.bumped).to.equal(0);
+      });
+    }
   });
 
   // ── 15. [strays] detection-only report at the MCP surfaces (#177) ───────────
@@ -1291,6 +1398,129 @@ describe("MCP server handler response shaping", () => {
       expect(result.isError, result.content?.[0]?.text).to.be.undefined;
 
       assertNoTrailingNewline(path.join(tmp, "objectTypes", "T3ClonedSprite.json"), 0x7d);
+    });
+  });
+
+  // ── scaffold-sprite regenerates extracted/ (#256) ─────────────────────────
+
+  describe("scaffold-sprite regenerates extracted/ (#256)", () => {
+    function snapshotExtracted(): Map<string, string> {
+      const snap = new Map<string, string>();
+      const walk = (dir: string): void => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) walk(full);
+          else
+            snap.set(
+              toPosixPath(path.relative(tmp, full)),
+              createHash("sha256").update(fs.readFileSync(full)).digest("hex"),
+            );
+        }
+      };
+      walk(path.join(tmp, "extracted"));
+      return snap;
+    }
+    const registryRows = (file: string): number =>
+      fs
+        .readFileSync(path.join(tmp, "extracted", "sid-registry.txt"), "utf8")
+        .split(/\r?\n/)
+        .filter((l) => l.includes(file)).length;
+
+    it("R7: scaffold-sprite regenerates by default", async () => {
+      __setExtractedDirty(false);
+      const result = (await __getHandler("scaffold-sprite")!({ source: "Text", name: "RG7" }, makeExtra())) as any;
+      expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+      expect(registryRows("objectTypes/RG7.json")).to.be.at.least(1);
+      expect(__getExtractedDirty()).to.be.false;
+      expect(watcher.bumped).to.equal(1);
+    });
+
+    it("R8: scaffold-sprite with regenerate:false leaves extracted/ unchanged and marks it dirty", async () => {
+      __setExtractedDirty(false);
+      const before = snapshotExtracted();
+      const result = (await __getHandler("scaffold-sprite")!(
+        { source: "Text", name: "RG8", regenerate: false },
+        makeExtra(),
+      )) as any;
+      expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+      expect(snapshotExtracted()).to.deep.equal(before);
+      expect(watcher.bumped).to.equal(1);
+      expect(__getExtractedDirty()).to.be.true;
+    });
+
+    it("R34 (scaffold-sprite): regenerate:true still clears dirty", async () => {
+      __setExtractedDirty(true);
+      const before = snapshotExtracted();
+      const result = (await __getHandler("scaffold-sprite")!(
+        { source: "Text", name: "RG8", regenerate: true },
+        makeExtra(),
+      )) as any;
+      expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+      expect(__getExtractedDirty()).to.be.false;
+      expect(snapshotExtracted()).to.not.deep.equal(before);
+      expect(watcher.bumped).to.equal(1);
+    });
+  });
+
+  // ── regenerate:false marks extracted/ dirty (#256 D1) ─────────────────────
+
+  describe("regenerate:false marks extracted/ dirty (#256 D1)", () => {
+    function snapshotExtracted(): Map<string, string> {
+      const snap = new Map<string, string>();
+      const walk = (dir: string): void => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) walk(full);
+          else
+            snap.set(
+              toPosixPath(path.relative(tmp, full)),
+              createHash("sha256").update(fs.readFileSync(full)).digest("hex"),
+            );
+        }
+      };
+      walk(path.join(tmp, "extracted"));
+      return snap;
+    }
+
+    const D1_RECIPE = JSON.stringify({ files: { "eventSheets/D1.json": { create: true, events: [] } } });
+    const WORKFLOW_ARGS = {
+      layout: "layouts/Gameplay/Main Layout.json",
+      type: "Sprite3",
+      templateName: "D1Tpl",
+    };
+    const LAYOUT_ARGS = {
+      source: "Gameplay/Main Layout.json",
+      name: "D1Layout",
+      path: "D1/D1Layout.json",
+      eventSheet: "Event sheet 1",
+    };
+    const CALLS: Array<{ id: string; tool: string; args: Record<string, unknown> }> = [
+      { id: "apply-recipe", tool: "apply-recipe", args: { recipe: D1_RECIPE } },
+      { id: "workflow", tool: "templatize-in-place", args: WORKFLOW_ARGS },
+      { id: "scaffold-layout", tool: "scaffold-layout", args: LAYOUT_ARGS },
+    ];
+    const R26_TO_R28 = ["R26", "R27", "R28"];
+
+    CALLS.forEach((c, i) => {
+      it(`${R26_TO_R28[i]} ${c.id}: regenerate:false marks dirty, leaves extracted/ unchanged, bumps once`, async () => {
+        __setExtractedDirty(false);
+        const before = snapshotExtracted();
+        const result = (await __getHandler(c.tool)!({ ...c.args, regenerate: false }, makeExtra())) as any;
+        expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+        expect(__getExtractedDirty()).to.be.true;
+        expect(snapshotExtracted()).to.deep.equal(before);
+        expect(watcher.bumped).to.equal(1);
+      });
+
+      it(`R34 (${c.id}): regenerate:true still clears dirty`, async () => {
+        __setExtractedDirty(true);
+        const before = snapshotExtracted();
+        const result = (await __getHandler(c.tool)!({ ...c.args, regenerate: true }, makeExtra())) as any;
+        expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+        expect(__getExtractedDirty()).to.be.false;
+        expect(snapshotExtracted()).to.not.deep.equal(before);
+        expect(watcher.bumped).to.equal(1);
+      });
     });
   });
 
