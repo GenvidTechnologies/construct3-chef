@@ -1,19 +1,22 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { extractScripts, generateDSL, generateLayoutSummaries } from "./generators.js";
 import { writeSourceJson } from "./sourceJson.js";
+import { diskIo } from "./sourceIo.js";
+import {
+  PLUGIN_BASE_CLASS,
+  getObjectTypePath,
+  createObjectTypeIo,
+  updateInstanceTypesIo,
+  updateObjectsIo,
+  findObjectTypeFileIo,
+  processAddInstVarsIo,
+} from "./recipeApplierIo.js";
 import type { Logger } from "@genvidtech/mcp-utils";
 import { escapeRegExp } from "@genvidtech/mcp-utils";
 import type { ApplyOptions } from "./types.js";
 import type { EventSheet, EventSheetEvent, SidSlot } from "@genvidtech/c3source";
-import {
-  find_all_eventsheets_path,
-  find_all_objectTypes_path,
-  find_all_layouts_path,
-  findSid,
-  validateForEditor,
-  openProject,
-} from "@genvidtech/c3source";
+import { find_all_eventsheets_path, findSid, validateForEditor, openProject } from "@genvidtech/c3source";
 import {
   type Recipe,
   type ObjectTypeCreate,
@@ -52,20 +55,10 @@ import { diffScripts } from "./previewDiff.js";
 import { findCaseFoldedMatch, findSpellingMismatches, type SpellingRef } from "./recipeKeys.js";
 import { expandWorkflows, type LoadLayout } from "./workflowExpansion.js";
 import { buildCustomAceIndex, validateInsertedCustomActions, type CustomAceIndex } from "./customAceIndex.js";
-import {
-  addInstVarsToObjectType,
-  addInstVarsToLayout,
-  addInstVarsToTypesDts,
-  type InstVarDef,
-} from "./instVarMutator.js";
 
 // ─── Constants ───
 
-export const PLUGIN_BASE_CLASS: Record<string, string> = {
-  Json: "IJSONInstance",
-  Dictionary: "IDictionaryInstance",
-  Arr: "IArrayInstance",
-};
+export { PLUGIN_BASE_CLASS, getObjectTypePath };
 
 // ─── Types ───
 
@@ -161,12 +154,6 @@ export function regenerateExtracted(
 
 // ─── objectTypes helpers ───
 
-export function getObjectTypePath(objectType: ObjectTypeCreate): string {
-  return objectType.folder
-    ? `objectTypes/${objectType.folder}/${objectType.name}.json`
-    : `objectTypes/${objectType.name}.json`;
-}
-
 export function createObjectType(
   sidGen: SidGenerator,
   rootDir: string,
@@ -174,52 +161,7 @@ export function createObjectType(
   dryRun: boolean,
   log: Logger = console.log,
 ): boolean {
-  const relPath = getObjectTypePath(objectType);
-  const fullPath = path.join(rootDir, relPath);
-
-  // Respect the SKIP-if-exists fast path before validating the plugin so a
-  // recipe that re-declares an already-existing objectType (a benign no-op)
-  // stays a no-op even if the recipe carries a stale or typoed plugin name.
-  // For new objectTypes we still reject unknown plugins up-front — otherwise
-  // updateInstanceTypes would silently write `class X extends undefined`.
-  if (existsSync(fullPath)) {
-    log(`  SKIP ${relPath} (already exists)`);
-    return false;
-  }
-
-  if (!(objectType.plugin in PLUGIN_BASE_CLASS)) {
-    throw new Error(
-      `createObjectType: unknown plugin "${objectType.plugin}" for objectType "${objectType.name}". ` +
-        `Valid plugins: ${Object.keys(PLUGIN_BASE_CLASS).join(", ")}.`,
-    );
-  }
-
-  const ivars = (objectType.instanceVariables ?? []).map((v) => ({
-    name: v.name,
-    type: v.type,
-    desc: "",
-    show: true,
-    sid: sidGen(),
-  }));
-
-  const json = {
-    name: objectType.name,
-    "plugin-id": objectType.plugin,
-    sid: sidGen(),
-    isGlobal: true,
-    editorNewInstanceIsReplica: true,
-    instanceVariables: ivars,
-  };
-
-  if (dryRun) {
-    log(`  CREATE ${relPath} (plugin: ${objectType.plugin})`);
-    return true;
-  }
-
-  mkdirSync(path.dirname(fullPath), { recursive: true });
-  writeSourceJson(fullPath, json);
-  log(`  CREATED ${relPath}`);
-  return true;
+  return createObjectTypeIo(diskIo, sidGen, rootDir, objectType, dryRun, log);
 }
 
 export function updateInstanceTypes(
@@ -228,31 +170,7 @@ export function updateInstanceTypes(
   dryRun: boolean,
   log: Logger = console.log,
 ): void {
-  const filePath = path.join(openProject(rootDir).scriptsDir, "ts-defs/instanceTypes.d.ts");
-  const content = readFileSync(filePath, "utf-8");
-
-  const baseClass = PLUGIN_BASE_CLASS[objectType.plugin];
-  const ivars = objectType.instanceVariables ?? [];
-
-  let classBody: string;
-  if (ivars.length === 0) {
-    classBody = `\tclass ${objectType.name} extends ${baseClass} {\n\t}`;
-  } else {
-    const fields = ivars.map((v) => `\t\t\t${v.name}: ${v.type},`).join("\n");
-    classBody = `\tclass ${objectType.name} extends ${baseClass} {\n\t\tinstVars: {\n${fields}\n\t\t};\n\t}`;
-  }
-
-  // Insert before the closing `}` of the namespace (last line `}`)
-  const lastBrace = content.lastIndexOf("\n}");
-  const updated = content.slice(0, lastBrace) + "\n" + classBody + "\n" + content.slice(lastBrace);
-
-  if (dryRun) {
-    log(`  UPDATE scripts/ts-defs/instanceTypes.d.ts`);
-    return;
-  }
-
-  writeFileSync(filePath, updated);
-  log(`  UPDATED scripts/ts-defs/instanceTypes.d.ts`);
+  updateInstanceTypesIo(diskIo, rootDir, objectType, dryRun, log);
 }
 
 export function updateObjects(
@@ -261,34 +179,13 @@ export function updateObjects(
   dryRun: boolean,
   log: Logger = console.log,
 ): void {
-  const filePath = path.join(openProject(rootDir).scriptsDir, "ts-defs/objects.d.ts");
-  const content = readFileSync(filePath, "utf-8");
-
-  const line = `\treadonly ${objectType.name}: IObjectType<InstanceType.${objectType.name}>;`;
-
-  // Insert before the closing `}` of the class (last line `}`)
-  const lastBrace = content.lastIndexOf("\n}");
-  const updated = content.slice(0, lastBrace) + "\n" + line + "\n" + content.slice(lastBrace);
-
-  if (dryRun) {
-    log(`  UPDATE scripts/ts-defs/objects.d.ts`);
-    return;
-  }
-
-  writeFileSync(filePath, updated);
-  log(`  UPDATED scripts/ts-defs/objects.d.ts`);
+  updateObjectsIo(diskIo, rootDir, objectType, dryRun, log);
 }
 
 // ─── addInstVars helpers ───
 
 export function findObjectTypeFile(rootDir: string, typeName: string): string | null {
-  const objectTypesDir = openProject(rootDir).objectTypesDir;
-  const allPaths = find_all_objectTypes_path(objectTypesDir);
-  for (const p of allPaths) {
-    const basename = path.basename(p, ".json");
-    if (basename === typeName) return p;
-  }
-  return null;
+  return findObjectTypeFileIo(diskIo, rootDir, typeName);
 }
 
 export function processAddInstVars(
@@ -299,91 +196,7 @@ export function processAddInstVars(
   log: Logger = console.log,
   pendingObjectTypes?: ObjectTypeCreate[],
 ): void {
-  const pending = new Map<string, ObjectTypeCreate>();
-  for (const ot of pendingObjectTypes ?? []) pending.set(ot.name, ot);
-
-  for (const entry of entries) {
-    const newVars: InstVarDef[] = entry.instanceVariables;
-
-    // In dry-run, a type being created earlier in the same recipe won't be on
-    // disk yet (createObjectType's write is suppressed). Without this branch,
-    // validate-recipe would spuriously throw `objectType "X" not found` for a
-    // recipe that apply-recipe would accept. The createObjectType pass already
-    // logged the would-be create, so we just merge addInstVars into the
-    // pending entry's variable list (no layout instances exist for a
-    // brand-new type, and updateInstanceTypes will declare the class).
-    if (dryRun && pending.has(entry.type)) {
-      const ot = pending.get(entry.type)!;
-      const existing = new Set((ot.instanceVariables ?? []).map((v) => v.name));
-      const added = newVars.filter((v) => !existing.has(v.name)).map((v) => v.name);
-      if (added.length === 0) {
-        log(`  SKIP pending objectType "${entry.type}" (all instVars already declared)`);
-      } else {
-        log(`  UPDATE pending objectType "${entry.type}" (+${added.join(", ")})`);
-      }
-      continue;
-    }
-
-    // 1. Update objectType JSON
-    const objectTypeFile = findObjectTypeFile(rootDir, entry.type);
-    if (!objectTypeFile) {
-      throw new Error(`addInstVars: objectType "${entry.type}" not found under objectTypes/`);
-    }
-    const relOtPath = path.relative(rootDir, objectTypeFile).replace(/\\/g, "/");
-
-    const objectType = JSON.parse(readFileSync(objectTypeFile, "utf-8"));
-    if (!objectType.instanceVariables) {
-      objectType.instanceVariables = [];
-    }
-    const added = addInstVarsToObjectType(sidGen, objectType, newVars);
-    if (added.length === 0) {
-      log(`  SKIP ${relOtPath} (all instVars already exist)`);
-    } else if (dryRun) {
-      log(`  UPDATE ${relOtPath} (+${added.join(", ")})`);
-    } else {
-      writeSourceJson(objectTypeFile, objectType);
-      log(`  UPDATED ${relOtPath} (+${added.join(", ")})`);
-    }
-
-    // 2. Update layout instances
-    const layoutsDir = openProject(rootDir).layoutsDir;
-    const allLayouts = find_all_layouts_path(layoutsDir);
-    let totalInstances = 0;
-    for (const layoutPath of allLayouts) {
-      const layout = JSON.parse(readFileSync(layoutPath, "utf-8"));
-      const count = addInstVarsToLayout(layout, entry.type, newVars);
-      if (count > 0) {
-        totalInstances += count;
-        const relPath = path.relative(rootDir, layoutPath).replace(/\\/g, "/");
-        if (dryRun) {
-          log(`  UPDATE ${relPath} (${count} instance(s))`);
-        } else {
-          writeSourceJson(layoutPath, layout);
-          log(`  UPDATED ${relPath} (${count} instance(s))`);
-        }
-      }
-    }
-    if (totalInstances === 0) {
-      log(`  No layout instances found for ${entry.type}`);
-    }
-
-    // 3. Update instanceTypes.d.ts
-    if (added.length > 0) {
-      const typesFile = path.join(openProject(rootDir).scriptsDir, "ts-defs/instanceTypes.d.ts");
-      const typesContent = readFileSync(typesFile, "utf-8");
-      const updatedTypes = addInstVarsToTypesDts(typesContent, entry.type, newVars);
-      if (updatedTypes === null) {
-        log(`  WARN: class "${entry.type}" not found in instanceTypes.d.ts — manual update needed`);
-      } else if (updatedTypes === typesContent) {
-        log(`  SKIP instanceTypes.d.ts (instVars already declared)`);
-      } else if (dryRun) {
-        log(`  UPDATE scripts/ts-defs/instanceTypes.d.ts (+${added.join(", ")})`);
-      } else {
-        writeFileSync(typesFile, updatedTypes);
-        log(`  UPDATED scripts/ts-defs/instanceTypes.d.ts (+${added.join(", ")})`);
-      }
-    }
-  }
+  processAddInstVarsIo(diskIo, sidGen, rootDir, entries, dryRun, log, pendingObjectTypes);
 }
 
 // ─── Layout mutation helpers ───
@@ -696,6 +509,8 @@ interface LayoutOpContext {
   sourceLayoutCache: Map<string, MutatorLayoutJson>;
   sidGen: SidGenerator;
   objectTypes: ObjectTypeCreate[];
+  /** Reads a source layout on a `sourceLayoutCache` miss. */
+  readText: (abs: string) => string;
 }
 
 /**
@@ -741,7 +556,7 @@ function applyLayoutOp(
       let sourceLayout = ctx.sourceLayoutCache.get(op.from);
       if (!sourceLayout) {
         const sourceFullPath = path.join(ctx.rootDir, op.from);
-        sourceLayout = JSON.parse(readFileSync(sourceFullPath, "utf-8")) as MutatorLayoutJson;
+        sourceLayout = JSON.parse(ctx.readText(sourceFullPath)) as MutatorLayoutJson;
         ctx.sourceLayoutCache.set(op.from, sourceLayout);
       }
       copyInstance({
@@ -774,7 +589,7 @@ function applyLayoutOp(
       let sourceLayout = ctx.sourceLayoutCache.get(op.from);
       if (!sourceLayout) {
         const sourceFullPath = path.join(ctx.rootDir, op.from);
-        sourceLayout = JSON.parse(readFileSync(sourceFullPath, "utf-8")) as MutatorLayoutJson;
+        sourceLayout = JSON.parse(ctx.readText(sourceFullPath)) as MutatorLayoutJson;
         ctx.sourceLayoutCache.set(op.from, sourceLayout);
       }
       addReplica({
@@ -1022,6 +837,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
           sourceLayoutCache: dryRunSourceCache,
           sidGen: makeSidGen(collectLayoutSids(clone as Record<string, unknown>)),
           objectTypes: recipe.objectTypes ?? [],
+          readText: diskIo.readText,
         };
         for (const op of ops) {
           applyLayoutOp(clone, filePath, op, dryRunCtx, noopLog);
@@ -1187,6 +1003,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
         sourceLayoutCache,
         sidGen,
         objectTypes: recipe.objectTypes ?? [],
+        readText: diskIo.readText,
       };
 
       for (const op of ops) {
