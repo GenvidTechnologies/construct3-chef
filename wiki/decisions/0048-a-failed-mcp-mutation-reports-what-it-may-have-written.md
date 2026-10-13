@@ -44,4 +44,4 @@ Only `CancelledError` bumped the txId and set `extractedDirty`. Any other error 
 - Over-reporting is conservative and accepted: a mark set before a write that then throws counts as written.
 - A manifest-only failure bumps without staling `extracted/`, following the `project.c3proj` convention.
 - Tests use the fake watcher, so they exercise the ledger and not the real watcher's masking.
-- A new mutating tool must create a ledger, mark it before each write, and route its `onError` through `recordFailedMutation`.
+- A new mutating tool that can fail after one of its writes must create a ledger, mark it before each write, and route its `onError` through `recordFailedMutation`. `sync-project` and `sync-addon-metadata` are outside the ledger for that reason: each writes only `project.c3proj`, as its last step, and bumps the txId after the write (the addon sync only when it reports `wrote`).

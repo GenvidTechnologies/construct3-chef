@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of them have succeeded
   ([#278](https://github.com/GenvidTechnologies/construct3-chef/issues/278),
   [#279](https://github.com/GenvidTechnologies/construct3-chef/issues/279)).
+  Only a file-system error during those writes (for example a read-only file)
+  can still leave the earlier files of the same apply written.
   **Behaviour change:** a refused `apply-recipe` (CLI or MCP) writes no file;
   new folders are created only when the apply succeeds; and a refused apply's
   log no longer prints the step lines that came before the error.
@@ -48,6 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   txId only; a failure before any write changes neither. A `regenerate` failure
   marks `extracted/` stale without moving the txId
   ([#255](https://github.com/GenvidTechnologies/construct3-chef/issues/255)).
+  **Behaviour change:** before, only a cancelled call moved the txId or marked
+  `extracted/` stale, so an error response could now carry a newer txId than the
+  one the client sent, and a failed `regenerate` now marks `extracted/` stale.
   Also adds the optional `ApplyOptions.beforeSourceWrite` hook (additive public
   API).
 

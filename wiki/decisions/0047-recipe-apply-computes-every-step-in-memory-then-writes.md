@@ -36,7 +36,7 @@ A CREATE into a new folder also left that empty folder behind when a later step 
 ## Decision
 
 1. **Compute against an overlay, then replay.** The apply branch runs the same Steps 1, 1b, 2 and 3, in the same order, against an `OverlayIo` (`src/c3/sourceIo.ts`). The overlay holds the serialized text of every write and an ordered journal of `log` and `write` entries. Only after Step 3 has passed does the replay loop in `applyRecipeInner` walk the journal: it forwards each log entry to the caller's logger, and creates the folder (when the entry asked for one) and writes the file for each write entry.
-2. **Observable behaviour is otherwise unchanged.** The first error a recipe raises is the same as before, and the success log is the same lines in the same order. Dry-run, `validate-recipe` and `--preview` are untouched.
+2. **Observable behaviour is otherwise unchanged.** The first error a recipe raises is the same as before, and the success log is the same lines in the same order. Dry-run, `validate-recipe` and `--preview` behave as before (their branch gains only the layout-op context's `readText`, bound to disk). The overlay must match paths the way the filesystem does, or a later step would miss an earlier step's file: on Windows and macOS it folds letter case, so a recipe declaring `Foo` and then `foo` still SKIPs the second objectType instead of overwriting the first on replay.
 3. **No public signature change.** The exported helpers in `recipeApplier.ts` keep their signatures and stay bound to `diskIo`. The `SourceIo`-parameterised bodies live in the off-barrel `src/c3/recipeApplierIo.ts`, so nothing new is published through the `src/index.ts` barrel.
 
 ## Rejected alternatives
