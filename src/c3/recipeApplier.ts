@@ -651,7 +651,14 @@ function applyLayoutOp(
 }
 
 export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: Recipe, opts: ApplyOptions = {}) {
-  const { dryRun = false, preview = false, regenerate = true, log = console.log, extractedDir = "extracted" } = opts;
+  const {
+    dryRun = false,
+    preview = false,
+    regenerate = true,
+    log = console.log,
+    extractedDir = "extracted",
+    beforeSourceWrite,
+  } = opts;
   // Validate recipe structure
   const errors = validateRecipe(recipe);
   if (errors.length > 0) {
@@ -1065,11 +1072,13 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
     }
   }
 
-  // Replay. Nothing can refuse after compute, so this loop is the only place apply writes to disk.
+  // Replay. Nothing can refuse after compute, so this loop is the only place apply writes to disk,
+  // and therefore the only place `beforeSourceWrite` fires (once per write entry, before it lands).
   for (const entry of io.journal) {
     if (entry.kind === "log") {
       log(...entry.args);
     } else {
+      beforeSourceWrite?.();
       if (entry.mkdir) mkdirSync(path.dirname(entry.abs), { recursive: true });
       writeFileSync(entry.abs, entry.text);
     }

@@ -6,4 +6,10 @@ export interface ApplyOptions {
   regenerate?: boolean;
   log?: Logger;
   extractedDir?: string;
+  /**
+   * Called immediately BEFORE each source write that recipe apply performs. Today that means each write
+   * entry in the replay loop. Never called in dry-run or preview, nor for a recipe refused before writing.
+   * A call means a write MAY land; the caller owns what it records, so the record survives a throw.
+   */
+  beforeSourceWrite?: () => void;
 }
