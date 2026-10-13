@@ -23,6 +23,7 @@ import { SID_SOURCE_DIRS } from "../../src/c3/generators.js";
 import { reportStrayFiles } from "../../src/c3/projectSync.js";
 import { seedManifestDrift } from "../helpers/seedManifestDrift.js";
 import { runCli } from "../helpers/runCli.js";
+import { snapshotTree } from "../helpers/applyFixtures.js";
 import { applyParsed } from "../../src/c3/recipeApplier.js";
 import { formatScaffoldRefusal } from "../../src/c3/scaffoldGuard.js";
 import {
@@ -1562,6 +1563,71 @@ describe("MCP server handler response shaping", () => {
       expect(cliC.exitCode).to.equal(1);
       expect(cliC.stderr.trimEnd()).to.equal(mcpC);
       expect(mcpC).to.equal(formatScaffoldNameRejection("name", "../X"));
+    });
+  });
+
+  // ── a refused apply writes nothing (#279) ─────────────────────────────────
+  // Each row asserts the refusal (error text, txId line, bumped, dirty) FIRST and the
+  // file state LAST, so a red run names which half failed.
+
+  describe("a refused apply writes nothing (#279)", () => {
+    const a1 = JSON.stringify({
+      layouts: {
+        "layouts/Templates Layout.json": [{ op: "add-layer", name: "P" }],
+        "layouts/UI/Second Layout.json": [{ op: "rename-layer", currentName: "NoSuchLayer", newName: "X" }],
+      },
+    });
+    const a2 = JSON.stringify({
+      layouts: { "layouts/Templates Layout.json": [{ op: "add-layer", name: "P" }] },
+      files: { "eventSheets/Gameplay/Event sheet 1.json": [{ op: "remove-event", path: "sid:123456789012345" }] },
+    });
+
+    async function check(tool: string, args: Record<string, unknown>, errorText: string): Promise<void> {
+      const before = snapshotTree(tmp);
+      const result = (await __getHandler(tool)!(args, makeExtra())) as any;
+      const text = result.content.map((b: any) => b.text).join("\n") as string;
+      expect(result.isError).to.be.true;
+      expect(text).to.include(errorText);
+      expect(text.split("\n").pop()).to.equal("txId: default:5");
+      expect(watcher.bumped).to.equal(0);
+      expect(__getExtractedDirty()).to.be.false;
+      const after = snapshotTree(tmp);
+      const changed = [...new Set([...before.keys(), ...after.keys()])].filter((k) => before.get(k) !== after.get(k));
+      expect(changed, "files changed by a refused apply").to.deep.equal([]);
+    }
+
+    it("T1: a layout op that fails after an earlier layout was edited leaves every file unchanged", async () => {
+      await check(
+        "apply-recipe",
+        { recipe: a1, txId: "default:5", regenerate: false },
+        'renameLayer: layer "NoSuchLayer" not found',
+      );
+    });
+
+    it("T2b: a files op that fails after a layout edit leaves every file unchanged", async () => {
+      await check(
+        "apply-recipe",
+        { recipe: a2, txId: "default:5", regenerate: false },
+        'Cannot split node path "sid:123456789012345"',
+      );
+    });
+
+    it("T4: clone-replica-to-layouts with a bad second target layer leaves every file unchanged", async () => {
+      await check(
+        "clone-replica-to-layouts",
+        {
+          templatesLayout: "layouts/Templates Layout.json",
+          templateName: "default",
+          sourceType: "Sprite3",
+          targets: [
+            { layout: "layouts/UI/Second Layout.json", layer: "layer 1" },
+            { layout: "layouts/Gameplay/Main Layout.json", layer: "NoSuchLayer" },
+          ],
+          txId: "default:5",
+          regenerate: false,
+        },
+        "NoSuchLayer",
+      );
     });
   });
 });

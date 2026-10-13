@@ -1,11 +1,12 @@
 import { describe, it, beforeEach, afterEach } from "mocha";
 import { assert } from "chai";
-import { rmSync, readFileSync } from "node:fs";
+import { rmSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 
 import { applyParsed } from "../../src/c3/recipeApplier.js";
 import type { Recipe } from "../../src/c3/recipeInterpreter.js";
-import { copyFixture } from "../helpers/applyFixtures.js";
+import { copyFixture, snapshotTree } from "../helpers/applyFixtures.js";
+import { runCli } from "../helpers/runCli.js";
 
 // Pins current recipe-apply behaviour (green at 703c1bf) so the later apply refactor cannot drift it silently.
 // Expected log arrays were derived by running the designer's probes against the current tree.
@@ -192,5 +193,99 @@ describe("recipe apply behaviour pins (#255)", () => {
       "Custom-action validation failed for eventSheets/NewE2/Both.json:",
     );
     assert.deepEqual(applied.lines, ["Recipe: 1 eventSheet file(s), 1 operation(s)", "\nfiles:"]);
+  });
+});
+
+// Each row asserts the refusal (error text, exit code) FIRST and the file state LAST, so a red run
+// names which half failed.
+describe("a refused apply writes nothing (#279)", () => {
+  let tmp: string;
+  beforeEach(() => {
+    tmp = copyFixture("c3chef-apply-refused-");
+  });
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  const a2 = {
+    layouts: { "layouts/Templates Layout.json": [{ op: "add-layer", name: "P" }] },
+    files: { "eventSheets/Gameplay/Event sheet 1.json": [{ op: "remove-event", path: "sid:123456789012345" }] },
+  };
+
+  function changedFiles(before: Map<string, string>, after: Map<string, string>): string[] {
+    return [...new Set([...before.keys(), ...after.keys()])].filter((k) => before.get(k) !== after.get(k));
+  }
+
+  it("B1: an editor-invalid CREATE (#278) is refused and leaves no empty directory behind", () => {
+    const { err } = run(tmp, {
+      files: {
+        "eventSheets/NewFolder278/Bad.json": {
+          create: true,
+          events: [{ "custom-ace-block": { object: "Text", aceType: "action" } }],
+        },
+      },
+    });
+    assert.isDefined(err);
+    assert.equal(
+      err!.message,
+      `Editor-validation failed for ${path.join(tmp, "eventSheets", "NewFolder278", "Bad.json")}:\n` +
+        "  - events[0] [custom-ace-name-required]: CustomAceBlockEvent.aceName must be a string (C3 editor refuses to open the project)",
+    );
+    assert.isFalse(existsSync(path.join(tmp, "eventSheets", "NewFolder278", "Bad.json")), "Bad.json written");
+    assert.isFalse(existsSync(path.join(tmp, "eventSheets", "NewFolder278")), "empty NewFolder278 left behind");
+  });
+
+  // Runtime: each CLI spawn takes a few seconds under tsx (measured ~3-5 s here); the 60 s ceiling is for slow CI.
+  it("B2: the CLI refuses A2 with one error, prints no layout MODIFIED line and leaves the layout unchanged", function () {
+    this.timeout(60000);
+    const recipePath = path.join(tmp, "a2.json");
+    writeFileSync(recipePath, JSON.stringify(a2));
+    const layoutPath = path.join(tmp, "layouts", "Templates Layout.json");
+    const layoutBefore = readFileSync(layoutPath);
+    const r = runCli(["apply-recipe", recipePath, "--project-dir", tmp, "--no-regenerate"]);
+    assert.equal(r.exitCode, 1);
+    const msg =
+      'Error: Cannot split node path "sid:123456789012345" — expected format like "events[N]" or "events[N].children[M]"';
+    assert.equal(r.stderr.split(msg).length - 1, 1, "error text count in stderr");
+    const outLines = r.stdout.split(/\r?\n/);
+    assert.equal(
+      outLines.filter((l) => l.includes("MODIFIED layouts/Templates Layout.json")).length,
+      0,
+      "MODIFIED layout lines in stdout",
+    );
+    assert.equal(outLines.filter((l) => l === "files:").length, 0, "files: header lines in stdout");
+    assert.isTrue(readFileSync(layoutPath).equals(layoutBefore), "layout file changed");
+  });
+
+  it("B4: a layout failure and a files failure in one recipe refuse identically for apply and dry-run, writing nothing", () => {
+    const recipe = {
+      layouts: {
+        "layouts/Templates Layout.json": [{ op: "add-layer", name: "P" }],
+        "layouts/UI/Second Layout.json": [{ op: "rename-layer", currentName: "NoSuchLayer", newName: "X" }],
+      },
+      files: { "eventSheets/Gameplay/Event sheet 1.json": [{ op: "remove-event", path: "sid:123456789012345" }] },
+    };
+    const before = snapshotTree(tmp);
+    const applied = run(tmp, recipe);
+    const dry = run(tmp, recipe, true);
+    const expected = 'renameLayer: layer "NoSuchLayer" not found in layout';
+    assert.isDefined(applied.err);
+    assert.include(applied.err!.message, expected);
+    assert.isDefined(dry.err);
+    assert.include(dry.err!.message, expected);
+    assert.deepEqual(changedFiles(before, snapshotTree(tmp)), []);
+  });
+
+  it("C6: an addInstVars failure after a new objectType leaves the objectType and ts-defs unwritten", () => {
+    const dts = path.join(tmp, "scripts", "ts-defs", "instanceTypes.d.ts");
+    const dtsBefore = readFileSync(dts, "utf8");
+    const { err } = run(tmp, {
+      objectTypes: [{ name: "GoodJ", plugin: "Json" }],
+      addInstVars: [{ type: "NoSuchType", instanceVariables: [{ name: "v", type: "number" }] }],
+    });
+    assert.isDefined(err);
+    assert.include(err!.message, 'addInstVars: objectType "NoSuchType" not found under objectTypes/');
+    assert.isFalse(existsSync(path.join(tmp, "objectTypes", "GoodJ.json")), "GoodJ.json written");
+    assert.equal(readFileSync(dts, "utf8"), dtsBefore, "instanceTypes.d.ts changed");
   });
 });
