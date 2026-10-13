@@ -28,6 +28,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A refused `apply-recipe` now writes nothing.** Apply used to write each step
+  as it went, so a refusal at a later step (a bad layout op, an editor-validation
+  or custom-action failure on a sheet) left the earlier objectTypes, layouts and
+  sheets on disk. Apply now computes every step in memory and writes only once all
+  of them have succeeded
+  ([#278](https://github.com/GenvidTechnologies/construct3-chef/issues/278),
+  [#279](https://github.com/GenvidTechnologies/construct3-chef/issues/279)).
+  **Behaviour change:** a refused `apply-recipe` (CLI or MCP) writes no file;
+  new folders are created only when the apply succeeds; and a refused apply's
+  log no longer prints the step lines that came before the error.
+  `validate-recipe` and dry-run output are unchanged.
+
 - **Recipe `files`/`layouts` keys now have one canonical, case-insensitive identity.**
   **Behaviour change:** these recipes are now rejected. (1) Two spellings of one
   key (`"a"` and `"eventSheets/a.json"`, or a `\` and a `/` form) used to

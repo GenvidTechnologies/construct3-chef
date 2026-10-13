@@ -1,8 +1,8 @@
-import { readFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, mkdirSync, existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { extractScripts, generateDSL, generateLayoutSummaries } from "./generators.js";
-import { writeSourceJson } from "./sourceJson.js";
-import { diskIo } from "./sourceIo.js";
+import { writeSourceJson, serializeSourceJson } from "./sourceJson.js";
+import { diskIo, OverlayIo } from "./sourceIo.js";
 import {
   PLUGIN_BASE_CLASS,
   getObjectTypePath,
@@ -954,26 +954,32 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   // sync-project must register in project.c3proj. Gates the post-apply reminder (#245).
   let createdNewFile = false;
 
+  // Atomic apply (#278, #279): Steps 1-3 compute against an in-memory overlay and journal their writes and log
+  // lines; nothing reaches disk (or the caller's logger) until every step has succeeded. A refusal anywhere
+  // therefore leaves the project untouched.
+  const io = new OverlayIo();
+  const plog = io.logger();
+
   // ─── Step 1: Process objectTypes ───
   if (recipe.objectTypes && recipe.objectTypes.length > 0) {
-    log("\nobjectTypes:");
+    plog("\nobjectTypes:");
     for (const ot of recipe.objectTypes) {
-      const created = createObjectType(sidGen, rootDir, ot, false, log);
+      const created = createObjectTypeIo(io, sidGen, rootDir, ot, false, plog);
       if (created) {
         createdNewFile = true;
-        updateInstanceTypes(rootDir, ot, false, log);
-        updateObjects(rootDir, ot, false, log);
+        updateInstanceTypesIo(io, rootDir, ot, false, plog);
+        updateObjectsIo(io, rootDir, ot, false, plog);
       }
     }
   }
 
   // ─── Step 1b: Process addInstVars ───
   if (recipe.addInstVars && recipe.addInstVars.length > 0) {
-    log("\naddInstVars:");
-    // In apply mode the objectType files have already been written by Step 1,
-    // so passing pendingObjectTypes is harmless (findObjectTypeFile will find
-    // them on disk). Still passed for symmetry with the dry-run call.
-    processAddInstVars(sidGen, rootDir, recipe.addInstVars, false, log, recipe.objectTypes);
+    plog("\naddInstVars:");
+    // In apply mode the objectType files are already in the overlay from Step 1,
+    // so passing pendingObjectTypes is harmless (findObjectTypeFileIo will find
+    // them via the overlay). Still passed for symmetry with the dry-run call.
+    processAddInstVarsIo(io, sidGen, rootDir, recipe.addInstVars, false, plog, recipe.objectTypes);
   }
 
   // ─── Step 2: Process layouts ───
@@ -981,8 +987,10 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   // across multiple layout keys is applied as a sequence of primitives —
   // each layout is loaded once, all its ops run, then it's written back.
   if (layoutsForLoop.size > 0) {
-    log("\nlayouts:");
+    plog("\nlayouts:");
     const layoutsDir = openProject(rootDir).layoutsDir;
+    // Reads layouts from disk, not the overlay: valid only because addInstVars (Step 1b) never changes UIDs
+    // (see addInstVarsToLayout), so the overlay's layout edits cannot alter the UID set.
     const allUids = collectAllUids(layoutsDir);
     const uidCounter = { next: maxFromSet(allUids) + 1 };
     const sourceLayoutCache = new Map<string, MutatorLayoutJson>();
@@ -996,18 +1004,18 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
       if (ops.length === 0) continue;
 
       const fullPath = path.join(rootDir, layoutPath);
-      const layout = JSON.parse(readFileSync(fullPath, "utf-8")) as LayoutJson;
+      const layout = JSON.parse(io.readText(fullPath)) as LayoutJson;
       const ctx: LayoutOpContext = {
         rootDir,
         uidCounter,
         sourceLayoutCache,
         sidGen,
         objectTypes: recipe.objectTypes ?? [],
-        readText: diskIo.readText,
+        readText: io.readText.bind(io),
       };
 
       for (const op of ops) {
-        applyLayoutOp(layout, layoutPath, op, ctx, log);
+        applyLayoutOp(layout, layoutPath, op, ctx, plog);
       }
 
       // Defense in depth: the dry-run branch early-returns above, so dryRun is
@@ -1015,7 +1023,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
       // that reaches the loop without an early return can't accidentally
       // overwrite the project.
       if (!dryRun) {
-        writeSourceJson(fullPath, layout);
+        io.writeText(fullPath, serializeSourceJson(layout));
       }
     }
   }
@@ -1027,7 +1035,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   // hints to operators running `apply-recipe` directly without a prior
   // `validate-recipe`.
   if (recipe.files && Object.keys(recipe.files).length > 0) {
-    log("\nfiles:");
+    plog("\nfiles:");
     for (const [filePath, entry] of Object.entries(recipe.files)) {
       const fullPath = path.join(rootDir, filePath);
       if (isFileCreate(entry)) {
@@ -1037,20 +1045,33 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
         // checkCreateTargets refused any CREATE over an existing path before Step 1 (#249),
         // so every CREATE reaching here writes a file sync-project must register.
         createdNewFile = true;
-        mkdirSync(path.dirname(fullPath), { recursive: true });
-        writeEventSheet(fullPath, sheet);
-        log(`  CREATED ${filePath}`);
+        assertEditorValid(fullPath, sheet);
+        io.writeText(fullPath, serializeSourceJson(sheet), { mkdir: true });
+        plog(`  CREATED ${filePath}`);
       } else {
-        const original = loadSheet(rootDir, filePath);
+        // Event sheets are never written by Steps 1-2, so the overlay holds nothing for them; reading through
+        // io is equivalent to loadSheet's disk read.
+        const original = JSON.parse(io.readText(fullPath)) as EventSheet;
         const clone = JSON.parse(JSON.stringify(original)) as EventSheet;
         const opsClone = JSON.parse(JSON.stringify(entry)) as FileOp[];
         executeFileOpsWithHints(sidGen, filePath, original, clone, opsClone, {
           autoAdjust: recipe.autoAdjust,
         });
         assertCustomActionsValid(customAceIndex, filePath, original, clone);
-        writeEventSheet(fullPath, clone);
-        log(`  MODIFIED ${filePath}`);
+        assertEditorValid(fullPath, clone);
+        io.writeText(fullPath, serializeSourceJson(clone));
+        plog(`  MODIFIED ${filePath}`);
       }
+    }
+  }
+
+  // Replay. Nothing can refuse after compute, so this loop is the only place apply writes to disk.
+  for (const entry of io.journal) {
+    if (entry.kind === "log") {
+      log(...entry.args);
+    } else {
+      if (entry.mkdir) mkdirSync(path.dirname(entry.abs), { recursive: true });
+      writeFileSync(entry.abs, entry.text);
     }
   }
 

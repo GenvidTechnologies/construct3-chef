@@ -192,7 +192,9 @@ describe("recipe apply behaviour pins (#255)", () => {
       applied.err!.message.split("\n")[0],
       "Custom-action validation failed for eventSheets/NewE2/Both.json:",
     );
-    assert.deepEqual(applied.lines, ["Recipe: 1 eventSheet file(s), 1 operation(s)", "\nfiles:"]);
+    // A refused apply prints only the lines logged before the in-memory compute pass (#279):
+    // the "\nfiles:" header is journaled and discarded with the rest of the failed pass.
+    assert.deepEqual(applied.lines, ["Recipe: 1 eventSheet file(s), 1 operation(s)"]);
   });
 });
 
