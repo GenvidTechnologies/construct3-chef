@@ -36,6 +36,8 @@ These are different layers: a runtime-resolution defect (chokepoint 2) passes ed
 
 See [CLAUDE.md](../../CLAUDE.md) § "Recipe pipeline" and [wiki/reference/recipe-reference.md](../reference/recipe-reference.md) for full detail.
 
+**Amended by ADR [0047](0047-recipe-apply-computes-every-step-in-memory-then-writes.md):** apply now computes all steps in memory and writes only after every step passed.
+
 ## Compromise
 
 **A monolithic applier mixing transformation with I/O** was rejected. A single module cannot support dry-run (no-write) validation: the only way to "dry-run" would be to mock the filesystem. It also makes the transformation logic harder to unit-test and makes it impossible to validate before writing.

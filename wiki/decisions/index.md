@@ -427,3 +427,12 @@ See the [wiki index](../index.md) for the other sections.
   ([#252](https://github.com/GenvidTechnologies/construct3-chef/issues/252),
   [#253](https://github.com/GenvidTechnologies/construct3-chef/issues/253),
   [#273](https://github.com/GenvidTechnologies/construct3-chef/issues/273))
+* [0047. Recipe apply computes every step in memory, then writes](0047-recipe-apply-computes-every-step-in-memory-then-writes.md) -
+  Amends ADR 0003. `applyRecipeInner` runs objectTypes, addInstVars, layouts
+  and files against an in-memory `OverlayIo` that journals writes and log
+  lines, and replays the journal to disk only after the whole recipe passed. A
+  refused apply writes nothing and creates no folder. The first error, the
+  success log, dry-run, validate-recipe and --preview are unchanged
+  ([#279](https://github.com/GenvidTechnologies/construct3-chef/issues/279),
+  [#278](https://github.com/GenvidTechnologies/construct3-chef/issues/278),
+  [#255](https://github.com/GenvidTechnologies/construct3-chef/issues/255))
