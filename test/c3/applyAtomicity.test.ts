@@ -274,6 +274,55 @@ describe("a refused apply writes nothing (#279)", () => {
     assert.isAtLeast(hits.length, 1);
   });
 
+  // R14/R31 (#256 D2): a regeneration failure AFTER the source write names what was written. The trigger is
+  // deleting scripts/importsForEvents.ts, which extractScripts reads unguarded.
+  function breakRegeneration(): void {
+    const g = runCli(["generate", "--project-dir", tmp]);
+    assert.equal(g.exitCode, 0, g.stderr);
+    rmSync(path.join(tmp, "scripts", "importsForEvents.ts"));
+  }
+
+  it("R14: apply-recipe names the written source when regeneration fails after the write", function () {
+    this.timeout(120000);
+    breakRegeneration();
+    const recipePath = path.join(tmp, "r14.json");
+    writeFileSync(
+      recipePath,
+      JSON.stringify({ files: { "eventSheets/R14.json": { create: true, events: [{ comment: "R14" }] } } }),
+    );
+    const r = runCli(["apply-recipe", recipePath, "--project-dir", tmp]);
+    assert.equal(r.exitCode, 1);
+    assert.include(r.stdout + r.stderr, "failed after writing");
+    assert.include(r.stdout + r.stderr, "Regenerating extracted/ failed after writing 1 source file(s)");
+    assert.include(r.stdout + r.stderr, "Run `construct3-chef generate` once the cause is fixed.");
+    assert.isTrue(existsSync(path.join(tmp, "eventSheets", "R14.json")), "new sheet missing");
+  });
+
+  it("R31: rename-symbol names the written source when regeneration fails after the write", function () {
+    this.timeout(120000);
+    const seedPath = path.join(tmp, "r31seed.json");
+    writeFileSync(
+      seedPath,
+      JSON.stringify({
+        files: {
+          "eventSheets/R14.json": {
+            create: true,
+            events: [{ block: { conditions: [], actions: [{ script: ["d2Probe();"] }] } }],
+          },
+        },
+      }),
+    );
+    const seed = runCli(["apply-recipe", seedPath, "--project-dir", tmp]);
+    assert.equal(seed.exitCode, 0, seed.stderr);
+    breakRegeneration();
+    const r = runCli(["rename-symbol", "d2Probe", "d2Renamed", "--project-dir", tmp]);
+    assert.equal(r.exitCode, 1);
+    assert.include(r.stdout + r.stderr, "failed after writing");
+    assert.include(r.stdout + r.stderr, "Regenerating extracted/ failed after writing 1 source file(s)");
+    const sheet = readFileSync(path.join(tmp, "eventSheets", "R14.json"), "utf8");
+    assert.equal(sheet.split("d2Renamed").length - 1, 1, "d2Renamed count in R14.json");
+  });
+
   it("B4: a layout failure and a files failure in one recipe refuse identically for apply and dry-run, writing nothing", () => {
     const recipe = {
       layouts: {

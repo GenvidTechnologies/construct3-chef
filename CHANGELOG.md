@@ -41,6 +41,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   two or three, and rewrites those three files on every run.
   `regenerateExtracted`'s `withLayouts` parameter is deprecated and ignored.
 
+- **A regeneration failure after an apply or rename now says the source was
+  written.** When `apply-recipe`, `apply-op`, `remove-layer` or `rename-symbol`
+  wrote its source files and then failed to regenerate `extracted/`, it printed
+  a raw error with no sign that the source had changed. The error now reads
+  `Regenerating <extractedDir>/ failed after writing <N> source file(s): …` and
+  names `construct3-chef generate` as the recovery step; the original error is
+  kept as its `cause`
+  ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)).
+
 - **A refused `apply-recipe` now writes nothing.** Apply used to write each step
   as it went, so a refusal at a later step (a bad layout op, an editor-validation
   or custom-action failure on a sheet) left the earlier objectTypes, layouts and

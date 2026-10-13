@@ -154,6 +154,23 @@ export function regenerateExtracted(
   });
 }
 
+/**
+ * Regenerate after the source write has landed (#256 D2). A failure here is raised with the written-source
+ * count and the recovery command, so the caller knows source changed while `extracted/` did not. Wraps ONLY
+ * the regeneration; errors raised before the write are untouched.
+ */
+function regenerateAfterWrite(rootDir: string, extractedDir: string, written: number, log: Logger): void {
+  try {
+    regenerateExtracted(rootDir, true, extractedDir, log);
+  } catch (e) {
+    const cause = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `Regenerating ${extractedDir}/ failed after writing ${written} source file(s): ${cause}. Run \`construct3-chef generate\` once the cause is fixed.`,
+      { cause: e },
+    );
+  }
+}
+
 // ─── objectTypes helpers ───
 
 export function createObjectType(
@@ -1094,7 +1111,8 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   }
 
   if (regenerate) {
-    regenerateExtracted(rootDir, true, extractedDir, log);
+    const written = new Set(io.journal.flatMap((j) => (j.kind === "write" ? [j.abs] : []))).size;
+    regenerateAfterWrite(rootDir, extractedDir, written, log);
   }
 }
 
@@ -1204,6 +1222,6 @@ export function renameSymbols(
   log(`\nDone. ${matched.length} file(s) modified, ${totalActions} script action(s) updated.`);
 
   if (regenerate) {
-    regenerateExtracted(rootDir, true, extractedDir, log);
+    regenerateAfterWrite(rootDir, extractedDir, matched.length, log);
   }
 }
