@@ -498,6 +498,7 @@ regP(
   },
   async (ctx, { offset, limit }) =>
     ctx.rwlock.read(async () => {
+      checkDerivedFreshness(ctx, path.join(ctx.extractedDir, "global-layers.txt"));
       const text = readExtracted(ctx, "global-layers.txt");
       if (text === null) {
         return mcpError("global-layers.txt not found. Run 'regenerate' to generate it.", {
@@ -747,6 +748,7 @@ regP(
   },
   async (ctx, { offset, limit }) =>
     ctx.rwlock.read(async () => {
+      checkDerivedFreshness(ctx, path.join(ctx.extractedDir, "template-scope.txt"));
       const text = readExtracted(ctx, "template-scope.txt");
       if (text === null) {
         return mcpError("template-scope.txt not found. Run 'npm run generate-c3' to generate it.", {
@@ -768,6 +770,7 @@ regP(
   },
   async (ctx, { offset, limit }) =>
     ctx.rwlock.read(async () => {
+      checkDerivedFreshness(ctx, path.join(ctx.extractedDir, "sid-registry.txt"));
       const text = readExtracted(ctx, "sid-registry.txt");
       if (text === null) {
         return mcpError("sid-registry.txt not found. Run 'npm run generate-c3' to generate it.", {

@@ -1022,6 +1022,98 @@ describe("MCP server handler response shaping", () => {
     });
   });
 
+  describe("derived freshness on read tools (#256)", () => {
+    const BASELINE = new Date(2020, 0, 1);
+    const NEWER = new Date(BASELINE.getTime() + 100_000);
+    const TOOLS: ReadonlyArray<{ tool: string; file: string }> = [
+      { tool: "read-sid-registry", file: "sid-registry.txt" },
+      { tool: "read-template-scope", file: "template-scope.txt" },
+      { tool: "list-global-layers", file: "global-layers.txt" },
+    ];
+
+    // Pin every source file and every extracted/ artifact to BASELINE.
+    function pinBaseline(): void {
+      for (const dir of SID_SOURCE_DIRS) {
+        setAllMtimesRecursive(path.join(tmp, dir), BASELINE);
+      }
+      setAllMtimesRecursive(path.join(tmp, "extracted"), BASELINE);
+    }
+
+    async function call(tool: string, args: Record<string, unknown> = {}): Promise<string> {
+      const handler = __getHandler(tool)!;
+      expect(handler, `handler ${tool}`).to.exist;
+      const result = (await handler(args, makeExtra())) as any;
+      return result.content[0].text as string;
+    }
+
+    for (const { tool, file } of TOOLS) {
+      it(`R9 ${tool}: a newer real layout makes ${file} stale (warning, dirty, bumped 1)`, async () => {
+        pinBaseline();
+        expect(__getExtractedDirty()).to.equal(false);
+        expect(watcher.bumped).to.equal(0);
+        const layoutPath = path.join(tmp, "layouts", "Gameplay", "Main Layout.json");
+        fs.utimesSync(layoutPath, NEWER, NEWER);
+
+        const text = await call(tool);
+
+        expect(text).to.include(STALE_WARNING);
+        expect(__getExtractedDirty()).to.equal(true);
+        expect(watcher.bumped).to.equal(1);
+      });
+    }
+
+    it("R9 read-dsl (positive control): a newer sheet makes its DSL stale (warning, dirty, bumped 1)", async () => {
+      pinBaseline();
+      const sheetPath = path.join(tmp, "eventSheets", "Gameplay", "Event sheet 1.json");
+      fs.utimesSync(sheetPath, NEWER, NEWER);
+
+      const text = await call("read-dsl", { sheet: "Gameplay/Event sheet 1" });
+
+      expect(text).to.include(STALE_WARNING);
+      expect(__getExtractedDirty()).to.equal(true);
+      expect(watcher.bumped).to.equal(1);
+    });
+
+    for (const { tool, file } of TOOLS) {
+      it(`R9n ${tool}: a newer uistate sibling leaves ${file} fresh (no warning, bumped 0)`, async () => {
+        pinBaseline();
+        const uistatePath = path.join(tmp, "layouts", "Main Layout.uistate.json");
+        fs.writeFileSync(uistatePath, "{}");
+        fs.utimesSync(uistatePath, NEWER, NEWER);
+
+        const text = await call(tool);
+
+        expect(text).to.not.include(STALE_WARNING);
+        expect(__getExtractedDirty()).to.equal(false);
+        expect(watcher.bumped).to.equal(0);
+      });
+    }
+
+    it("R9i read-template-scope: calling twice on a stale source leaves bumped at 1", async () => {
+      pinBaseline();
+      fs.utimesSync(path.join(tmp, "layouts", "Gameplay", "Main Layout.json"), NEWER, NEWER);
+
+      await call("read-template-scope");
+      const second = await call("read-template-scope");
+
+      expect(second).to.include(STALE_WARNING);
+      expect(__getExtractedDirty()).to.equal(true);
+      expect(watcher.bumped).to.equal(1);
+    });
+
+    for (const { tool, file } of TOOLS) {
+      it(`R10 ${tool}: nothing newer than ${file} gives no warning and bumped 0`, async () => {
+        pinBaseline();
+
+        const text = await call(tool);
+
+        expect(text).to.not.include(STALE_WARNING);
+        expect(__getExtractedDirty()).to.equal(false);
+        expect(watcher.bumped).to.equal(0);
+      });
+    }
+  });
+
   // ── 15. [strays] detection-only report at the MCP surfaces (#177) ───────────
   // KNOWN-RED at the commit that introduces these two rows: nothing in
   // `server.ts` emits a `[strays]` line until the wiring task lands. Their red

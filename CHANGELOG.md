@@ -59,6 +59,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   regenerate
   ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)).
 
+- **`read-sid-registry`, `read-template-scope` and `list-global-layers` now warn
+  when their `extracted/` output is older than the project source.** This
+  happens, for example, after a CLI apply made before the server started; they
+  used to return the stale content silently
+  ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)).
+
 - **A refused `apply-recipe` now writes nothing.** Apply used to write each step
   as it went, so a refusal at a later step (a bad layout op, an editor-validation
   or custom-action failure on a sheet) left the earlier objectTypes, layouts and
