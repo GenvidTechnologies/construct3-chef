@@ -35,6 +35,8 @@ Tools are tagged `READ_ONLY` / `REGENERATE` / `MUTATE` via shared annotation con
 
 **`wiki/architecture/mcp-architecture.md` is the canonical in-depth reference** for this model — including the stdio transport rationale, the watcher suppress/expect mechanics, the `Logger` and `ReadWriteLock` design decisions, and the full concurrency/security posture. This ADR records the decision and rejected alternatives; consult that doc for implementation depth.
 
+**Amended by ADR [0048](0048-a-failed-mcp-mutation-reports-what-it-may-have-written.md):** the bump-and-stale handling is no longer cancel-only; a non-cancel failure bumps the txId and marks `extracted/` stale according to what the call may have written.
+
 ## Compromise
 
 Two weaker alternatives were rejected:

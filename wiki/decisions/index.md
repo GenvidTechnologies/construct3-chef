@@ -436,3 +436,10 @@ See the [wiki index](../index.md) for the other sections.
   ([#279](https://github.com/GenvidTechnologies/construct3-chef/issues/279),
   [#278](https://github.com/GenvidTechnologies/construct3-chef/issues/278),
   [#255](https://github.com/GenvidTechnologies/construct3-chef/issues/255))
+* [0048. A failed MCP mutation reports what it may have written](0048-a-failed-mcp-mutation-reports-what-it-may-have-written.md) -
+  Amends ADR 0005. Each mutating MCP call carries a per-call WriteLedger
+  marked before every write. On a non-cancel failure `recordFailedMutation`
+  bumps the txId iff source or manifest may have been written, and marks
+  `extracted/` stale iff source or generators may have run; a cancel still
+  always does both
+  ([#255](https://github.com/GenvidTechnologies/construct3-chef/issues/255))
