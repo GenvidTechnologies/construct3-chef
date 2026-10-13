@@ -278,6 +278,31 @@ describe("a refused apply writes nothing (#279)", () => {
     assert.deepEqual(changedFiles(before, snapshotTree(tmp)), []);
   });
 
+  it("a second objectType differing only in letter case does what the filesystem does (review of #279)", () => {
+    // The overlay must match paths the way the disk it stands in front of does. Before the overlay, the
+    // second CREATE saw the first one's file on disk: SKIP on a case-insensitive filesystem, a second file
+    // on a case-sensitive one. Matching case-sensitively on Windows let it CREATE and then overwrite.
+    const caseInsensitive = process.platform === "win32" || process.platform === "darwin";
+    const r = run(tmp, {
+      objectTypes: [
+        { name: "ProbeCase", plugin: "Json" },
+        { name: "probecase", plugin: "Json" },
+      ],
+    });
+    assert.isUndefined(r.err);
+    const first = JSON.parse(readFileSync(path.join(tmp, "objectTypes", "ProbeCase.json"), "utf-8")) as {
+      name: string;
+    };
+    if (caseInsensitive) {
+      assert.include(r.lines, "  SKIP objectTypes/probecase.json (already exists)");
+      assert.equal(first.name, "ProbeCase", "the first objectType must not be overwritten");
+    } else {
+      assert.notInclude(r.lines, "  SKIP objectTypes/probecase.json (already exists)");
+      assert.equal(first.name, "ProbeCase");
+      assert.isTrue(existsSync(path.join(tmp, "objectTypes", "probecase.json")));
+    }
+  });
+
   it("C6: an addInstVars failure after a new objectType leaves the objectType and ts-defs unwritten", () => {
     const dts = path.join(tmp, "scripts", "ts-defs", "instanceTypes.d.ts");
     const dtsBefore = readFileSync(dts, "utf8");

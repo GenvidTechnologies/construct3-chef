@@ -44,42 +44,60 @@ export type JournalEntry =
   | { kind: "write"; abs: string; text: string; mkdir: boolean };
 
 /**
+ * Whether the overlay matches paths with letter case ignored. It must agree
+ * with the filesystem it stands in front of: on Windows and macOS (default
+ * NTFS/APFS) `Foo.json` and `foo.json` name one file, so an overlay that told
+ * them apart would let a recipe CREATE `foo` after `Foo` and overwrite it on
+ * replay, where the on-disk apply SKIPped. A case-sensitive volume on those
+ * platforms over-folds, which only turns that second CREATE into a SKIP.
+ */
+const FOLD_CASE = process.platform === "win32" || process.platform === "darwin";
+
+/**
  * In-memory overlay over disk. Writes are captured (text fixed at call time)
- * and never touch disk; `mkdir` is recorded, never performed. Keys are
- * `path.resolve`d; matching is case-sensitive even on Windows (callers pass
- * paths built the same way, so no case folding is attempted).
+ * and never touch disk; `mkdir` is recorded, never performed. Paths are
+ * `path.resolve`d and, where the filesystem is case-insensitive, matched with
+ * case folded ({@link FOLD_CASE}); each entry keeps the spelling it was
+ * written with.
  */
 export class OverlayIo implements SourceIo {
-  readonly #files = new Map<string, string>();
+  readonly #files = new Map<string, { abs: string; text: string }>();
   readonly #journal: JournalEntry[] = [];
 
   get journal(): ReadonlyArray<JournalEntry> {
     return this.#journal;
   }
 
+  static #key(abs: string): string {
+    const resolved = path.resolve(abs);
+    return FOLD_CASE ? resolved.toLowerCase() : resolved;
+  }
+
   readText(abs: string): string {
-    const hit = this.#files.get(path.resolve(abs));
-    return hit !== undefined ? hit : readFileSync(abs, "utf-8");
+    const hit = this.#files.get(OverlayIo.#key(abs));
+    return hit !== undefined ? hit.text : readFileSync(abs, "utf-8");
   }
 
   exists(abs: string): boolean {
-    return this.#files.has(path.resolve(abs)) || existsSync(abs);
+    return this.#files.has(OverlayIo.#key(abs)) || existsSync(abs);
   }
 
   writeText(abs: string, text: string, opts?: { mkdir?: boolean }): void {
-    this.#files.set(path.resolve(abs), text);
+    const key = OverlayIo.#key(abs);
+    // A later write to the same file keeps the first spelling, as the disk would.
+    this.#files.set(key, { abs: this.#files.get(key)?.abs ?? path.resolve(abs), text });
     this.#journal.push({ kind: "write", abs, text, mkdir: opts?.mkdir === true });
   }
 
   listObjectTypeFiles(objectTypesDir: string): string[] {
     const result = existsSync(objectTypesDir) ? [...find_all_objectTypes_path(objectTypesDir)] : [];
-    const seen = new Set(result.map((p) => path.resolve(p)));
+    const seen = new Set(result.map((p) => OverlayIo.#key(p)));
     const root = path.resolve(objectTypesDir);
-    for (const key of this.#files.keys()) {
-      if (!isSectionItemName(key) || seen.has(key)) continue;
-      const rel = path.relative(root, key);
+    for (const [key, { abs }] of this.#files) {
+      if (!isSectionItemName(abs) || seen.has(key)) continue;
+      const rel = path.relative(root, abs);
       if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) continue;
-      if (isEditorLocalPathUnder(root, key)) continue;
+      if (isEditorLocalPathUnder(root, abs)) continue;
       result.push(path.join(objectTypesDir, rel));
       seen.add(key);
     }
