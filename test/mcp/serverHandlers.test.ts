@@ -123,7 +123,7 @@ function makeExtractedNewerThanSource(root: string): void {
   if (fs.existsSync(extractedDir)) walk(extractedDir);
 }
 
-// Deterministic mtime control for the checkRegistryFreshness tests below:
+// Deterministic mtime control for the checkDerivedFreshness tests below:
 // stamps every file under `dir` (recursively) with an explicit mtime, so the
 // freshness comparison isn't at the mercy of cpSync/wall-clock ordering.
 function setAllMtimesRecursive(dir: string, time: Date): void {
@@ -961,14 +961,14 @@ describe("MCP server handler response shaping", () => {
     });
   });
 
-  // ── 14. checkRegistryFreshness excludes editor-local paths (ADR 0018 site 2) ─
+  // ── 14. checkDerivedFreshness excludes editor-local paths (ADR 0018 site 2) ─
   // generate-sids is the only handler whose response surfaces the effect of
-  // checkRegistryFreshness's own scan directly (via appendStaleWarning), rather
+  // checkDerivedFreshness's own scan directly (via appendStaleWarning), rather
   // than a stale flag set earlier by something else — so it's the right probe.
   // Mtimes are set explicitly (utimesSync) on every real source file plus the
   // registry, never relying on wall-clock/cpSync ordering.
 
-  describe("checkRegistryFreshness (generate-sids probe)", () => {
+  describe("checkDerivedFreshness (generate-sids probe)", () => {
     const BASELINE = new Date(2020, 0, 1);
     const NEWER = new Date(BASELINE.getTime() + 100_000);
 

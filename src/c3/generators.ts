@@ -491,7 +491,7 @@ type SidEntry = { sid: number; sourceFile: string; location: string };
  */
 /**
  * The C3 source directories that contribute SIDs to the registry. Single source
- * of truth for both `generateSidRegistry` and `checkRegistryFreshness` — adding
+ * of truth for both `generateSidRegistry` and `checkDerivedFreshness` — adding
  * a new SID-bearing dir (e.g. `families/`) here is a one-place change.
  */
 export const SID_SOURCE_DIRS = ["eventSheets", "layouts", "objectTypes"] as const;

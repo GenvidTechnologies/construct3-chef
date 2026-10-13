@@ -92,7 +92,7 @@ function makeFakeOpsServer(): RegisterableServer {
 
 // cpSync stamps every copied file with ~the same mtime, and the recursive
 // copy order decides whether extracted/ ends up newer or older than the
-// source dirs. checkSourceFreshness/checkRegistryFreshness compare mtimes
+// source dirs. checkSourceFreshness/checkDerivedFreshness compare mtimes
 // with a strict `source > extracted`, so a freshly-copied fixture can read
 // as spuriously stale. Force extracted/ deterministically newer than source
 // (same helper as serverHandlers.test.ts) so staleness never fires as a side

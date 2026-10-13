@@ -292,21 +292,24 @@ function checkSourceFreshness(ctx: ProjectContext, sourcePath: string, extracted
 }
 
 /**
- * Multi-source variant of checkSourceFreshness for `sid-registry.txt`, which is
- * derived from many source files (eventSheets/, layouts/, objectTypes/).
- * Walks each source dir, finds the newest JSON mtime, compares against the
- * registry mtime, and marks `ctx.extractedDirty` if any source is newer.
+ * Multi-source variant of checkSourceFreshness for an extracted/ artifact derived
+ * from many source files (`sid-registry.txt`, `template-scope.txt`,
+ * `global-layers.txt`). Walks every source dir in SID_SOURCE_DIRS (eventSheets/,
+ * layouts/, objectTypes/), finds the newest JSON mtime, compares it against the
+ * artifact's mtime, and marks `ctx.extractedDirty` if any source is newer.
+ * SID_SOURCE_DIRS is a superset of what some artifacts read, which fails safe:
+ * the dirty flag is project-wide, so over-reporting only adds a stale warning.
  *
  * This catches external edits (git checkout, atomic-rename saves, network mounts)
  * that the underlying fs.watch mechanism may have missed, or hasn't yet delivered.
  */
-function checkRegistryFreshness(ctx: ProjectContext, registryPath: string): void {
+function checkDerivedFreshness(ctx: ProjectContext, extractedPath: string): void {
   if (ctx.extractedDirty) return; // Already known stale; skip the scan.
-  let registryMtime: number;
+  let extractedMtime: number;
   try {
-    registryMtime = fs.statSync(registryPath).mtimeMs;
+    extractedMtime = fs.statSync(extractedPath).mtimeMs;
   } catch {
-    return; // No registry → can't compare; callers handle the missing-file case separately.
+    return; // No artifact → can't compare; callers handle the missing-file case separately.
   }
   let newestSourceMtime = 0;
   for (const dir of SID_SOURCE_DIRS) {
@@ -332,10 +335,10 @@ function checkRegistryFreshness(ctx: ProjectContext, registryPath: string): void
       }
     }
   }
-  if (newestSourceMtime > registryMtime) {
+  if (newestSourceMtime > extractedMtime) {
     ctx.extractedDirty = true;
     ctx.watcher.bump();
-    emitLog("warning", "Stale detected: source newer than sid-registry.txt");
+    emitLog("warning", `Stale detected: source newer than ${path.basename(extractedPath)}`);
   }
 }
 
@@ -797,7 +800,7 @@ regP(
     },
   },
   // Takes the WRITE lock — not because source files change (they don't), but because
-  // (a) `checkRegistryFreshness` mutates the context's `ctx.extractedDirty` and `txId`, and
+  // (a) `checkDerivedFreshness` mutates the context's `ctx.extractedDirty` and `txId`, and
   // (b) two concurrent generate-sids calls each building their own local `used` Set
   // could mint identical SIDs (negligible probability ~1/9e14 per pair, but the
   // architectural contract "SIDs don't collide with each other" should hold across
@@ -812,7 +815,7 @@ regP(
           if (!fs.existsSync(registryPath)) {
             return mcpError("sid-registry.txt not found. Run 'regenerate' first.", { prefix: "generate-sids:" });
           }
-          checkRegistryFreshness(ctx, registryPath);
+          checkDerivedFreshness(ctx, registryPath);
           const used = readRegistryFile(registryPath);
           if (extraUsedSids) for (const s of extraUsedSids) used.add(s);
           const sids = Array.from({ length: count }, () => mintUniqueSid(used));
@@ -1006,7 +1009,7 @@ regP(
           // Refresh ctx.extractedDirty so the returned txId reflects any external edits
           // the file ctx.watcher may have missed (atomic-rename, git checkout, network mounts).
           // This matters: apply-recipe's optimistic-concurrency check uses our returned txId.
-          checkRegistryFreshness(ctx, path.join(ctx.extractedDir, "sid-registry.txt"));
+          checkDerivedFreshness(ctx, path.join(ctx.extractedDir, "sid-registry.txt"));
           const { log, text } = bufferingLogger();
           const recipe: Recipe = JSON.parse(recipeJson);
           const errors = validateRecipe(recipe);
@@ -1041,7 +1044,7 @@ async function applyRecipeWithConcurrency(
         // Refresh ctx.extractedDirty before the txId check — catches external edits the
         // file ctx.watcher may have missed, so a stale registry doesn't seed `mintUniqueSid`
         // with SIDs that already exist on disk.
-        checkRegistryFreshness(ctx, path.join(ctx.extractedDir, "sid-registry.txt"));
+        checkDerivedFreshness(ctx, path.join(ctx.extractedDir, "sid-registry.txt"));
         const shouldRegenerate = opts.regenerate !== false;
         const totalSteps = shouldRegenerate ? 7 : 1; // apply + 6 generators
         const { log, text } = bufferingLogger();
@@ -1712,7 +1715,7 @@ async function runWorkflowRecipe(
   const writes = newWriteLedger();
   return withMcpErrors(
     async () => {
-      checkRegistryFreshness(ctx, path.join(ctx.extractedDir, "sid-registry.txt"));
+      checkDerivedFreshness(ctx, path.join(ctx.extractedDir, "sid-registry.txt"));
       const shouldRegenerate = regenerate !== false;
       const totalSteps = shouldRegenerate ? 7 : 1; // apply + 6 generators
       const { log, text } = bufferingLogger();
