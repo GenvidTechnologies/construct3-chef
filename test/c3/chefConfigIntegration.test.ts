@@ -98,10 +98,9 @@ describe("chefConfig integration: extractedDir routing", () => {
     before(function () {
       tmpRoot = copyFixture();
       // Run regenerate with a non-default dir — no config file needed.
-      // regenerateExtracted runs extractScripts + generateDSL (+ layout summaries
-      // when withLayouts=true). It does NOT call generateSidRegistry — that is the
-      // caller's responsibility (CLI/server do it separately). So we assert on DSL
-      // files and .ts script files, not on sid-registry.txt.
+      // regenerateExtracted runs every generator in GENERATORS (#256), so the
+      // output set includes sid-registry.txt, template-scope.txt, global-layers.txt
+      // and the layout summaries as well as the DSL and script files.
       regenerateExtracted(tmpRoot, false, "my-out2", noop);
     });
 
@@ -118,6 +117,17 @@ describe("chefConfig integration: extractedDir routing", () => {
       // extractScripts always writes a tsconfig.json regardless of whether any
       // sheets have scripts, so this is a reliable presence check.
       expect(existsSync(path.join(tmpRoot, "my-out2", "tsconfig.json"))).to.be.true;
+    });
+
+    it("the full generator output set lands under the custom dir", () => {
+      for (const rel of [
+        "sid-registry.txt",
+        "template-scope.txt",
+        "global-layers.txt",
+        "layouts/Gameplay/Main Layout.layout.txt",
+      ]) {
+        expect(existsSync(path.join(tmpRoot, "my-out2", rel)), `${rel} under my-out2/`).to.be.true;
+      }
     });
 
     it("nothing leaks into the default extracted/ dir", () => {
@@ -145,7 +155,7 @@ describe("chefConfig integration: extractedDir routing", () => {
       // applyParsed reads the sid-registry from opts.extractedDir to seed the SID
       // generator (pre-generated in before()). After applying, it calls
       // regenerateExtracted(rootDir, withLayouts, opts.extractedDir) which routes
-      // extractScripts + generateDSL output to my-out3/.
+      // the full generator inventory's output to my-out3/.
       //
       // We use a minimal file-create recipe (an empty new sheet) so the recipe
       // passes validation (a fully empty recipe {} is rejected). The recipe itself

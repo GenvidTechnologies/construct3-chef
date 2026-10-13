@@ -28,6 +28,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A CLI or library apply now regenerates all six `extracted/` outputs.**
+  `apply-recipe`, `apply-op`, `remove-layer` and `rename-symbol` on the CLI, and
+  `applyParsed` and `regenerateExtracted` in the library, used to run only the
+  scripts and DSL generators (plus layout summaries when a layout was touched), so
+  `extracted/` could differ from a full regeneration. They now run every
+  generator, as the MCP path already did: `sid-registry.txt`,
+  `template-scope.txt` and `global-layers.txt` are kept current, and the layout
+  summaries are refreshed after an addInstVars-only apply
+  ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)).
+  **Behaviour change:** each CLI apply now scans the project six times instead of
+  two or three, and rewrites those three files on every run.
+  `regenerateExtracted`'s `withLayouts` parameter is deprecated and ignored.
+
 - **A refused `apply-recipe` now writes nothing.** Apply used to write each step
   as it went, so a refusal at a later step (a bad layout op, an editor-validation
   or custom-action failure on a sheet) left the earlier objectTypes, layouts and

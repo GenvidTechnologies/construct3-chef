@@ -160,7 +160,9 @@ See the [wiki index](../index.md) for the other sections.
   own outDir" guard self-extending; rejects hoisting a single `mkdirSync` into
   the caller and hand-enumerating generators inside the test;
   `recipeApplier.ts`'s fixed three-generator sequence stays deliberately
-  unrouted; does not fix
+  unrouted (reversed by ADR 0049,
+  [#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256));
+  does not fix
   [#181](https://github.com/GenvidTechnologies/construct3-chef/issues/181)
   (`extractScripts` still requires a pre-existing `importsForEvents.ts`)
   ([#178](https://github.com/GenvidTechnologies/construct3-chef/issues/178))
@@ -443,3 +445,10 @@ See the [wiki index](../index.md) for the other sections.
   `extracted/` stale iff source or generators may have run; a cancel still
   always does both
   ([#255](https://github.com/GenvidTechnologies/construct3-chef/issues/255))
+* [0049. `regenerateExtracted` runs the whole generator inventory](0049-regenerate-extracted-runs-the-whole-generator-inventory.md) -
+  Amends ADR 0022. After a successful CLI or library apply,
+  `regenerateExtracted` runs every `GENERATORS` entry in place with an
+  unchanged signature (`withLayouts` kept, ignored, `@deprecated`), so
+  `extracted/` equals a full regeneration and the CLI/library and MCP paths
+  agree; rejects a separate full-set helper and a targeted subset
+  ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256))

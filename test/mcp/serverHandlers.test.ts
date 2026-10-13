@@ -460,6 +460,21 @@ describe("MCP server handler response shaping", () => {
     expect(__getExtractedDirty()).to.be.false;
   });
 
+  // R12/R37 (#256): the handler's own full regenerate is the only one, and the D2 wrap adds no failure text.
+  it("R12/R37: a create-sheet apply regenerates once and reports no partial-write failure", async () => {
+    const handler = __getHandler("apply-recipe")!;
+    __setExtractedDirty(true); // skip registry freshness scan
+    const recipe = JSON.stringify({ files: { "eventSheets/R12Probe.json": { create: true, events: [] } } });
+    const result = (await handler({ recipe, txId: "default:5" }, makeExtra())) as any;
+
+    expect(result.isError).to.be.undefined;
+    const text: string = result.content.map((b: any) => b.text).join("\n");
+    const count = (needle: string): number => text.split(needle).length - 1;
+    expect(count("--- Regenerating extracted files ---")).to.equal(0);
+    expect(count("Generated sid-registry.txt")).to.equal(1);
+    expect(count("failed after writing")).to.equal(0);
+  });
+
   // ── 8. list-event-sheets pagination ──────────────────────────────────────
   // Fixture has 2 real event sheet entries under eventSheets/ (sorted):
   //   Event sheet 1.json, Event sheet 2.json

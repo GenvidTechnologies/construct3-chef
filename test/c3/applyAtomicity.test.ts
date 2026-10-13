@@ -259,6 +259,21 @@ describe("a refused apply writes nothing (#279)", () => {
     assert.isTrue(readFileSync(layoutPath).equals(layoutBefore), "layout file changed");
   });
 
+  // R3 (#256): the CLI path with regeneration ON must refresh sid-registry.txt, not just DSL/scripts.
+  it("R3: the CLI apply-recipe (regenerate on) registers a created sheet in sid-registry.txt", function () {
+    this.timeout(60000);
+    const recipePath = path.join(tmp, "r3.json");
+    writeFileSync(
+      recipePath,
+      JSON.stringify({ files: { "eventSheets/R3Probe.json": { create: true, events: [{ comment: "R3" }] } } }),
+    );
+    const r = runCli(["apply-recipe", recipePath, "--project-dir", tmp]);
+    assert.equal(r.exitCode, 0, r.stderr);
+    const registry = readFileSync(path.join(tmp, "extracted", "sid-registry.txt"), "utf8");
+    const hits = registry.split(/\r?\n/).filter((l) => l.includes("eventSheets/R3Probe.json"));
+    assert.isAtLeast(hits.length, 1);
+  });
+
   it("B4: a layout failure and a files failure in one recipe refuse identically for apply and dry-run, writing nothing", () => {
     const recipe = {
       layouts: {
