@@ -308,10 +308,16 @@ yargs(hideBin(process.argv))
           type: "string",
           demandOption: true,
           describe: "Target objectType name (a plain name, no path separators)",
+        })
+        .option("regenerate", {
+          type: "boolean",
+          default: true,
+          describe: "Regenerate extracted/ files after scaffolding",
         }),
-    (argv) => {
+    async (argv) => {
       try {
         const rootDir = resolveProjectDir(argv);
+        const extractedDir = await resolveExtractedDir(rootDir);
         const project = openProject(rootDir);
         const plan = planSpriteScaffold({
           rootDir,
@@ -327,6 +333,9 @@ yargs(hideBin(process.argv))
         }
         writeSpriteScaffold(plan, console.log);
         runSync(rootDir, false, console.log);
+        if (argv.regenerate) {
+          runGenerators(rootDir, extractedDir);
+        }
       } catch (e) {
         console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
         process.exitCode = 1;

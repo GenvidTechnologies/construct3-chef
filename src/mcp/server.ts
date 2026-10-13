@@ -1640,19 +1640,22 @@ regP(
   {
     title: "Scaffold Sprite",
     description:
-      "Clone an existing objectType (sprite) to create a new one; never overwrites existing files. Remaps all SIDs and imageSpriteIds for uniqueness, copies associated image files, writes the new objectType JSON, and syncs project.c3proj.",
+      "Clone an existing objectType (sprite) to create a new one; never overwrites existing files. Remaps all SIDs and imageSpriteIds for uniqueness, copies associated image files, writes the new objectType JSON, and syncs project.c3proj. Optionally regenerates extracted/ files.",
     annotations: MUTATE,
     inputSchema: {
       source: z.string().describe("Source objectType name (e.g. 'StoryBookIcon')"),
       name: z.string().describe("Target objectType name (e.g. 'VideosIcon')"),
       txId: z.string().optional().describe("Expected txId — if stale, scaffold is rejected"),
+      regenerate: z.boolean().optional().describe("Regenerate extracted/ files after scaffolding (default: true)"),
     },
   },
-  async (ctx, { source, name: targetName, txId: expectedTxId }) => {
+  async (ctx, { source, name: targetName, txId: expectedTxId, regenerate }, extra: Extra) => {
     const writes = newWriteLedger();
     return ctx.rwlock.write(
       withMcpErrors(
         async () => {
+          const shouldRegenerate = regenerate !== false;
+          const totalSteps = 1 + (shouldRegenerate ? ctx.generatorSteps.length : 0); // sync, plus the generators when regenerating
           const { log, text } = bufferingLogger();
           const txCheck = compareTxToken(ctx, expectedTxId, "scaffolding");
           if (txCheck) return txCheck;
@@ -1676,11 +1679,19 @@ regP(
             writeSpriteScaffold(plan, log);
 
             // Sync project.c3proj
+            await sendProgress(extra, 0, totalSteps, "Syncing project.c3proj");
             writes.manifest = true;
             runSync(ctx.root, false, log);
+
+            // Regenerate extracted/ files
+            if (shouldRegenerate) {
+              writes.extracted = true;
+              await runGenerators(ctx, log, extra, 1, totalSteps);
+            }
           });
 
           ctx.watcher.bump();
+          ctx.extractedDirty = !shouldRegenerate;
           return mcpContent(text(), txIdLine(ctx));
         },
         {

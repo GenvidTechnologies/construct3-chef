@@ -200,6 +200,31 @@ describe("scaffold-layout / scaffold-sprite CLI refuse overwrites (#254)", funct
     expect(existsSync(path.join(tmp, "objectTypes", "FreshCli.json"))).to.be.true;
   });
 
+  const registryRows = (file: string): number =>
+    readFileSync(path.join(tmp, "extracted", "sid-registry.txt"), "utf8")
+      .split(/\r?\n/)
+      .filter((l) => l.includes(file)).length;
+
+  it("R5: scaffold-sprite regenerates extracted/ by default", () => {
+    const r = runCli(["scaffold-sprite", "--project-dir", tmp, "--source", "Text", "--name", "RG5"], { cwd: tmp });
+
+    expect(r.exitCode, r.stderr).to.equal(0);
+    expect(registryRows("objectTypes/RG5.json")).to.be.at.least(1);
+  });
+
+  for (const flag of ["--no-regenerate", "--regenerate=false"]) {
+    it(`R6: scaffold-sprite ${flag} skips regeneration`, () => {
+      const before = snapshotTree(tmp, "extracted");
+      const r = runCli(["scaffold-sprite", "--project-dir", tmp, "--source", "Text", "--name", "RG6", flag], {
+        cwd: tmp,
+      });
+
+      expect(r.exitCode, r.stderr).to.equal(0);
+      expect(existsSync(path.join(tmp, "objectTypes", "RG6.json"))).to.be.true;
+      expect(snapshotTree(tmp, "extracted")).to.deep.equal(before);
+    });
+  }
+
   const layoutArgs = (
     projectDir: string,
     source: string,

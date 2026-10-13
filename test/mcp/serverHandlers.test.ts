@@ -1309,6 +1309,67 @@ describe("MCP server handler response shaping", () => {
     });
   });
 
+  // ── scaffold-sprite regenerates extracted/ (#256) ─────────────────────────
+
+  describe("scaffold-sprite regenerates extracted/ (#256)", () => {
+    function snapshotExtracted(): Map<string, string> {
+      const snap = new Map<string, string>();
+      const walk = (dir: string): void => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) walk(full);
+          else
+            snap.set(
+              toPosixPath(path.relative(tmp, full)),
+              createHash("sha256").update(fs.readFileSync(full)).digest("hex"),
+            );
+        }
+      };
+      walk(path.join(tmp, "extracted"));
+      return snap;
+    }
+    const registryRows = (file: string): number =>
+      fs
+        .readFileSync(path.join(tmp, "extracted", "sid-registry.txt"), "utf8")
+        .split(/\r?\n/)
+        .filter((l) => l.includes(file)).length;
+
+    it("R7: scaffold-sprite regenerates by default", async () => {
+      __setExtractedDirty(false);
+      const result = (await __getHandler("scaffold-sprite")!({ source: "Text", name: "RG7" }, makeExtra())) as any;
+      expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+      expect(registryRows("objectTypes/RG7.json")).to.be.at.least(1);
+      expect(__getExtractedDirty()).to.be.false;
+      expect(watcher.bumped).to.equal(1);
+    });
+
+    it("R8: scaffold-sprite with regenerate:false leaves extracted/ unchanged and marks it dirty", async () => {
+      __setExtractedDirty(false);
+      const before = snapshotExtracted();
+      const result = (await __getHandler("scaffold-sprite")!(
+        { source: "Text", name: "RG8", regenerate: false },
+        makeExtra(),
+      )) as any;
+      expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+      expect(snapshotExtracted()).to.deep.equal(before);
+      expect(watcher.bumped).to.equal(1);
+      expect(__getExtractedDirty()).to.be.true;
+    });
+
+    it("R34 (scaffold-sprite): regenerate:true still clears dirty", async () => {
+      __setExtractedDirty(true);
+      const before = snapshotExtracted();
+      const result = (await __getHandler("scaffold-sprite")!(
+        { source: "Text", name: "RG8", regenerate: true },
+        makeExtra(),
+      )) as any;
+      expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+      expect(__getExtractedDirty()).to.be.false;
+      expect(snapshotExtracted()).to.not.deep.equal(before);
+      expect(watcher.bumped).to.equal(1);
+    });
+  });
+
   // ── scaffold-layout / scaffold-sprite refuse to overwrite or collide (#254) ──
   // `tmp` is a fresh fixture copy per test (beforeEach), so planted images and any
   // writes here cannot leak into other rows.

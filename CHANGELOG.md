@@ -50,6 +50,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kept as its `cause`
   ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)).
 
+- **`scaffold-sprite` now regenerates `extracted/` by default, on both the CLI
+  and the MCP tool.** It used to leave `extracted/` untouched, so
+  `sid-registry.txt` omitted the new objectType's SIDs. `--no-regenerate`
+  (CLI) and `regenerate: false` (MCP) skip the regeneration; the CLI flag was
+  previously accepted and silently ignored. With `regenerate: false` the MCP
+  tool now marks `extracted/` stale, so read tools warn until the next
+  regenerate
+  ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)).
+
 - **A refused `apply-recipe` now writes nothing.** Apply used to write each step
   as it went, so a refusal at a later step (a bad layout op, an editor-validation
   or custom-action failure on a sheet) left the earlier objectTypes, layouts and
