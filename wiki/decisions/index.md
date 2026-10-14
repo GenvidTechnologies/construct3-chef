@@ -461,3 +461,11 @@ See the [wiki index](../index.md) for the other sections.
   server-side after-the-fact registration, and a longer or fingerprint-sealed
   TTL
   ([#277](https://github.com/GenvidTechnologies/construct3-chef/issues/277))
+* [0051. Sprite image copies are derived from the source objectType](0051-sprite-image-copies-are-derived-from-the-source-objecttype.md) -
+  `scaffold-sprite` picked a source's images by a filename glob, and the
+  existing-target guard used the same plan, so both over-matched siblings and
+  missed single-image and non-PNG forms. The copy set is now derived from the
+  source objectType JSON with c3source `deriveExpectedImages`, through one
+  function (`planSpriteImageCopies`) shared by the scaffold and its guard; the
+  old function stays exported and deprecated
+  ([#262](https://github.com/GenvidTechnologies/construct3-chef/issues/262))

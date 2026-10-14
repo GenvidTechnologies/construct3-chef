@@ -26,7 +26,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`planSpriteImageCopies(imagesDir, sourceObjectType, targetName)` and the
+  `ImageCopyPlan` type** are exported from the barrel. They plan the copy of
+  exactly the images the source objectType owns, as c3source's
+  `deriveExpectedImages` derives them
+  ([#262](https://github.com/GenvidTechnologies/construct3-chef/issues/262)).
+
+### Deprecated
+
+- **`discoverAndPlanImageCopies` is deprecated** in favour of
+  `planSpriteImageCopies(imagesDir, sourceObjectType, targetName)`. It is still
+  exported, with unchanged behaviour
+  ([#262](https://github.com/GenvidTechnologies/construct3-chef/issues/262)).
+
 ### Fixed
+
+- **`scaffold-sprite` (CLI and MCP) now copies, and refuses over, exactly the
+  source objectType's own images.** Previously the `<source>-*.png` name-prefix
+  glob also copied sibling images under a longer name, and missed the
+  single-image form (tiled background, 9-patch, tilemap) and non-PNG images.
+  Each image keeps its own extension, and the existing-target guard uses the
+  same set
+  ([#262](https://github.com/GenvidTechnologies/construct3-chef/issues/262)).
 
 - **MCP mutation tools no longer move their own returned `txId` or mark
   `extracted/` stale through the change events of the files they write.**
