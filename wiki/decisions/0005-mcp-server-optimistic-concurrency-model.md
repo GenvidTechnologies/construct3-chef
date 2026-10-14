@@ -37,6 +37,8 @@ Tools are tagged `READ_ONLY` / `REGENERATE` / `MUTATE` via shared annotation con
 
 **Amended by ADR [0048](0048-a-failed-mcp-mutation-reports-what-it-may-have-written.md):** the bump-and-stale handling is no longer cancel-only; a non-cancel failure bumps the txId and marks `extracted/` stale according to what the call may have written.
 
+**Amended by ADR [0050](0050-self-written-watched-paths-are-registered-before-the-write.md):** `suppress()` alone does not mask the server's own synchronous writes, whose events arrive after it returns; every watched path a mutation call writes is now registered with `expect()` immediately before the write and refreshed at the end of the call.
+
 ## Compromise
 
 Two weaker alternatives were rejected:
