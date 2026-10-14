@@ -522,6 +522,12 @@ describe("scaffoldSprite", () => {
       assert.deepEqual(pairs(copies), [["SRC-Animation 1-000.PNG", "dst-Animation 1-000.PNG"]]);
     });
 
+    it("IC3: a frame with an unmapped fileType throws instead of silently copying nothing", () => {
+      const dir = makeTmpDir();
+      writeFileSync(path.join(dir, "src-animation 1-000.gif"), "data", "utf-8");
+      assert.throws(() => planSpriteImageCopies(dir, spriteWith("Src", ["image/gif"]), "Dst"));
+    });
+
     it("R8: a directory at an expected name is not planned (co-located real image)", () => {
       const dir = makeTmpDir();
       mkdirSync(path.join(dir, "src-animation 1-000.png"));

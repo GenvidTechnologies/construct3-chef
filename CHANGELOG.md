@@ -50,6 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Each image keeps its own extension, and the existing-target guard uses the
   same set
   ([#262](https://github.com/GenvidTechnologies/construct3-chef/issues/262)).
+  Two refusals are new. When `images/` exists, a source frame whose `fileType`
+  c3source does not map (anything but PNG, JPEG, SVG or WebP) now fails the
+  scaffold with an error instead of silently copying nothing for it. A source
+  JSON that does not parse now errors before the existing-target check, so it
+  is reported even when the target also exists.
 
 - **MCP mutation tools no longer move their own returned `txId` or mark
   `extracted/` stale through the change events of the files they write.**

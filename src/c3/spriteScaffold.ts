@@ -139,7 +139,10 @@ export interface ImageCopyPlan {
  * Entries that are not regular files once symlinks are resolved (directory, junction
  * to a directory, dangling link) are never planned, because `copyFileSync` would
  * crash on them with `EISDIR`/`ENOENT`; `statSync` follows links, which a dirent
- * `isFile()` would not.
+ * `isFile()` would not. The stat runs only on entries whose name already matched.
+ *
+ * Only derived image names can match, so every editor-local dimension stays out of
+ * reach (ADR 0019's decline still holds; ADR 0051 records the re-check).
  *
  * The target basename is `targetName` lowercased plus the source basename's remainder
  * after the lowercased source objectType name (e.g. `tiledbackground.png` -> `dst.png`).
@@ -153,17 +156,19 @@ export function planSpriteImageCopies(
   const sourcePrefix = String(sourceObjectType.name).toLowerCase();
   const targetPrefix = targetName.toLowerCase();
 
-  const files = readdirSync(imagesDir)
-    .filter((f) => statSync(path.join(imagesDir, f), { throwIfNoEntry: false })?.isFile() === true)
-    .sort();
+  const files = readdirSync(imagesDir).sort();
+  const isRegularFile = (f: string): boolean =>
+    statSync(path.join(imagesDir, f), { throwIfNoEntry: false })?.isFile() === true;
 
   const seen = new Set<string>();
   const plans: ImageCopyPlan[] = [];
   for (const expected of deriveExpectedImages(sourceObjectType)) {
     const stem = expected.stem.toLowerCase();
     const wanted = expected.ext === undefined ? undefined : (expected.stem + expected.ext).toLowerCase();
-    const basename = files.find((f) =>
-      wanted !== undefined ? f.toLowerCase() === wanted : path.parse(f).name.toLowerCase() === stem,
+    const basename = files.find(
+      (f) =>
+        (wanted !== undefined ? f.toLowerCase() === wanted : path.parse(f).name.toLowerCase() === stem) &&
+        isRegularFile(f),
     );
     if (basename === undefined || seen.has(basename)) continue;
     seen.add(basename);
