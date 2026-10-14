@@ -28,6 +28,7 @@ import { validateRecipe, type Recipe } from "../c3/recipeInterpreter.js";
 import { findJsonFiles, SID_SOURCE_DIRS } from "../c3/generators.js";
 import { runSync, reportImageDrift, reportStrayFiles } from "../c3/projectSync.js";
 import { newWriteLedger, failureEffects, type WriteLedger } from "./writeLedger.js";
+import { suppressSelfWrites } from "./selfWrites.js";
 import { isEditorLocalPathUnder } from "../c3/editorLocal.js";
 import { readRegistryFile, mintUniqueSid } from "../c3/sidUtils.js";
 import { filterIndex, buildShallowSidMap, type SidMapEntry } from "../c3/dslFormatter.js";
@@ -1054,14 +1055,16 @@ async function applyRecipeWithConcurrency(
         const txCheck = compareTxToken(ctx, opts.expectedTxId, "applying");
         if (txCheck) return txCheck;
         const label = opts.label ?? "Applying recipe";
-        // Suppress ctx.watcher during writes — we manage txId/ctx.extractedDirty ourselves
-        await ctx.watcher.suppress(async () => {
+        // Watched paths are registered just before each write (#277, ADR 0050); txId and
+        // ctx.extractedDirty are managed here, not by the watcher.
+        await suppressSelfWrites(ctx.watcher, async (sw) => {
           await sendProgress(extra, 0, totalSteps, label);
           applyParsed(ctx.root, recipe, {
             regenerate: false,
             log,
-            beforeSourceWrite: () => {
+            beforeSourceWrite: (abs) => {
               writes.source = true;
+              sw.before(abs);
             },
           });
           if (shouldRegenerate) {
@@ -1200,9 +1203,9 @@ regP(
           const { log, text } = bufferingLogger();
           const txCheck = compareTxToken(ctx, expectedTxId, "syncing");
           if (txCheck) return txCheck;
-          // Suppress ctx.watcher — we manage txId ourselves
-          await ctx.watcher.suppress(async () => {
-            runSync(ctx.root, false, log);
+          // project.c3proj is registered before the write via sw.before; txId is bumped below.
+          await suppressSelfWrites(ctx.watcher, async (sw) => {
+            runSync(ctx.root, false, log, undefined, { beforeWrite: sw.before });
           });
           ctx.watcher.bump();
           // Detection-only: images aren't a manifest section so sync can't act on
@@ -1466,14 +1469,12 @@ regP(
           if (txCheck) return txCheck;
 
           let result: ReturnType<typeof syncAddonMetadata> | undefined;
-          // Suppress ctx.watcher — project.c3proj IS a watched target (sourceWatcher.ts
-          // SOURCE_DIRS/PROJECT_MANIFEST_FILE), so an unsuppressed write would
-          // self-trigger onSourceChange. No ctx.watcher.expect() needed: the sole write
-          // is to an already-existing, already-watched path entirely inside this
-          // synchronous suppress window — same rule sync-project (above) follows,
-          // and the same reasoning recorded at the workflow-tools comment below.
-          await ctx.watcher.suppress(async () => {
-            result = syncAddonMetadata(ctx.root, { direction, addon, dryRun: false });
+          // project.c3proj IS a watched target (sourceWatcher.ts SOURCE_DIRS/
+          // PROJECT_MANIFEST_FILE). The write is synchronous, so its fs event lands after
+          // suppress() returns; sw.before registers the path first (#277, ADR 0050),
+          // as sync-project (above) does.
+          await suppressSelfWrites(ctx.watcher, async (sw) => {
+            result = syncAddonMetadata(ctx.root, { direction, addon, dryRun: false, beforeWrite: sw.before });
           });
 
           if (result === undefined || "error" in result) {
@@ -1603,8 +1604,8 @@ regP(
           if (!plan.ok) return mcpError(plan.message, { extraLines: [txIdLine(ctx)] });
 
           // Write output
-          await ctx.watcher.suppress(async () => {
-            ctx.watcher.expect(plan.outPath);
+          await suppressSelfWrites(ctx.watcher, async (sw) => {
+            sw.before(plan.outPath);
             writes.source = true;
             writeLayoutScaffold(plan, log);
             await sendProgress(extra, 0, totalSteps, "Cloning layout");
@@ -1612,7 +1613,7 @@ regP(
             // Sync project.c3proj
             await sendProgress(extra, 1, totalSteps, "Syncing project.c3proj");
             writes.manifest = true;
-            runSync(ctx.root, false, log);
+            runSync(ctx.root, false, log, undefined, { beforeWrite: sw.before });
 
             // Regenerate extracted/ files
             if (shouldRegenerate) {
@@ -1671,18 +1672,18 @@ regP(
           if (!plan.ok) return mcpError(plan.message, { extraLines: [txIdLine(ctx)] });
 
           // Write output and copy images
-          await ctx.watcher.suppress(async () => {
+          await suppressSelfWrites(ctx.watcher, async (sw) => {
             // Register before writing, so a failed image copy after the JSON write
             // still leaves the JSON accounted for. images/ is NOT watched — only the
-            // objectType JSON needs an expect.
-            ctx.watcher.expect(plan.outPath);
+            // objectType JSON (here) and project.c3proj (via the runSync hook) are.
+            sw.before(plan.outPath);
             writes.source = true;
             writeSpriteScaffold(plan, log);
 
             // Sync project.c3proj
             await sendProgress(extra, 0, totalSteps, "Syncing project.c3proj");
             writes.manifest = true;
-            runSync(ctx.root, false, log);
+            runSync(ctx.root, false, log, undefined, { beforeWrite: sw.before });
 
             // Regenerate extracted/ files
             if (shouldRegenerate) {
@@ -1713,9 +1714,9 @@ regP(
 // scene-graphs-folder-root registration — the MCP layer just owns the
 // concurrency boilerplate (ctx.rwlock, the OptimisticWatcher, registry freshness).
 //
-// Mirrors the apply-recipe pattern. No ctx.watcher.expect() — wrapping the writes
-// in ctx.watcher.suppress() is sufficient for the contract (apply-recipe does the
-// same).
+// Mirrors the apply-recipe pattern: the call runs inside suppressSelfWrites, which
+// registers each watched path before it is written (#277, ADR 0050; rule in
+// wiki/architecture/mcp-architecture.md).
 
 async function runWorkflowRecipe(
   ctx: ProjectContext,
@@ -1733,13 +1734,14 @@ async function runWorkflowRecipe(
       const { log, text } = bufferingLogger();
       const txCheck = compareTxToken(ctx, expectedTxId, "applying");
       if (txCheck) return txCheck;
-      await ctx.watcher.suppress(async () => {
+      await suppressSelfWrites(ctx.watcher, async (sw) => {
         await sendProgress(extra, 0, totalSteps, "Applying workflow");
         applyParsed(ctx.root, recipe, {
           regenerate: false,
           log,
-          beforeSourceWrite: () => {
+          beforeSourceWrite: (abs) => {
             writes.source = true;
+            sw.before(abs);
           },
         });
         if (shouldRegenerate) {

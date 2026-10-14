@@ -28,6 +28,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **MCP mutation tools no longer move their own returned `txId` or mark
+  `extracted/` stale through the change events of the files they write.**
+  (A write inside a subfolder still fires a parent-directory event that does,
+  until #284 below is fixed.) Every watched path a mutation
+  call writes (`apply-recipe` and the op tools, the workflow and layer tools,
+  `sync-project`, `sync-addon-metadata`, `scaffold-layout`, `scaffold-sprite`)
+  is now registered with the file watcher immediately before its write, and
+  re-registered at the end of the call, because `suppress()` alone does not
+  catch the late events of synchronous writes. A client that sent one call's
+  `txId` to the next was being rejected for the server's own writes
+  ([#277](https://github.com/GenvidTechnologies/construct3-chef/issues/277)).
+  `sync-addon-metadata` now registers `project.c3proj`. Still open: writes in
+  subfolders fire a parent-directory event
+  ([#284](https://github.com/GenvidTechnologies/construct3-chef/issues/284)),
+  and a first read of a long-unread file can fire a change event
+  ([#290](https://github.com/GenvidTechnologies/construct3-chef/issues/290)).
+  Additive public API: `runSync` takes an optional fifth parameter
+  `{ beforeWrite?(absPath) }`, and `syncAddonMetadata`'s options gain
+  `beforeWrite?`; each fires immediately before the write and only when it
+  writes.
+
 - **A CLI or library apply now regenerates all six `extracted/` outputs.**
   `apply-recipe`, `apply-op`, `remove-layer` and `rename-symbol` on the CLI, and
   `applyParsed` and `regenerateExtracted` in the library, used to run only the
@@ -98,7 +119,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **Behaviour change:** before, only a cancelled call moved the txId or marked
   `extracted/` stale, so an error response could now carry a newer txId than the
   one the client sent, and a failed `regenerate` now marks `extracted/` stale.
-  Also adds the optional `ApplyOptions.beforeSourceWrite` hook (additive public
+  Also adds the optional `ApplyOptions.beforeSourceWrite(absPath)` hook, called
+  with the absolute path immediately before each source write (additive public
   API).
 
 - **Recipe `files`/`layouts` keys now have one canonical, case-insensitive identity.**

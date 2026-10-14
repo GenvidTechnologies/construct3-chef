@@ -1097,7 +1097,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
     if (entry.kind === "log") {
       log(...entry.args);
     } else {
-      beforeSourceWrite?.();
+      beforeSourceWrite?.(path.resolve(entry.abs));
       if (entry.mkdir) mkdirSync(path.dirname(entry.abs), { recursive: true });
       writeFileSync(entry.abs, entry.text);
     }

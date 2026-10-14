@@ -452,3 +452,12 @@ See the [wiki index](../index.md) for the other sections.
   `extracted/` equals a full regeneration and the CLI/library and MCP paths
   agree; rejects a separate full-set helper and a targeted subset
   ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256))
+* [0050. Self-written watched paths are registered before the write](0050-self-written-watched-paths-are-registered-before-the-write.md) -
+  Amends ADRs 0005 and 0017. Every watched path an MCP mutation call writes is
+  registered with `watcher.expect()` immediately before its write through one
+  per-call tracker (`suppressSelfWrites`), and all registrations are refreshed
+  in a `finally` at the end of the call, because `suppress()` never catches
+  the events of synchronous writes; rejects a batch pre-registration,
+  server-side after-the-fact registration, and a longer or fingerprint-sealed
+  TTL
+  ([#277](https://github.com/GenvidTechnologies/construct3-chef/issues/277))

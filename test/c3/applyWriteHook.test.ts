@@ -103,6 +103,26 @@ describe("beforeSourceWrite hook (T15)", () => {
     assert.equal(r.calls, changed.length + 1);
   });
 
+  it("T15(g): the hook arguments are exactly the absolute paths of the files that changed", () => {
+    const before = snapshotTree(tmp);
+    const args: string[] = [];
+    applyParsed(tmp, x2 as Recipe, {
+      regenerate: false,
+      log: () => {},
+      beforeSourceWrite: (p) => {
+        args.push(p);
+      },
+    });
+    const after = snapshotTree(tmp);
+    const changed = [...new Set([...before.keys(), ...after.keys()])].filter((k) => before.get(k) !== after.get(k));
+    assert.isAbove(changed.length, 0, "seeding bug: nothing changed");
+    for (const a of args) assert.isTrue(path.isAbsolute(a), `not absolute: ${a}`);
+    assert.sameMembers(
+      [...new Set(args)],
+      changed.map((rel) => path.resolve(tmp, ...rel.split("/"))),
+    );
+  });
+
   it("T15(f): a write that throws mid-replay still had its hook called first", function () {
     if (process.getuid?.() === 0) this.skip();
     const second = path.join(tmp, "eventSheets", "UI", "Event sheet 2.json");

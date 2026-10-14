@@ -512,6 +512,42 @@ describe("addonMetadataSync", () => {
       }
     });
 
+    it("AS1: beforeWrite is called once with the manifest path, before the bytes change, when the plan is mutated", () => {
+      const root = makeSeededProject();
+      try {
+        const manifestPath = path.join(root, "project.c3proj");
+        const seededBytes = readFileSync(manifestPath, "utf-8");
+        const plan = expectPlanOk(buildAddonSyncPlan(root, { direction: "manifest-from-package" }));
+        const calls: Array<{ arg: string; bytes: string }> = [];
+        const applyResult = applyAddonMetadataSync(plan, (p) => {
+          calls.push({ arg: p, bytes: readFileSync(manifestPath, "utf-8") });
+        });
+        expect(applyResult.wrote).to.equal(true);
+        expect(calls).to.have.length(1);
+        expect(calls[0].arg).to.equal(manifestPath);
+        expect(calls[0].bytes).to.equal(seededBytes);
+        expect(readFileSync(manifestPath, "utf-8")).to.not.equal(seededBytes);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("AS2: beforeWrite is never called when nothing would be written", () => {
+      const root = makeTempProject();
+      try {
+        seedManifestDrift(SAMPLE_FIXTURE_ROOT, root, []); // copy, no drift
+        const plan = expectPlanOk(buildAddonSyncPlan(root, { direction: "manifest-from-package" }));
+        let calls = 0;
+        const applyResult = applyAddonMetadataSync(plan, () => {
+          calls++;
+        });
+        expect(applyResult.wrote).to.equal(false);
+        expect(calls).to.equal(0);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
     it("T14: applying does not change the manifest's validateProjectManifest issue set", () => {
       const root = makeSeededProject();
       try {

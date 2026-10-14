@@ -255,6 +255,8 @@ rejects a path outright (`resolveAddonSyncScope` returns
 `{ error: "--addon takes an addon id, not a path" }` for anything
 containing a separator, `..`, or an absolute path).
 
+**Amended by ADR [0050](0050-self-written-watched-paths-are-registered-before-the-write.md):** the "No `watcher.expect()` call" bullet above no longer holds. `suppress()` does not catch the event of a synchronous write, so the MCP handler now registers `project.c3proj` with `expect()` immediately before its write (through the new `beforeWrite` option) and refreshes it at the end of the call.
+
 ## Compromise
 
 **Command surface — three options weighed:**
