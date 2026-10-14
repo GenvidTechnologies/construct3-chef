@@ -11,9 +11,9 @@ import { writeFileSync } from "node:fs";
  * c3source's `writeProjectManifest`/`serializeProjectManifest`, which
  * already emits no trailing newline in its own, different way.
  *
- * Deliberately synchronous: call sites in `src/mcp/server.ts` write inside
- * a `watcher.suppress(async () => { … })` window and rely on the write
- * completing before that window closes.
+ * Deliberately synchronous, so the write is done before the caller returns.
+ * Its fs event still arrives later: MCP call sites register the path with the
+ * watcher before calling this (#277).
  *
  * Off-barrel deliberately: not re-exported from `src/index.ts` (repo is at
  * 1.0.0, and a barrel export is a permanent public-API commitment). This is

@@ -56,7 +56,9 @@ const fsWatchFactory: WatcherFactory = (target, onEvent) => {
  *   watcher factory before `OptimisticWatcher.handleEvent` ever sees it, so
  *   it bumps no txId and marks nothing dirty. See ADR
  *   `wiki/decisions/0018-editor-local-writes-are-not-source-changes.md`.
- * - Self-writes are suppressed via `suppress()` (Layer 1) / `expect()` (Layer 2).
+ * - Self-writes are masked by `expect()` (Layer 2), registered before each write;
+ *   `suppress()` (Layer 1) only covers the async body, not later fs events. See
+ *   `wiki/architecture/mcp-architecture.md` and ADR 0050.
  *
  * Only existing targets are watched (missing dirs are skipped, matching the old
  * setupWatchers behavior).
