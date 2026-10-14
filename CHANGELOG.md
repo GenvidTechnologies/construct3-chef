@@ -29,7 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **MCP mutation tools no longer move their own returned `txId` or mark
-  `extracted/` stale after a successful call.** Every watched path a mutation
+  `extracted/` stale through the change events of the files they write.**
+  (A write inside a subfolder still fires a parent-directory event that does,
+  until #284 below is fixed.) Every watched path a mutation
   call writes (`apply-recipe` and the op tools, the workflow and layer tools,
   `sync-project`, `sync-addon-metadata`, `scaffold-layout`, `scaffold-sprite`)
   is now registered with the file watcher immediately before its write, and
