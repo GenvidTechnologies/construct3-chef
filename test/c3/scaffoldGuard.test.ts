@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "mocha";
 import { expect } from "chai";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, realpathSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, realpathSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -28,6 +28,19 @@ describe("scaffoldGuard (#254)", () => {
     writeFileSync(full, content);
     return full;
   }
+
+  /** A minimal source objectType with no images (derives an empty image set). */
+  const SRC: Record<string, unknown> = { name: "Src" };
+
+  /** A Sprite with one animation `A` and one png frame: derives stem `src-a-000`. */
+  const SPRITE_SRC: Record<string, unknown> = {
+    name: "Src",
+    "plugin-id": "Sprite",
+    animations: {
+      items: [{ name: "A", frames: [{ fileType: "image/png", imageSpriteId: 1 }] }],
+      subfolders: [],
+    },
+  };
 
   beforeEach(() => {
     root = mkdtempSync(path.join(realpathSync.native(os.tmpdir()), "c3chef-scaffold-guard-"));
@@ -71,7 +84,7 @@ describe("scaffoldGuard (#254)", () => {
     it("U5: an existing flat objectTypes/<name>.json is an output-exists conflict (even for an editor-local name)", () => {
       put("objectTypes/tsconfig.json");
 
-      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), "Src", "tsconfig");
+      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), SRC, "tsconfig");
 
       expect(got).to.deep.equal([{ relPath: "objectTypes/tsconfig.json", reason: "output-exists" }]);
     });
@@ -79,7 +92,7 @@ describe("scaffoldGuard (#254)", () => {
     it("U5b: Text.json collides with name 'text' as an objectType-name conflict on every host (#253, #260)", () => {
       put("objectTypes/Text.json");
 
-      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), "Src", "text");
+      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), SRC, "text");
 
       expect(got).to.deep.equal([{ relPath: "objectTypes/Text.json", reason: "objectType-name" }]);
     });
@@ -87,25 +100,39 @@ describe("scaffoldGuard (#254)", () => {
     it("U6: an objectType with the same name in a subfolder is an objectType-name conflict", () => {
       put("objectTypes/sub/Dup.json");
 
-      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), "Src", "Dup");
+      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), SRC, "Dup");
 
       expect(got).to.deep.equal([{ relPath: "objectTypes/sub/Dup.json", reason: "objectType-name" }]);
     });
 
     it("U7: an existing image-copy target is an image-target conflict (name 'Dst' and 'DST' alike)", () => {
+      put("objectTypes/Src.json", JSON.stringify(SPRITE_SRC));
       put("images/src-a-000.png", "x");
       put("images/dst-a-000.png", "y");
+      const src = JSON.parse(readFileSync(path.join(objectTypesDir(), "Src.json"), "utf-8")) as Record<string, unknown>;
 
       const expected: ScaffoldConflict[] = [{ relPath: "images/dst-a-000.png", reason: "image-target" }];
-      expect(findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), "Src", "Dst")).to.deep.equal(expected);
-      expect(findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), "Src", "DST")).to.deep.equal(expected);
+      expect(findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), src, "Dst")).to.deep.equal(expected);
+      expect(findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), src, "DST")).to.deep.equal(expected);
+    });
+
+    it("GR6: an existing file at an over-match name (not derived from the source objectType) is not reported (#262)", () => {
+      put("objectTypes/Src.json", JSON.stringify(SPRITE_SRC));
+      put("images/src-a-000.png", "x");
+      // The old name-prefix glob planned every src-*.png, so it would have mapped this to dst-big-animation 1-000.png.
+      put("images/src-big-animation 1-000.png", "x");
+      put("images/dst-big-animation 1-000.png", "y");
+
+      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), SPRITE_SRC, "Dst");
+
+      expect(got).to.deep.equal([]);
     });
 
     it("U8: a project with no images/ directory does not throw and reports no image conflicts", () => {
       put("objectTypes/Src.json");
       expect(existsSync(imagesDir())).to.be.false;
 
-      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), "Src", "Fresh");
+      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), SRC, "Fresh");
 
       expect(got).to.deep.equal([]);
     });
@@ -126,7 +153,7 @@ describe("scaffoldGuard (#254)", () => {
     it("SC2: an objectType whose name differs only by case is an objectType-name conflict naming the on-disk file", () => {
       put("objectTypes/Foo.json");
 
-      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), "Src", "foo");
+      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), SRC, "foo");
 
       expect(got).to.deep.equal([{ relPath: "objectTypes/Foo.json", reason: "objectType-name" }]);
     });

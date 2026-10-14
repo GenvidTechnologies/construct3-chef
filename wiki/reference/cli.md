@@ -314,13 +314,13 @@ The command:
 - Reads `objectTypes/<source>.json`
 - Clones it with new SIDs and the next available imageSpriteId
 - Writes `objectTypes/<name>.json`
-- Copies `images/<source>-*.png` to `images/<name>-*.png`
+- Copies the source objectType's own images into `images/`, as c3source's `deriveExpectedImages` derives them: one per animation frame, or the single image of a tiled background, 9-patch or tilemap. Each keeps its own extension from `fileType`; an image with no `fileType` is found by its stem and keeps its real extension; an expected image missing from `images/` is skipped. Each target is `<name>` lowercased plus the same remainder ([#262](https://github.com/GenvidTechnologies/construct3-chef/issues/262), ADR [0051](../decisions/0051-sprite-image-copies-are-derived-from-the-source-objecttype.md))
 - Syncs `project.c3proj`
 - Regenerates `extracted/` (every generator, so the new objectType's SIDs reach `sid-registry.txt`) unless `--no-regenerate` is passed ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256))
 
 `--source` and `--name` are plain objectType names: one containing `/`, `\` or `..` is rejected (exit 1, nothing written), and a missing source prints `Source objectType not found: …`. `images/` is optional; with no images folder there are no image copies ([#259](https://github.com/GenvidTechnologies/construct3-chef/issues/259), ADR [0045](../decisions/0045-scaffold-plan-write-split-and-cli-path-containment.md)).
 
-`scaffold-sprite` never overwrites. It refuses when `objectTypes/<name>.json` already exists, when an objectType of that name exists in any subfolder, or when an image it would copy already exists. Every conflict is listed in one message, nothing is written (no sync, no regenerate), and the command exits 1 ([#254](https://github.com/GenvidTechnologies/construct3-chef/issues/254), ADR [0044](../decisions/0044-scaffold-tools-refuse-existing-targets.md)). Names are compared with letter case ignored, and the refusal reports the on-disk spelling; `output-exists` is decided by the exact name on disk ([#253](https://github.com/GenvidTechnologies/construct3-chef/issues/253), [ADR 0046](../decisions/0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md)).
+`scaffold-sprite` never overwrites. It refuses when `objectTypes/<name>.json` already exists, when an objectType of that name exists in any subfolder, or when an image it would copy already exists (the same derived set as the copy). Every conflict is listed in one message, nothing is written (no sync, no regenerate), and the command exits 1 ([#254](https://github.com/GenvidTechnologies/construct3-chef/issues/254), ADR [0044](../decisions/0044-scaffold-tools-refuse-existing-targets.md)). Names are compared with letter case ignored, and the refusal reports the on-disk spelling; `output-exists` is decided by the exact name on disk ([#253](https://github.com/GenvidTechnologies/construct3-chef/issues/253), [ADR 0046](../decisions/0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md)).
 
 ---
 
