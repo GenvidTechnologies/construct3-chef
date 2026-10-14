@@ -20,7 +20,7 @@ import { validateAddons, formatAddonValidation } from "../../src/c3/addonValidat
 import { listAddons, formatAddonInventory } from "../../src/c3/addonInventory.js";
 import { syncAddonMetadata, formatAddonMetadataSync, type AddonSyncResult } from "../../src/c3/addonMetadataSync.js";
 import { SID_SOURCE_DIRS } from "../../src/c3/generators.js";
-import { reportStrayFiles } from "../../src/c3/projectSync.js";
+import { reportStrayFiles, runSync } from "../../src/c3/projectSync.js";
 import { seedManifestDrift } from "../helpers/seedManifestDrift.js";
 import { runCli } from "../helpers/runCli.js";
 import {
@@ -58,9 +58,12 @@ const VALID_RECIPE = JSON.stringify({
 });
 
 // ── Fake watcher ─────────────────────────────────────────────────────────────
-// Handlers under test only touch watcher.txId, watcher.bump(), watcher.suppress(fn),
-// and (sync-addon-metadata, deliberately NOT) watcher.expect(path) — expectCalls
-// records calls to prove the latter, T24 below asserts it stays empty.
+// Handlers under test touch watcher.txId, watcher.bump(), watcher.suppress(fn) and
+// watcher.expect(path). suppress alone is NOT the self-write contract (#277): the
+// source writes are synchronous, so their fs.watch events land after suppress has
+// returned, and only an expect() registered BEFORE the write masks them.
+// expectCalls records those registrations; T24 and H1-H5 assert which paths a
+// tool registers (and that a no-write path registers none).
 // Cast to the SDK type when handing to __setTestWatcher.
 
 interface FakeWatcher {
@@ -932,12 +935,19 @@ describe("MCP server handler response shaping", () => {
       expect(__getExtractedDirty()).to.equal(false);
     });
 
-    it("T24: the manifest write happens INSIDE watcher.suppress, and watcher.expect is never called", async () => {
+    it("T24 (H1): the manifest write happens INSIDE watcher.suppress, and project.c3proj is registered via watcher.expect BEFORE the write", async () => {
       seedDrift();
       const manifestPath = path.join(tmp, "project.c3proj");
+      const manifestBefore = fs.readFileSync(manifestPath);
 
       let changedDuringSuppress = false;
+      let manifestUnchangedAtFirstExpect: boolean | undefined;
       const trackingWatcher = makeFakeWatcher(5);
+      const recordExpect = trackingWatcher.expect.bind(trackingWatcher);
+      trackingWatcher.expect = (filePath: string): void => {
+        manifestUnchangedAtFirstExpect ??= fs.readFileSync(manifestPath).equals(manifestBefore);
+        recordExpect(filePath);
+      };
       trackingWatcher.suppress = async <T>(fn: () => Promise<T>): Promise<T> => {
         trackingWatcher.suppressCalls++;
         const before = fs.readFileSync(manifestPath);
@@ -954,7 +964,20 @@ describe("MCP server handler response shaping", () => {
       expect(result.isError).to.be.undefined;
       expect(trackingWatcher.suppressCalls).to.equal(1);
       expect(changedDuringSuppress, "the manifest write should happen inside the suppress window").to.equal(true);
-      expect(trackingWatcher.expectCalls).to.deep.equal([]);
+      // Unique: the tracker's end-of-call refresh re-registers each path.
+      expect([...new Set(trackingWatcher.expectCalls)]).to.deep.equal([manifestPath]);
+      expect(manifestUnchangedAtFirstExpect, "expect() must run before the manifest write").to.equal(true);
+    });
+
+    it("H2: a no-write sync-addon-metadata apply (no drift) registers nothing via watcher.expect", async () => {
+      // Pristine fixture: no drift, so manifest-from-package is the no-write branch (T23's setup).
+      const result = (await __getHandler("sync-addon-metadata")!(
+        { direction: "manifest-from-package", txId: `default:${watcher.txId}` },
+        makeExtra(),
+      )) as any;
+      expect(result.isError).to.be.undefined;
+      expect(watcher.bumped).to.equal(0);
+      expect(watcher.expectCalls).to.deep.equal([]);
     });
 
     it("T25: MCP response text equals formatAddonMetadataSync's direct render of the same result — both surfaces route through the shared formatter", async () => {
@@ -1398,6 +1421,84 @@ describe("MCP server handler response shaping", () => {
       expect(result.isError, result.content?.[0]?.text).to.be.undefined;
 
       assertNoTrailingNewline(path.join(tmp, "objectTypes", "T3ClonedSprite.json"), 0x7d);
+    });
+  });
+
+  // ── Manifest self-write registration (#277, H3-H5) ────────────────────────
+  // Each tool that writes project.c3proj registers it via watcher.expect BEFORE
+  // the write, and only when it writes. The fake's expect() snapshots the
+  // manifest bytes at its first call so "before the write" is observed, not assumed.
+
+  describe("project.c3proj self-write registration (#277)", () => {
+    const manifestOf = (): string => path.join(tmp, "project.c3proj");
+    let unchangedAtFirstExpect: boolean | undefined;
+
+    function watchManifestBeforeWrite(): void {
+      const manifestBefore = fs.readFileSync(manifestOf());
+      unchangedAtFirstExpect = undefined;
+      const w = makeFakeWatcher(5);
+      const record = w.expect.bind(w);
+      w.expect = (filePath: string): void => {
+        unchangedAtFirstExpect ??= fs.readFileSync(manifestOf()).equals(manifestBefore);
+        record(filePath);
+      };
+      watcher = w;
+      __setTestWatcher(w as any);
+    }
+
+    it("H3: sync-project with drift registers exactly project.c3proj, before the write", async () => {
+      fs.copyFileSync(path.join(tmp, "layouts", "Templates Layout.json"), path.join(tmp, "layouts", "Extra277.json"));
+      watchManifestBeforeWrite();
+      const result = (await __getHandler("sync-project")!({ txId: "default:5" }, makeExtra())) as any;
+      expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+      expect(
+        fs.readFileSync(manifestOf()).equals(fs.readFileSync(path.join(FIXTURE_DIR, "project.c3proj"))),
+        "drift should have been synced",
+      ).to.equal(false);
+      expect([...new Set(watcher.expectCalls)]).to.deep.equal([manifestOf()]);
+      expect(unchangedAtFirstExpect, "expect() must run before the manifest write").to.equal(true);
+    });
+
+    it("H4: sync-project with zero drift registers nothing", async () => {
+      expect(runSync(tmp, true, () => {}).clean, "precondition: the pristine fixture has zero drift").to.equal(true);
+      watchManifestBeforeWrite();
+      const result = (await __getHandler("sync-project")!({ txId: "default:5" }, makeExtra())) as any;
+      expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+      expect(watcher.expectCalls).to.deep.equal([]);
+    });
+
+    it("H5a: scaffold-layout registers its outPath and project.c3proj", async () => {
+      watchManifestBeforeWrite();
+      const result = (await __getHandler("scaffold-layout")!(
+        {
+          source: "Gameplay/Main Layout.json",
+          name: "H5aLayout",
+          path: "H5aLayout.json",
+          eventSheet: "Event sheet 1",
+          regenerate: false,
+        },
+        makeExtra(),
+      )) as any;
+      expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+      expect(fs.existsSync(path.join(tmp, "layouts", "H5aLayout.json"))).to.equal(true);
+      expect([...new Set(watcher.expectCalls)]).to.have.members([
+        path.join(tmp, "layouts", "H5aLayout.json"),
+        manifestOf(),
+      ]);
+    });
+
+    it("H5b: scaffold-sprite registers its outPath and project.c3proj", async () => {
+      watchManifestBeforeWrite();
+      const result = (await __getHandler("scaffold-sprite")!(
+        { source: "Text", name: "H5bSprite", regenerate: false },
+        makeExtra(),
+      )) as any;
+      expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+      expect(fs.existsSync(path.join(tmp, "objectTypes", "H5bSprite.json"))).to.equal(true);
+      expect([...new Set(watcher.expectCalls)]).to.have.members([
+        path.join(tmp, "objectTypes", "H5bSprite.json"),
+        manifestOf(),
+      ]);
     });
   });
 
