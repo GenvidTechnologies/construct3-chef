@@ -769,5 +769,56 @@ describe("syncC3Proj", () => {
       // local regression.
       assert.equal(writtenText, JSON.stringify(readProjectManifest(manifestPath), null, "\t"));
     });
+
+    // RS: the `beforeWrite` hook fires only when runSync actually writes the manifest.
+    function seedGhostSheet(): { tmpDir: string; manifestPath: string } {
+      const tmpDir = createTmpDir();
+      cpSync(sampleProjectDir, tmpDir, { recursive: true });
+      const manifestPath = path.join(tmpDir, "project.c3proj");
+      const manifest = readProjectManifest(manifestPath);
+      manifest.eventSheets.items.push("SpuriousGhostSheet");
+      writeFileSync(manifestPath, serializeProjectManifest(manifest));
+      return { tmpDir, manifestPath };
+    }
+
+    it("RS1: drift calls beforeWrite once with the manifest path while its bytes are still unchanged", () => {
+      const { tmpDir, manifestPath } = seedGhostSheet();
+      const seeded = readFileSync(manifestPath, "utf-8");
+      const calls: Array<{ arg: string; bytes: string }> = [];
+      runSync(tmpDir, false, () => {}, undefined, {
+        beforeWrite: (p) => {
+          calls.push({ arg: p, bytes: readFileSync(manifestPath, "utf-8") });
+        },
+      });
+      assert.lengthOf(calls, 1);
+      assert.equal(calls[0].arg, path.resolve(manifestPath));
+      assert.equal(calls[0].bytes, seeded);
+      assert.notEqual(readFileSync(manifestPath, "utf-8"), seeded, "seeding bug: nothing was written");
+    });
+
+    it("RS2: zero drift makes no beforeWrite call", () => {
+      const tmpDir = createTmpDir();
+      cpSync(sampleProjectDir, tmpDir, { recursive: true });
+      let calls = 0;
+      const result = runSync(tmpDir, false, () => {}, undefined, {
+        beforeWrite: () => {
+          calls++;
+        },
+      });
+      assert.equal(result.clean, true);
+      assert.equal(calls, 0);
+    });
+
+    it("RS3: dryRun with drift makes no beforeWrite call", () => {
+      const { tmpDir } = seedGhostSheet();
+      let calls = 0;
+      const result = runSync(tmpDir, true, () => {}, undefined, {
+        beforeWrite: () => {
+          calls++;
+        },
+      });
+      assert.equal(result.clean, false, "seeding bug: no drift");
+      assert.equal(calls, 0);
+    });
   });
 });

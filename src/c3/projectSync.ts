@@ -517,7 +517,13 @@ export function applyNameDrift(
 // Main sync entry point
 // ---------------------------------------------------------------------------
 
-export function runSync(rootDir: string, dryRun: boolean, log: Logger = console.log, section?: string): SyncResult {
+export function runSync(
+  rootDir: string,
+  dryRun: boolean,
+  log: Logger = console.log,
+  section?: string,
+  opts?: { beforeWrite?: (manifestPath: string) => void },
+): SyncResult {
   const projectPath = path.join(rootDir, "project.c3proj");
 
   // readProjectManifest reads + parses + validates the manifest shape in one call.
@@ -598,6 +604,7 @@ export function runSync(rootDir: string, dryRun: boolean, log: Logger = console.
   // rebuild it via spread, or this write and that one will silently clobber each other's
   // unmodeled fields.
   if (!dryRun && totalChanges > 0) {
+    opts?.beforeWrite?.(path.resolve(projectPath));
     writeProjectManifest(projectPath, project);
     log(`Updated ${projectPath}`);
   }

@@ -337,7 +337,10 @@ export interface AddonSyncApplyResult {
  * If no row is applicable (no `would-change` rows, or `opts.addon` scoped the plan to
  * none), the file is **not written at all** — `wrote: false` and an untouched mtime.
  */
-export function applyAddonMetadataSync(plan: AddonSyncPlan): AddonSyncApplyResult {
+export function applyAddonMetadataSync(
+  plan: AddonSyncPlan,
+  beforeWrite?: (manifestPath: string) => void,
+): AddonSyncApplyResult {
   const bytesBefore = Buffer.byteLength(plan.originalText, "utf-8");
 
   const usedAddons = plan.manifest.usedAddons;
@@ -358,6 +361,7 @@ export function applyAddonMetadataSync(plan: AddonSyncPlan): AddonSyncApplyResul
     return { wrote: false, bytesBefore, bytesAfter: bytesBefore };
   }
 
+  beforeWrite?.(path.resolve(plan.manifestPath));
   writeProjectManifest(plan.manifestPath, plan.manifest);
   const bytesAfter = Buffer.byteLength(serializeProjectManifest(plan.manifest), "utf-8");
   return { wrote: true, bytesBefore, bytesAfter };
@@ -416,6 +420,8 @@ export interface SyncAddonMetadataOpts {
   direction: SyncDirection;
   addon?: string;
   dryRun?: boolean;
+  /** Called with the absolute manifest path immediately before it is written; never when nothing is written. */
+  beforeWrite?: (manifestPath: string) => void;
 }
 
 /**
@@ -456,7 +462,7 @@ export function syncAddonMetadata(
       return toResult(plan, true, false);
     case "manifest-from-package": {
       if (opts.dryRun === true) return toResult(plan, true, false);
-      const applyResult = applyAddonMetadataSync(plan);
+      const applyResult = applyAddonMetadataSync(plan, opts.beforeWrite);
       return toResult(plan, false, applyResult.wrote);
     }
   }
