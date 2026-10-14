@@ -23,7 +23,8 @@ import {
   cloneSprite,
   collectAllObjectTypeSids,
   collectMaxImageSpriteId,
-  discoverAndPlanImageCopies,
+  planSpriteImageCopies,
+  type ImageCopyPlan,
 } from "./spriteScaffold.js";
 
 export function formatScaffoldPathRejection(which: "output" | "source", raw: string): string {
@@ -60,7 +61,7 @@ export interface SpriteScaffoldPlan {
   outPath: string;
   cloned: Record<string, unknown>;
   successLine: string;
-  imageCopies: ReturnType<typeof discoverAndPlanImageCopies>;
+  imageCopies: ImageCopyPlan[];
 }
 
 /** POSIX path of `abs` relative to `rootDir`, on every OS. */
@@ -148,12 +149,13 @@ export function planSpriteScaffold(opts: SpriteScaffoldPlanOptions): SpriteScaff
     };
   }
 
-  const conflicts = findSpriteScaffoldConflicts(rootDir, objectTypesDir, imagesDir, source, name);
+  const sourceObj = JSON.parse(readFileSync(sourceFile, "utf-8")) as Record<string, unknown>;
+
+  const conflicts = findSpriteScaffoldConflicts(rootDir, objectTypesDir, imagesDir, sourceObj, name);
   if (conflicts.length > 0) {
     return { ok: false, kind: "conflict", message: formatScaffoldRefusal("scaffold-sprite", conflicts) };
   }
 
-  const sourceObj = JSON.parse(readFileSync(sourceFile, "utf-8")) as Record<string, unknown>;
   const existingSids = collectAllObjectTypeSids(objectTypesDir);
   const maxImageSpriteId = collectMaxImageSpriteId(objectTypesDir);
   const cloned = cloneSprite(sourceObj, { name, existingSids, nextImageSpriteId: maxImageSpriteId + 1 });
@@ -164,7 +166,7 @@ export function planSpriteScaffold(opts: SpriteScaffoldPlanOptions): SpriteScaff
     outPath,
     cloned,
     successLine: formatScaffoldSuccess(name, relPosix(rootDir, outPath)),
-    imageCopies: existsSync(imagesDir) ? discoverAndPlanImageCopies(imagesDir, source, name) : [],
+    imageCopies: existsSync(imagesDir) ? planSpriteImageCopies(imagesDir, sourceObj, name) : [],
   };
 }
 

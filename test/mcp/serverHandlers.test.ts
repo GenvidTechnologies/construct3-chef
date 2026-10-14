@@ -1650,9 +1650,15 @@ describe("MCP server handler response shaping", () => {
 
     const textOf = (result: any): string => result.content.map((b: any) => b.text).join("\n");
 
-    function plantSpriteImages(): void {
-      fs.writeFileSync(path.join(tmp, "images", "text-a-000.png"), "src");
-      fs.writeFileSync(path.join(tmp, "images", "sprite-a-000.png"), "existing");
+    /**
+     * scaffold-sprite resolves its source at the flat objectTypes/<source>.json, and the fixture keeps Sprite2
+     * in a subfolder, so copy it up: a real fixture objectType whose derived image is images/sprite2-animation 1-000.png.
+     */
+    function plantFlatSpriteSource(): void {
+      fs.copyFileSync(
+        path.join(tmp, "objectTypes", "images", "Sprite2.json"),
+        path.join(tmp, "objectTypes", "Sprite2.json"),
+      );
     }
 
     it("H1: scaffold-layout with source == path is refused: names the file, leaves bytes, no bump, no suppress", async () => {
@@ -1711,18 +1717,18 @@ describe("MCP server handler response shaping", () => {
     it("H3: scaffold-sprite collects every conflict (objectType name + image target) and writes nothing", async () => {
       const handler = __getHandler("scaffold-sprite")!;
       expect(handler).to.exist;
-      plantSpriteImages();
+      plantFlatSpriteSource();
       const before = snapshotTree(tmp);
 
-      const result = (await handler({ source: "Text", name: "Sprite" }, makeExtra())) as any;
+      const result = (await handler({ source: "Sprite2", name: "Sprite3" }, makeExtra())) as any;
 
       expect(result.isError).to.be.true;
       const text = textOf(result);
       expect(text).to.include("refused: 2 conflicting path(s)");
-      expect(text).to.include("objectTypes/images/Sprite.json");
-      expect(text).to.include("images/sprite-a-000.png");
+      expect(text).to.include("objectTypes/images/Sprite3.json");
+      expect(text).to.include("images/sprite3-animation 1-000.png");
       expect(text.split("\n").pop()).to.equal("txId: default:5");
-      expect(fs.existsSync(path.join(tmp, "objectTypes", "Sprite.json"))).to.be.false;
+      expect(fs.existsSync(path.join(tmp, "objectTypes", "Sprite3.json"))).to.be.false;
       expect(snapshotTree(tmp)).to.deep.equal(before);
       expect(watcher.bumped).to.equal(0);
     });
@@ -1758,19 +1764,19 @@ describe("MCP server handler response shaping", () => {
 
     it("C4: the CLI refusal is byte-identical to the MCP refusal (minus the txId line) and to formatScaffoldRefusal", async function () {
       this.timeout(60_000);
-      plantSpriteImages();
+      plantFlatSpriteSource();
       const handler = __getHandler("scaffold-sprite")!;
-      const mcp = (await handler({ source: "Text", name: "Sprite" }, makeExtra())) as any;
+      const mcp = (await handler({ source: "Sprite2", name: "Sprite3" }, makeExtra())) as any;
       expect(mcp.isError).to.be.true;
       const lines = textOf(mcp).split("\n");
       expect(lines.pop()).to.equal("txId: default:5");
       const mcpMessage = lines.join("\n");
 
-      const cli = runCli(["scaffold-sprite", "--project-dir", tmp, "--source", "Text", "--name", "Sprite"]);
+      const cli = runCli(["scaffold-sprite", "--project-dir", tmp, "--source", "Sprite2", "--name", "Sprite3"]);
 
       const expected = formatScaffoldRefusal("scaffold-sprite", [
-        { relPath: "objectTypes/images/Sprite.json", reason: "objectType-name" },
-        { relPath: "images/sprite-a-000.png", reason: "image-target" },
+        { relPath: "objectTypes/images/Sprite3.json", reason: "objectType-name" },
+        { relPath: "images/sprite3-animation 1-000.png", reason: "image-target" },
       ]);
       expect(cli.exitCode).to.equal(1);
       expect(cli.stderr.trimEnd()).to.equal(mcpMessage);

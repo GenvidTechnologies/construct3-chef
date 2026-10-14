@@ -12,7 +12,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import * as path from "node:path";
 import { find_all_layouts_path, find_all_objectTypes_path } from "@genvidtech/c3source";
-import { discoverAndPlanImageCopies } from "./spriteScaffold.js";
+import { planSpriteImageCopies } from "./spriteScaffold.js";
 
 export type ScaffoldConflictReason = "output-exists" | "layout-name" | "objectType-name" | "image-target";
 
@@ -95,14 +95,16 @@ export function findLayoutScaffoldConflicts(rootDir: string, layoutsDir: string,
 }
 
 /**
- * Conflicts for a sprite scaffold cloning `sourceName` to `targetName`.
+ * Conflicts for a sprite scaffold cloning the objectType `sourceObjectType` (its parsed JSON) to
+ * `targetName`.
  *
  * - `output-exists` if `objectTypes/<targetName>.json` is present with exactly that spelling.
  * - `objectType-name` for any `find_all_objectTypes_path` entry whose
  *   basename is `<targetName>.json` ignoring letter case (#253, #260),
  *   reported under its on-disk spelling.
- * - `image-target` for each existing target of `discoverAndPlanImageCopies`,
- *   when `imagesDir` exists.
+ * - `image-target` for each existing target of `planSpriteImageCopies`
+ *   (exactly the images `deriveExpectedImages` derives from the source
+ *   objectType, #262), when `imagesDir` exists.
  *
  * Results are deduped and ordered deterministically; `relPath` is a POSIX
  * path relative to `rootDir`.
@@ -111,7 +113,7 @@ export function findSpriteScaffoldConflicts(
   rootDir: string,
   objectTypesDir: string,
   imagesDir: string,
-  sourceName: string,
+  sourceObjectType: Record<string, unknown>,
   targetName: string,
 ): ScaffoldConflict[] {
   const found: Found[] = [];
@@ -124,7 +126,7 @@ export function findSpriteScaffoldConflicts(
     }
   }
   if (existsSync(imagesDir)) {
-    for (const { targetPath } of discoverAndPlanImageCopies(imagesDir, sourceName, targetName)) {
+    for (const { targetPath } of planSpriteImageCopies(imagesDir, sourceObjectType, targetName)) {
       if (existsSync(targetPath)) found.push({ abs: targetPath, reason: "image-target" });
     }
   }

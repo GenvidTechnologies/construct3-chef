@@ -208,6 +208,25 @@ describe("scaffoldPlan (T26, #259)", function () {
     });
   });
 
+  // #262: the plan's image copies are the source objectType's own derived images.
+  describe("image copies (#262)", () => {
+    it("PR10: a non-PNG single-image source plans its own image, not a name-prefix glob", () => {
+      // The sprite scaffold resolves its source at the flat objectTypes/<source>.json, and the
+      // fixture keeps JPEGTileBackground under tiles/, so copy it up in the temp copy.
+      cpSync(
+        path.join(tmp, "objectTypes", "tiles", "JPEGTileBackground.json"),
+        path.join(tmp, "objectTypes", "JPEGTileBackground.json"),
+      );
+      const r = planSpriteScaffold(spriteOpts({ source: "JPEGTileBackground", name: "Jpeg2" }));
+      expect(r.ok).to.equal(true);
+      if (r.ok) {
+        expect(r.imageCopies.map((c) => [c.sourceBasename, c.targetBasename])).to.deep.equal([
+          ["jpegtilebackground.jpg", "jpeg2.jpg"],
+        ]);
+      }
+    });
+  });
+
   describe("plans never write", () => {
     it("planLayoutScaffold leaves the tree byte-identical (success input)", () => {
       const before = snapshotTree(tmp);
