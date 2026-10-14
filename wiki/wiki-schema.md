@@ -150,7 +150,10 @@ Both rules above govern **ingest runs**, which are what `<wikiDir>/log.md`
 records. A direct correction made outside an ingest run, such as a docs PR
 that fixes a page against the code without ingesting a new `raw/` source,
 appends **no** `log.md` entry. Its commit and PR are the record, the same
-way page fixes #204 and #205 landed.
+way page fixes #204 and #205 landed. It also leaves the page's `generated`
+stamp unchanged: `generated: { by, at }` names the ingest that produced the
+page, so a fresh `at` under `by: process:maintain-wiki` would claim an ingest
+run that never happened. Page fixes #281 and #287 kept the stamp this way.
 
 When it's ambiguous whether a source is a new topic or a refinement of an
 existing one, prefer updating the closer existing page — a wiki with one
