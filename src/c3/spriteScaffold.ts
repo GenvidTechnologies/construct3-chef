@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { mintUniqueSid } from "./sidUtils.js";
 import { walkFiles } from "@genvidtech/mcp-utils";
+import { deriveExpectedImages } from "@genvidtech/c3source";
 import { isEditorLocalPathUnder } from "./editorLocal.js";
 
 // SID generation lives in ./sidUtils.js — `mintUniqueSid(existingSids)` enforces the
@@ -114,6 +115,69 @@ export function collectMaxImageSpriteId(objectTypesDir: string): number {
 
 // ─── Image discovery and renaming ───
 
+/** One planned image copy: `sourcePath` → `targetPath`, plus the bare file names. */
+export interface ImageCopyPlan {
+  sourcePath: string;
+  targetPath: string;
+  sourceBasename: string;
+  targetBasename: string;
+}
+
+/**
+ * Plan the image copies for cloning `sourceObjectType` to `targetName`, from the
+ * set of images C3 would have written for it rather than by globbing a name prefix.
+ *
+ * Derived-set rule: the expected images come from c3source's `deriveExpectedImages`
+ * (one per frame for a Sprite, one per image for a tiled background / 9-patch, with
+ * the extension taken from each node's `fileType`). Each is resolved against a single
+ * `readdirSync(imagesDir)` listing, case-insensitively:
+ *   - known extension: the entry named `stem + ext`;
+ *   - no `fileType` (extension unknown): the entry whose name minus its extension
+ *     equals the stem, keeping the file's real extension. When several entries match,
+ *     the first in lexicographic order of the on-disk name is used.
+ * An expected image with no on-disk entry is skipped (only what exists is copied).
+ * Entries that are not regular files once symlinks are resolved (directory, junction
+ * to a directory, dangling link) are never planned, because `copyFileSync` would
+ * crash on them with `EISDIR`/`ENOENT`; `statSync` follows links, which a dirent
+ * `isFile()` would not.
+ *
+ * The target basename is `targetName` lowercased plus the source basename's remainder
+ * after the lowercased source objectType name (e.g. `tiledbackground.png` -> `dst.png`).
+ * A present-but-unmapped `fileType` makes `deriveExpectedImages` throw; that propagates.
+ */
+export function planSpriteImageCopies(
+  imagesDir: string,
+  sourceObjectType: Record<string, unknown>,
+  targetName: string,
+): ImageCopyPlan[] {
+  const sourcePrefix = String(sourceObjectType.name).toLowerCase();
+  const targetPrefix = targetName.toLowerCase();
+
+  const files = readdirSync(imagesDir)
+    .filter((f) => statSync(path.join(imagesDir, f), { throwIfNoEntry: false })?.isFile() === true)
+    .sort();
+
+  const seen = new Set<string>();
+  const plans: ImageCopyPlan[] = [];
+  for (const expected of deriveExpectedImages(sourceObjectType)) {
+    const stem = expected.stem.toLowerCase();
+    const wanted = expected.ext === undefined ? undefined : (expected.stem + expected.ext).toLowerCase();
+    const basename = files.find((f) =>
+      wanted !== undefined ? f.toLowerCase() === wanted : path.parse(f).name.toLowerCase() === stem,
+    );
+    if (basename === undefined || seen.has(basename)) continue;
+    seen.add(basename);
+    const targetBasename = targetPrefix + basename.slice(sourcePrefix.length);
+    plans.push({
+      sourcePath: path.join(imagesDir, basename),
+      targetPath: path.join(imagesDir, targetBasename),
+      sourceBasename: basename,
+      targetBasename,
+    });
+  }
+  return plans;
+}
+
 /**
  * Discover all image files associated with a source objectType by naming convention.
  * Images follow the pattern: <sourcename-lowercase>-*.png (case-insensitive glob).
@@ -144,12 +208,13 @@ export function collectMaxImageSpriteId(objectTypesDir: string): number {
  * matters — "will `copyFileSync` succeed on this path?". The stat clause is
  * ordered last in the filter so it only runs against entries that already
  * matched the cheap name check.
+ *
+ * @deprecated Use {@link planSpriteImageCopies}. This name-prefix glob
+ * (`<name>-*.png`) over-matches siblings that share the prefix and misses
+ * single-image forms (tiled backgrounds, 9-patch) and non-PNG files.
+ * Kept exported because it is public API via the `src/index.ts` barrel.
  */
-export function discoverAndPlanImageCopies(
-  imagesDir: string,
-  sourceName: string,
-  targetName: string,
-): Array<{ sourcePath: string; targetPath: string; sourceBasename: string; targetBasename: string }> {
+export function discoverAndPlanImageCopies(imagesDir: string, sourceName: string, targetName: string): ImageCopyPlan[] {
   const sourcePrefix = sourceName.toLowerCase();
   const targetPrefix = targetName.toLowerCase();
 

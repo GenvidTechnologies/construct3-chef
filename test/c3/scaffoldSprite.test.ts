@@ -1,14 +1,25 @@
 import { describe, it, after } from "mocha";
 import { assert } from "chai";
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, existsSync, rmSync, symlinkSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  copyFileSync,
+  existsSync,
+  rmSync,
+  symlinkSync,
+  readFileSync,
+} from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import {
   collectAllObjectTypeSids,
   collectMaxImageSpriteId,
   discoverAndPlanImageCopies,
+  planSpriteImageCopies,
   cloneSprite,
 } from "../../src/c3/spriteScaffold.js";
+import * as barrel from "../../src/index.js";
 
 // ─── Test helpers ───
 
@@ -420,6 +431,145 @@ describe("scaffoldSprite", () => {
 
       assert.equal(copies.length, 1, "the broken symlink must not be planned as a copy source");
       assert.equal(copies[0].sourceBasename, realBasename);
+    });
+  });
+
+  // ─── planSpriteImageCopies (#262) ───
+
+  describe("planSpriteImageCopies (#262)", () => {
+    const FIXTURE = path.resolve("test", "fixtures", "construct3-chef-sample");
+    const fixtureType = (rel: string): Record<string, unknown> =>
+      JSON.parse(readFileSync(path.join(FIXTURE, "objectTypes", rel), "utf-8")) as Record<string, unknown>;
+    const fixtureImages = path.join(FIXTURE, "images");
+    const pairs = (copies: Array<{ sourceBasename: string; targetBasename: string }>): string[][] =>
+      copies.map((c) => [c.sourceBasename, c.targetBasename]).sort((a, b) => a[0].localeCompare(b[0]));
+
+    /** Hand-built Sprite named `name` with one animation of frames carrying `fileTypes` (undefined = absent). */
+    const spriteWith = (name: string, fileTypes: Array<string | undefined>): Record<string, unknown> => {
+      const t = makeObjectType(name);
+      const anim = ((t.animations as Record<string, unknown>).items as Array<Record<string, unknown>>)[0];
+      anim.frames = fileTypes.map((fileType, i) => {
+        const frame: Record<string, unknown> = { imageSpriteId: 100 + i, duration: 1, tag: "" };
+        if (fileType !== undefined) frame.fileType = fileType;
+        return frame;
+      });
+      return t;
+    };
+
+    it("R1: per-frame form plans exactly the 4 Sprite frames", () => {
+      const copies = planSpriteImageCopies(fixtureImages, fixtureType("images/Sprite.json"), "Dst");
+      assert.deepEqual(pairs(copies), [
+        ["sprite-animation 1-000.png", "dst-animation 1-000.png"],
+        ["sprite-animation 2-000.png", "dst-animation 2-000.png"],
+        ["sprite-animation 2-001.png", "dst-animation 2-001.png"],
+        ["sprite-animation 3-000.png", "dst-animation 3-000.png"],
+      ]);
+      assert.equal(copies[0].sourcePath, path.join(fixtureImages, copies[0].sourceBasename));
+      assert.equal(copies[0].targetPath, path.join(fixtureImages, copies[0].targetBasename));
+    });
+
+    it("R2: single-image form plans tiledbackground.png -> dst.png (and 9patch)", () => {
+      assert.deepEqual(pairs(planSpriteImageCopies(fixtureImages, fixtureType("tiles/TiledBackground.json"), "Dst")), [
+        ["tiledbackground.png", "dst.png"],
+      ]);
+      assert.deepEqual(pairs(planSpriteImageCopies(fixtureImages, fixtureType("images/9patch.json"), "Dst")), [
+        ["9patch.png", "dst.png"],
+      ]);
+    });
+
+    it("R3: non-PNG plans jpegtilebackground.jpg -> dst.jpg", () => {
+      assert.deepEqual(
+        pairs(planSpriteImageCopies(fixtureImages, fixtureType("tiles/JPEGTileBackground.json"), "Dst")),
+        [["jpegtilebackground.jpg", "dst.jpg"]],
+      );
+    });
+
+    it("R4: over-match - only the source's own frame is planned", () => {
+      const dir = makeTmpDir();
+      for (const f of ["src-animation 1-000.png", "src-big-animation 1-000.png", "src-old.png"]) {
+        writeFileSync(path.join(dir, f), "data", "utf-8");
+      }
+      const copies = planSpriteImageCopies(dir, spriteWith("Src", ["image/png"]), "Dst");
+      assert.deepEqual(pairs(copies), [["src-animation 1-000.png", "dst-animation 1-000.png"]]);
+    });
+
+    it("R5: absent fileType resolves <stem>.jpg and keeps its extension", () => {
+      const dir = makeTmpDir();
+      writeFileSync(path.join(dir, "src-animation 1-000.jpg"), "data", "utf-8");
+      const copies = planSpriteImageCopies(dir, spriteWith("Src", [undefined]), "Dst");
+      assert.deepEqual(pairs(copies), [["src-animation 1-000.jpg", "dst-animation 1-000.jpg"]]);
+    });
+
+    it("R5b: absent fileType with several extensions picks the first sorted name", () => {
+      const dir = makeTmpDir();
+      writeFileSync(path.join(dir, "src-animation 1-000.png"), "data", "utf-8");
+      writeFileSync(path.join(dir, "src-animation 1-000.jpg"), "data", "utf-8");
+      const copies = planSpriteImageCopies(dir, spriteWith("Src", [undefined]), "Dst");
+      assert.deepEqual(pairs(copies), [["src-animation 1-000.jpg", "dst-animation 1-000.jpg"]]);
+    });
+
+    it("IC1: an expected image missing on disk is skipped", () => {
+      const dir = makeTmpDir();
+      writeFileSync(path.join(dir, "src-animation 1-000.png"), "data", "utf-8");
+      const copies = planSpriteImageCopies(dir, spriteWith("Src", ["image/png", "image/png"]), "Dst");
+      assert.equal(copies.length, 1);
+    });
+
+    it("IC2: matching is case-insensitive on disk", () => {
+      const dir = makeTmpDir();
+      writeFileSync(path.join(dir, "SRC-Animation 1-000.PNG"), "data", "utf-8");
+      const copies = planSpriteImageCopies(dir, spriteWith("Src", ["image/png"]), "Dst");
+      assert.deepEqual(pairs(copies), [["SRC-Animation 1-000.PNG", "dst-Animation 1-000.PNG"]]);
+    });
+
+    it("R8: a directory at an expected name is not planned (co-located real image)", () => {
+      const dir = makeTmpDir();
+      mkdirSync(path.join(dir, "src-animation 1-000.png"));
+      writeFileSync(path.join(dir, "src-animation 2-000.png"), "data", "utf-8");
+      const t = spriteWith("Src", ["image/png"]);
+      const items = (t.animations as Record<string, unknown>).items as Array<Record<string, unknown>>;
+      items.push({ ...items[0], name: "Animation 2" });
+      const copies = planSpriteImageCopies(dir, t, "Dst");
+      assert.deepEqual(pairs(copies), [["src-animation 2-000.png", "dst-animation 2-000.png"]]);
+    });
+
+    it("R8: a junction at an expected name is not planned (co-located real image)", () => {
+      const dir = makeTmpDir();
+      const realDir = path.join(dir, "real-target-dir");
+      mkdirSync(realDir);
+      symlinkSync(realDir, path.join(dir, "src-animation 1-000.png"), "junction");
+      writeFileSync(path.join(dir, "src-animation 2-000.png"), "data", "utf-8");
+      const t = spriteWith("Src", ["image/png"]);
+      const items = (t.animations as Record<string, unknown>).items as Array<Record<string, unknown>>;
+      items.push({ ...items[0], name: "Animation 2" });
+      const copies = planSpriteImageCopies(dir, t, "Dst");
+      assert.deepEqual(pairs(copies), [["src-animation 2-000.png", "dst-animation 2-000.png"]]);
+    });
+
+    it("R8: a dangling link at an expected name is not planned (co-located real image)", function () {
+      const dir = makeTmpDir();
+      const realDir = path.join(dir, "real-target-dir");
+      mkdirSync(realDir);
+      try {
+        symlinkSync(realDir, path.join(dir, "src-animation 1-000.png"), "junction");
+      } catch {
+        this.skip();
+      }
+      rmSync(realDir, { recursive: true, force: true });
+      writeFileSync(path.join(dir, "src-animation 2-000.png"), "data", "utf-8");
+      const t = spriteWith("Src", ["image/png"]);
+      const items = (t.animations as Record<string, unknown>).items as Array<Record<string, unknown>>;
+      items.push({ ...items[0], name: "Animation 2" });
+      const copies = planSpriteImageCopies(dir, t, "Dst");
+      assert.deepEqual(pairs(copies), [["src-animation 2-000.png", "dst-animation 2-000.png"]]);
+    });
+
+    it("R9: discoverAndPlanImageCopies stays exported from the barrel and is @deprecated", () => {
+      assert.equal(typeof barrel.discoverAndPlanImageCopies, "function");
+      assert.equal(typeof barrel.planSpriteImageCopies, "function");
+      const src = readFileSync(path.resolve("src", "c3", "spriteScaffold.ts"), "utf-8");
+      const doc = src.slice(0, src.indexOf("export function discoverAndPlanImageCopies"));
+      assert.match(doc.slice(doc.lastIndexOf("/**")), /@deprecated[^]*planSpriteImageCopies/);
     });
   });
 
