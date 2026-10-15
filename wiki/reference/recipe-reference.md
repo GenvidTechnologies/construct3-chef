@@ -806,7 +806,7 @@ npx construct3-chef apply-recipe <recipe.json> --no-regenerate  # Skip generate 
 | 24 | **`callFunction` `parameters` must be a JSON array** | Object-keyed params (`{"0": "arg1"}`) cause `TypeError: expected array` at runtime. Use the `call` builder shorthand. |
 | 25 | **Layer name params must be quoted expressions** | `"layer": "\"LayerName\""` not `"layer": "LayerName"`. Applies to `set-layer-visible`, `is-on-layer`, etc. |
 | 26 | **`visibility` must be `"visible"` or `"invisible"`, not `"0"`/`"1"`** | The `set-layer-visible` `visibility` parameter is a string enum. |
-| 27 | **`interactive` must be a boolean, not a string** | `set-layer-interactive` `interactive` parameter must be `true`/`false`, not `"true"`/`"false"`. |
+| 27 | **`interactive` must be a boolean, not a string** | `set-layer-interactive` `interactive` parameter must be `true`/`false`, not `"true"`/`"false"`; `validateRecipe` rejects the string form. A native boolean passed to the `insert-actions` `id` shorthand is written through as a native boolean for any action, not only this one (it was stringified before [#285](https://github.com/GenvidTechnologies/construct3-chef/issues/285)). |
 | 28 | **Animation name params must be quoted expressions** | `"animation": "\"animName\""` not `"animation": "animName"`. |
 | 29 | **`on-touched-object` `type` must be a string enum** | Use `"start"`, `"end"`, `"move"` — not `"0"`. |
 | 30 | **`add-include` shifts all path-based `after` refs** | `add-include` inserts a root-level event, shifting all `events[N]` indices. Use SID-based `after` for subsequent `insert-event` ops. |
