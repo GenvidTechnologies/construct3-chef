@@ -635,8 +635,14 @@ export function expandAction(sidGen: SidGenerator, shorthand: BuilderAction): C3
           `If this is a System action, add it to SYSTEM_ACTION_IDS or set "object": "System".`,
       );
     }
+    // C3 stores a boolean param as a native JSON boolean; numbers and expressions are strings. The
+    // declared `StandardAction.parameters` type (`Record<string, string>`) under-states that runtime
+    // shape, so the cast below is deliberate (as in `patch-action-param`). Widening the type is a
+    // breaking change deferred to the next major: see wiki/decisions/0052.
     const params = shorthand.params
-      ? Object.fromEntries(Object.entries(shorthand.params).map(([k, v]) => [k, String(v)]))
+      ? (Object.fromEntries(
+          Object.entries(shorthand.params).map(([k, v]) => [k, typeof v === "boolean" ? v : String(v)]),
+        ) as Record<string, string>)
       : undefined;
     return buildAction(sidGen, {
       id: shorthand.id,

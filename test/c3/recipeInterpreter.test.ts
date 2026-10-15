@@ -1156,6 +1156,39 @@ describe("recipeInterpreter", () => {
       assert.equal(modified.events[1].eventType, "comment");
     });
 
+    function insertedParams(actions: BuilderAction[]): Record<string, unknown> {
+      const sheet = makeSheet(makeBlock({ sid: 1 }));
+      const recipe: Recipe = {
+        files: { "eventSheets/Test.json": [{ op: "insert-actions", path: "events[0]", after: -1, actions }] },
+      };
+      const result = executeRecipe(sidGen, recipe, () => sheet);
+      const block = result.modified.get("eventSheets/Test.json")!.events[0] as BlockEvent;
+      return (block.actions[0] as StandardAction).parameters as Record<string, unknown>;
+    }
+
+    it("I285-R1: insert-actions id shorthand writes a boolean param as a native boolean", () => {
+      const params = insertedParams([
+        { id: "set-layer-interactive", object: "System", params: { layer: '"L"', interactive: true } },
+      ]);
+      assert.strictEqual(params.interactive, true);
+      assert.strictEqual(params.layer, '"L"');
+    });
+
+    it("I285-R2: boolean param on an action with no PARAM_TYPE_RULES entry stays native (true and false)", () => {
+      const on = insertedParams([{ id: "set-enabled", object: "FirebaseAnalytics", params: { enabled: true } }]);
+      assert.strictEqual(on.enabled, true);
+      const off = insertedParams([{ id: "set-enabled", object: "FirebaseAnalytics", params: { enabled: false } }]);
+      assert.strictEqual(off.enabled, false);
+    });
+
+    it("I285-R3: numeric and expression params are still written as strings", () => {
+      const params = insertedParams([
+        { id: "set-layer-visible", object: "System", params: { layer: '"L"', visibility: 0 } },
+      ]);
+      assert.strictEqual(params.visibility, "0");
+      assert.strictEqual(params.layer, '"L"');
+    });
+
     it("creates new sheet", () => {
       const recipe: Recipe = {
         files: {

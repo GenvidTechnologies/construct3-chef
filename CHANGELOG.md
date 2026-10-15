@@ -43,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The `insert-actions` `id` shorthand now writes a native boolean param as a
+  native JSON boolean** (`true`/`false`) instead of the string `"true"`/`"false"`,
+  matching what C3 stores. Numbers and expressions are still written as strings
+  ([#285](https://github.com/GenvidTechnologies/construct3-chef/issues/285)).
 - **`scaffold-sprite` (CLI and MCP) now copies, and refuses over, exactly the
   source objectType's own images.** Previously the `<source>-*.png` name-prefix
   glob also copied sibling images under a longer name, and missed the
