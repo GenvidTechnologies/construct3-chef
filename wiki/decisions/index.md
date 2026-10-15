@@ -469,3 +469,11 @@ See the [wiki index](../index.md) for the other sections.
   function (`planSpriteImageCopies`) shared by the scaffold and its guard; the
   old function stays exported and deprecated
   ([#262](https://github.com/GenvidTechnologies/construct3-chef/issues/262))
+* [0052. The id shorthand keeps boolean params native and casts the parameters type](0052-id-shorthand-keeps-boolean-params-native-and-casts.md) -
+  `expandAction`'s `id` shorthand stringified every action param, so a native
+  boolean was written as `"true"`, whereas C3 stores booleans natively.
+  Booleans are now kept and everything else is stringified, with the result
+  cast to the declared `Record<string, string>` (the `patch-action-param`
+  precedent) rather than widening the public type, which is deferred to the
+  next major release
+  ([#285](https://github.com/GenvidTechnologies/construct3-chef/issues/285))
