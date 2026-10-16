@@ -43,6 +43,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The MCP server's project `txId` no longer moves on a directory event alone
+  ([#284](https://github.com/GenvidTechnologies/construct3-chef/issues/284)), or
+  on the first read of a long-unread file on Windows
+  ([#290](https://github.com/GenvidTechnologies/construct3-chef/issues/290)).**
+  Bumps `@genvidtech/mcp-utils` to `^0.12.0` and sizes the watcher's baseline to
+  the project, with editor-local content ignored in it. The watcher now logs its
+  baseline summary, and a warning if the baseline is incomplete, to stderr at
+  startup
+  ([#296](https://github.com/GenvidTechnologies/construct3-chef/issues/296)).
 - **The `insert-actions` `id` shorthand now writes a native boolean param as a
   native JSON boolean** (`true`/`false`) instead of the string `"true"`/`"false"`,
   matching what C3 stores. Numbers and expressions are still written as strings
@@ -62,8 +71,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **MCP mutation tools no longer move their own returned `txId` or mark
   `extracted/` stale through the change events of the files they write.**
-  (A write inside a subfolder still fires a parent-directory event that does,
-  until #284 below is fixed.) Every watched path a mutation
+  (The parent-directory event of a write inside a subfolder and the first read
+  of a long-unread file are handled by the mcp-utils 0.12 entry above.) Every watched path a mutation
   call writes (`apply-recipe` and the op tools, the workflow and layer tools,
   `sync-project`, `sync-addon-metadata`, `scaffold-layout`, `scaffold-sprite`)
   is now registered with the file watcher immediately before its write, and
@@ -71,11 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   catch the late events of synchronous writes. A client that sent one call's
   `txId` to the next was being rejected for the server's own writes
   ([#277](https://github.com/GenvidTechnologies/construct3-chef/issues/277)).
-  `sync-addon-metadata` now registers `project.c3proj`. Still open: writes in
-  subfolders fire a parent-directory event
-  ([#284](https://github.com/GenvidTechnologies/construct3-chef/issues/284)),
-  and a first read of a long-unread file can fire a change event
-  ([#290](https://github.com/GenvidTechnologies/construct3-chef/issues/290)).
+  `sync-addon-metadata` now registers `project.c3proj`.
   Additive public API: `runSync` takes an optional fifth parameter
   `{ beforeWrite?(absPath) }`, and `syncAddonMetadata`'s options gain
   `beforeWrite?`; each fires immediately before the write and only when it

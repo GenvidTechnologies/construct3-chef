@@ -477,3 +477,12 @@ See the [wiki index](../index.md) for the other sections.
   precedent) rather than widening the public type, which is deferred to the
   next major release
   ([#285](https://github.com/GenvidTechnologies/construct3-chef/issues/285))
+* [0053. The source watcher owns a project-sized, editor-local-aware ObservedState ledger](0053-the-source-watcher-owns-a-project-sized-editor-local-aware-ledger.md) -
+  Amends ADR 0050. With mcp-utils 0.12.0, directory events are markers and the
+  watcher primes a content baseline at start, but only while its ledger holds
+  the whole baseline. Each project context now builds its own ledger sized
+  max(10 000, 4 x watched entries), fingerprints editor-local paths as absent,
+  routes the baseline log lines to stderr and the MCP log, and starts before
+  the start-up read of the tree; rejects a fixed capacity, a bare multiple, a
+  null ledger, a stat-based fingerprinter and expect() on directories
+  ([#296](https://github.com/GenvidTechnologies/construct3-chef/issues/296))

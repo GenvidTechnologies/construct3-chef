@@ -59,6 +59,8 @@ rejection — the failure mode the issue was filed for — unfixed. This is why
 the shipped mechanism differs from the issue's prescription, and it is
 worth recording explicitly so the difference doesn't read as an oversight.
 
+**Amended by ADR [0053](0053-the-source-watcher-owns-a-project-sized-editor-local-aware-ledger.md) (2026-10-16):** the excerpt above is mcp-utils as of this ADR. Since 0.7.0 a content ledger decides first whether an event is a change, and only a change bumps and calls back; the factory-level filter is still required, because an editor-local event the ledger judges a change would still bump. ADR 0053 also fingerprints editor-local paths as absent in that ledger.
+
 ## Decision
 
 **A filtering decorator over the watcher factory.** `createSourceWatcher`

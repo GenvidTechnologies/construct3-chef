@@ -1,10 +1,16 @@
 import { describe, it, beforeEach, afterEach } from "mocha";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, renameSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ExpectedChanges, type WatcherFactory } from "@genvidtech/mcp-utils";
-import { createSourceWatcher } from "../../src/mcp/sourceWatcher.js";
+import { ExpectedChanges, contentFingerprint, type WatcherFactory } from "@genvidtech/mcp-utils";
+import {
+  createSourceWatcher,
+  countWatchedEntries,
+  ledgerCapacity,
+  editorLocalAwareFingerprint,
+  routeWatcherLog,
+} from "../../src/mcp/sourceWatcher.js";
 
 /**
  * Verifies the OptimisticWatcher wiring before it replaces server.ts's inline
@@ -81,6 +87,8 @@ describe("createSourceWatcher", () => {
     const w = build();
     const onEvent = onEventByTarget.get(path.resolve(root, "project.c3proj"));
     assert.ok(onEvent);
+    // start() primed the baseline from "{}"; different bytes make this a change.
+    writeFileSync(path.join(root, "project.c3proj"), '{"changed":true}');
     onEvent(path.resolve(root, "project.c3proj"));
     assert.equal(w.txId, 1);
     assert.deepEqual(fired, []);
@@ -136,19 +144,18 @@ describe("createSourceWatcher", () => {
     assert.equal(w.txId, 1);
   });
 
-  // mcp-utils 0.7.0 adds Layer 3 to OptimisticWatcher — a per-path
+  // mcp-utils 0.7.0 added Layer 3 to OptimisticWatcher — a per-path
   // content-fingerprint ledger (ObservedState) that collapses a duplicate
   // filesystem event for unchanged content, fixing a Windows/NTFS defect
-  // where a single writeFileSync delivers two fs.watch events. Test A below
-  // is expected to FAIL against the currently-installed 0.6.0 (no Layer 3 ->
-  // two events -> txId bumps twice) and is expected to PASS once the floor
-  // bump to ^0.7.0 lands. Test B is a deliberately duplicate-free companion
-  // that passes in BOTH states, guarding against over-collapsing.
+  // where a single writeFileSync delivers two fs.watch events. Since 0.12.0
+  // start() primes that ledger from the real directories, so a file that
+  // exists before build() is baseline and an event for it unchanged is not a
+  // change. Both tests below therefore write the file AFTER build().
 
   it("a duplicate event for unchanged content bumps txId only once", () => {
+    const w = build();
     const target = path.join(root, "eventSheets", "Dup.json");
     writeFileSync(target, '{"a":1}');
-    const w = build();
     emit("eventSheets", "Dup.json");
     assert.equal(w.txId, 1);
     emit("eventSheets", "Dup.json");
@@ -156,19 +163,251 @@ describe("createSourceWatcher", () => {
     assert.equal(fired.length, 1);
   });
 
-  // Deliberately fires no duplicate event: this test must stay green both
-  // before and after the mcp-utils 0.7.0 bump, since it guards against
-  // over-collapsing (a genuinely changed write must still bump). Do not
-  // merge this with the test above — keeping it duplicate-free is what
-  // makes "which assertion went red" unambiguous.
+  // Deliberately fires no duplicate event: it guards against over-collapsing
+  // (a genuinely changed write must still bump). Do not merge this with the
+  // test above — keeping it duplicate-free is what makes "which assertion
+  // went red" unambiguous.
   it("a genuinely changed write still bumps", () => {
+    const w = build();
     const target = path.join(root, "eventSheets", "Changed.json");
     writeFileSync(target, '{"a":1}');
-    const w = build();
     emit("eventSheets", "Changed.json");
     assert.equal(w.txId, 1);
     writeFileSync(target, '{"a":2}');
     emit("eventSheets", "Changed.json");
     assert.equal(w.txId, 2);
+  });
+
+  // ---- mcp-utils 0.12 primed-ledger rows (#296) ----
+
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  const sheets = () => path.join(root, "eventSheets");
+  const seedSub = (): string => {
+    const sub = path.join(sheets(), "sub");
+    mkdirSync(sub);
+    writeFileSync(path.join(sub, "a.json"), '{"a":1}');
+    return sub;
+  };
+
+  it("MU12-D1a: an event on an existing subfolder (hot path, tree older than 1 s) is not a change", async function () {
+    this.timeout(10000);
+    seedSub();
+    await sleep(1100);
+    const w = build();
+    emit("eventSheets", "sub");
+    assert.equal(w.txId, 0);
+    assert.deepEqual(fired, []);
+  });
+
+  it("MU12-D1b: an event on an existing subfolder (re-check path, no wait) is not a change", () => {
+    seedSub();
+    const w = build();
+    emit("eventSheets", "sub");
+    assert.equal(w.txId, 0);
+    assert.deepEqual(fired, []);
+  });
+
+  it("MU12-D2: a new empty subdirectory created after start is not a change", () => {
+    const w = build();
+    mkdirSync(path.join(sheets(), "fresh"));
+    emit("eventSheets", "fresh");
+    assert.equal(w.txId, 0);
+    assert.deepEqual(fired, []);
+  });
+
+  it("MU12-D3: an event on a baselined, unchanged file is not a change", () => {
+    writeFileSync(path.join(sheets(), "Base.json"), '{"a":1}');
+    const w = build();
+    emit("eventSheets", "Base.json");
+    assert.equal(w.txId, 0);
+    assert.deepEqual(fired, []);
+  });
+
+  it("MU12-D4a: an event on an unchanged project.c3proj is not a change", () => {
+    const w = build();
+    emit("project.c3proj", "");
+    assert.equal(w.txId, 0);
+    assert.deepEqual(fired, []);
+  });
+
+  it("MU12-D5: a file created after start bumps, and so does a later edit", () => {
+    const w = build();
+    const f = path.join(sheets(), "New.json");
+    writeFileSync(f, '{"a":1}');
+    emit("eventSheets", "New.json");
+    assert.equal(w.txId, 1);
+    assert.deepEqual(fired, [f]);
+    writeFileSync(f, '{"a":2}');
+    emit("eventSheets", "New.json");
+    assert.equal(w.txId, 2);
+  });
+
+  it("MU12-D6: editing a baselined file bumps and fires", () => {
+    const f = path.join(sheets(), "Base.json");
+    writeFileSync(f, '{"a":1}');
+    const w = build();
+    writeFileSync(f, '{"a":2}');
+    emit("eventSheets", "Base.json");
+    assert.equal(w.txId, 1);
+    assert.deepEqual(fired, [f]);
+  });
+
+  it("MU12-D7: editing a file in a subfolder, delivering only the subfolder event, bumps", () => {
+    const sub = seedSub();
+    const w = build();
+    writeFileSync(path.join(sub, "a.json"), '{"a":2}');
+    emit("eventSheets", "sub");
+    assert.equal(w.txId, 1);
+    assert.ok(fired.includes(sub), `fired should contain the subfolder path, got ${JSON.stringify(fired)}`);
+  });
+
+  it("MU12-D8: deleting a baselined file bumps", () => {
+    const f = path.join(sheets(), "Base.json");
+    writeFileSync(f, '{"a":1}');
+    const w = build();
+    rmSync(f);
+    emit("eventSheets", "Base.json");
+    assert.equal(w.txId, 1);
+  });
+
+  /** 1050 files across 60 subdirectories under eventSheets/; returns every entry's relative path. */
+  function seedBigTree(): string[] {
+    const entries: string[] = [];
+    for (let d = 0; d < 60; d++) {
+      const dir = path.join(sheets(), `d${d}`);
+      mkdirSync(dir);
+      entries.push(`d${d}`);
+      const n = d < 30 ? 18 : 17; // 30*18 + 30*17 = 1050 files
+      for (let i = 0; i < n; i++) {
+        writeFileSync(path.join(dir, `f${i}.json`), `{"d":${d},"i":${i}}`);
+        entries.push(path.join(`d${d}`, `f${i}.json`));
+      }
+    }
+    return entries;
+  }
+
+  it("MU12-D9: a 1111-entry tree (over the default 1000 cap) stays quiet on events for every entry", function () {
+    this.timeout(60000);
+    const entries = seedBigTree();
+    assert.equal(entries.length, 1110);
+    const w = build();
+    for (const e of entries) emit("eventSheets", e);
+    assert.equal(w.txId, 0);
+    assert.deepEqual(fired, []);
+  });
+
+  it("MU12-D10: atomic replace and delete of editor-local files in a subfolder are not changes; a source edit is", async function () {
+    this.timeout(10000);
+    const sub = path.join(sheets(), "sub");
+    mkdirSync(sub);
+    writeFileSync(path.join(sub, "A.json"), '{"a":1}');
+    writeFileSync(path.join(sub, "A.uistate.json"), '{"u":1}');
+    writeFileSync(path.join(sub, "B.uistate.json"), '{"u":1}');
+    await sleep(1100);
+    const w = build();
+    writeFileSync(path.join(sub, "A.uistate.json.tmp"), '{"u":2}');
+    renameSync(path.join(sub, "A.uistate.json.tmp"), path.join(sub, "A.uistate.json"));
+    emit("eventSheets", "sub");
+    assert.equal(w.txId, 0, "atomic replace of an editor-local file");
+    rmSync(path.join(sub, "B.uistate.json"));
+    emit("eventSheets", "sub");
+    assert.equal(w.txId, 0, "delete of an editor-local file");
+    writeFileSync(path.join(sub, "A.json"), '{"a":2}');
+    emit("eventSheets", "sub");
+    assert.equal(w.txId, 1, "control: editing the source file");
+  });
+
+  it("MU12-D11: creating an editor-local file in a subfolder is still a change (upstream residual)", () => {
+    const sub = seedSub();
+    const w = build();
+    writeFileSync(path.join(sub, "C.uistate.json"), '{"u":1}');
+    emit("eventSheets", "sub");
+    assert.equal(w.txId, 1);
+  });
+
+  it("MU12-L2: the 1111-entry tree primes complete, logging one info baseline line and no warning", function () {
+    this.timeout(60000);
+    seedBigTree();
+    const info: string[] = [];
+    const warnings: string[] = [];
+    const w = createSourceWatcher({
+      projectRoot: root,
+      expected,
+      watcherFactory: factory,
+      logger: (...args: unknown[]) => {
+        const r = routeWatcherLog(args);
+        if (r?.level === "warning") warnings.push(r.message);
+        else if (r?.level === "info") info.push(r.message);
+      },
+    });
+    w.start();
+    const hits = info.filter((l) => l.includes("baseline: 1051 files, 60 directories"));
+    assert.equal(hits.length, 1, `info lines: ${JSON.stringify(info)}`);
+    assert.deepEqual(warnings, []);
+  });
+});
+
+describe("sourceWatcher ledger helpers", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(path.join(os.tmpdir(), "c3chef-ledger-"));
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it("MU12-C1: countWatchedEntries counts files and subdirectories at any depth, and sizes the ledger", () => {
+    mkdirSync(path.join(root, "eventSheets", "sub", "deep"), { recursive: true });
+    writeFileSync(path.join(root, "eventSheets", "a.json"), "{}");
+    writeFileSync(path.join(root, "eventSheets", "sub", "deep", "b.json"), "{}");
+    writeFileSync(path.join(root, "eventSheets", "Foo.uistate.json"), "{}");
+    mkdirSync(path.join(root, "scripts", "uistate"), { recursive: true });
+    writeFileSync(path.join(root, "scripts", "uistate", "s.json"), "{}");
+    writeFileSync(path.join(root, "project.c3proj"), "{}");
+
+    const targets = [
+      path.join(root, "eventSheets"),
+      path.join(root, "scripts"),
+      path.join(root, "project.c3proj"),
+      path.join(root, "missing"),
+    ];
+    // eventSheets/: a.json, sub, sub/deep, sub/deep/b.json, Foo.uistate.json = 5 (root itself not counted)
+    // scripts/: uistate, uistate/s.json = 2 (editor-local paths are counted)
+    // project.c3proj (file target) = 1
+    // missing (nonexistent target) = 0
+    assert.equal(countWatchedEntries(targets), 5 + 2 + 1 + 0);
+    assert.equal(ledgerCapacity(99), 10000);
+    assert.equal(ledgerCapacity(2741), 10964);
+  });
+
+  it("editorLocalAwareFingerprint hashes source files and reports editor-local ones absent", () => {
+    mkdirSync(path.join(root, "eventSheets"));
+    const src = path.join(root, "eventSheets", "a.json");
+    const local = path.join(root, "eventSheets", "Foo.uistate.json");
+    writeFileSync(src, "one");
+    writeFileSync(local, "x");
+    const fp = editorLocalAwareFingerprint(root);
+    // The fingerprinter relies on "absent" being the ledger's no-content value;
+    // pin that upstream contract so a change to it fails here.
+    assert.equal(contentFingerprint(path.join(root, "eventSheets", "missing.json")), "absent");
+    assert.equal(fp(local), "absent");
+    assert.equal(fp(src), contentFingerprint(src));
+    const before = fp(src);
+    writeFileSync(src, "two");
+    assert.notEqual(fp(src), before);
+  });
+
+  it("MU12-L1: routeWatcherLog routes baseline summary to info, incomplete/failed to warning, others to null", () => {
+    assert.deepEqual(routeWatcherLog(["OptimisticWatcher baseline: 78 files, 20 directories"]), {
+      level: "info",
+      message: "OptimisticWatcher baseline: 78 files, 20 directories",
+    });
+    assert.equal(
+      routeWatcherLog(["OptimisticWatcher baseline incomplete: size the ledger to at least files plus directories"])
+        ?.level,
+      "warning",
+    );
+    const failed = routeWatcherLog(["OptimisticWatcher baseline failed, continuing without:", new Error("boom")]);
+    assert.equal(failed?.level, "warning");
+    assert.match(failed!.message, /^OptimisticWatcher baseline failed, continuing without: .*boom/);
+    assert.equal(routeWatcherLog(["suppressed (L1):", "x"]), null);
   });
 });
