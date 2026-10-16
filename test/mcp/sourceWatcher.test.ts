@@ -385,6 +385,9 @@ describe("sourceWatcher ledger helpers", () => {
     writeFileSync(src, "one");
     writeFileSync(local, "x");
     const fp = editorLocalAwareFingerprint(root);
+    // The fingerprinter relies on "absent" being the ledger's no-content value;
+    // pin that upstream contract so a change to it fails here.
+    assert.equal(contentFingerprint(path.join(root, "eventSheets", "missing.json")), "absent");
     assert.equal(fp(local), "absent");
     assert.equal(fp(src), contentFingerprint(src));
     const before = fp(src);

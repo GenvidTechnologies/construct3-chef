@@ -63,9 +63,11 @@ export function ledgerCapacity(counted: number): number {
  *
  * Returns `"absent"` for a path where `isEditorLocalPathUnder(projectRoot, …)`
  * holds. `"absent"` is `contentFingerprint`'s ENOENT value, which the ledger
- * treats as "no live content": an editor-local file therefore never reads as
- * changed and never flips the ledger lossy when evicted. ADR 0018: editor-local
- * writes are not source changes.
+ * treats as "no live content": an editor-local file already in the ledger
+ * therefore never reads as changed when edited or deleted, and never flips the
+ * ledger lossy when evicted. A newly created one still reads as changed, because
+ * the ledger judges a never-seen path before any fingerprint (#299). ADR 0018:
+ * editor-local writes are not source changes.
  *
  * Any other path is hashed exactly as the default fingerprinter does, by
  * delegating to `contentFingerprint` unchanged.
