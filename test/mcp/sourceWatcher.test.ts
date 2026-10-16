@@ -3,8 +3,14 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ExpectedChanges, type WatcherFactory } from "@genvidtech/mcp-utils";
-import { createSourceWatcher } from "../../src/mcp/sourceWatcher.js";
+import { ExpectedChanges, contentFingerprint, type WatcherFactory } from "@genvidtech/mcp-utils";
+import {
+  createSourceWatcher,
+  countWatchedEntries,
+  ledgerCapacity,
+  editorLocalAwareFingerprint,
+  routeWatcherLog,
+} from "../../src/mcp/sourceWatcher.js";
 
 /**
  * Verifies the OptimisticWatcher wiring before it replaces server.ts's inline
@@ -170,5 +176,67 @@ describe("createSourceWatcher", () => {
     writeFileSync(target, '{"a":2}');
     emit("eventSheets", "Changed.json");
     assert.equal(w.txId, 2);
+  });
+});
+
+describe("sourceWatcher ledger helpers", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(path.join(os.tmpdir(), "c3chef-ledger-"));
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it("MU12-C1: countWatchedEntries counts files and subdirectories at any depth, and sizes the ledger", () => {
+    mkdirSync(path.join(root, "eventSheets", "sub", "deep"), { recursive: true });
+    writeFileSync(path.join(root, "eventSheets", "a.json"), "{}");
+    writeFileSync(path.join(root, "eventSheets", "sub", "deep", "b.json"), "{}");
+    writeFileSync(path.join(root, "eventSheets", "Foo.uistate.json"), "{}");
+    mkdirSync(path.join(root, "scripts", "uistate"), { recursive: true });
+    writeFileSync(path.join(root, "scripts", "uistate", "s.json"), "{}");
+    writeFileSync(path.join(root, "project.c3proj"), "{}");
+
+    const targets = [
+      path.join(root, "eventSheets"),
+      path.join(root, "scripts"),
+      path.join(root, "project.c3proj"),
+      path.join(root, "missing"),
+    ];
+    // eventSheets/: a.json, sub, sub/deep, sub/deep/b.json, Foo.uistate.json = 5 (root itself not counted)
+    // scripts/: uistate, uistate/s.json = 2 (editor-local paths are counted)
+    // project.c3proj (file target) = 1
+    // missing (nonexistent target) = 0
+    assert.equal(countWatchedEntries(targets), 5 + 2 + 1 + 0);
+    assert.equal(ledgerCapacity(99), 10000);
+    assert.equal(ledgerCapacity(2741), 10964);
+  });
+
+  it("editorLocalAwareFingerprint hashes source files and reports editor-local ones absent", () => {
+    mkdirSync(path.join(root, "eventSheets"));
+    const src = path.join(root, "eventSheets", "a.json");
+    const local = path.join(root, "eventSheets", "Foo.uistate.json");
+    writeFileSync(src, "one");
+    writeFileSync(local, "x");
+    const fp = editorLocalAwareFingerprint(root);
+    assert.equal(fp(local), "absent");
+    assert.equal(fp(src), contentFingerprint(src));
+    const before = fp(src);
+    writeFileSync(src, "two");
+    assert.notEqual(fp(src), before);
+  });
+
+  it("MU12-L1: routeWatcherLog routes baseline summary to info, incomplete/failed to warning, others to null", () => {
+    assert.deepEqual(routeWatcherLog(["OptimisticWatcher baseline: 78 files, 20 directories"]), {
+      level: "info",
+      message: "OptimisticWatcher baseline: 78 files, 20 directories",
+    });
+    assert.equal(
+      routeWatcherLog(["OptimisticWatcher baseline incomplete: size the ledger to at least files plus directories"])
+        ?.level,
+      "warning",
+    );
+    const failed = routeWatcherLog(["OptimisticWatcher baseline failed, continuing without:", new Error("boom")]);
+    assert.equal(failed?.level, "warning");
+    assert.match(failed!.message, /^OptimisticWatcher baseline failed, continuing without: .*boom/);
+    assert.equal(routeWatcherLog(["suppressed (L1):", "x"]), null);
   });
 });
