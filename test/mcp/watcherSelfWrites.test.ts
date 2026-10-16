@@ -159,10 +159,21 @@ describe("MCP watcher self-writes (#277)", function () {
   it("W3: remove-layer (workflow/layer path) own writes neither bump txId nor mark dirty", async () => {
     rig = await makeRig("w3-");
     // Seed a removable layer, then snapshot so only the handler's write counts.
+    const startTx = rig.ctx.watcher.txId;
+    const preSeed = snapshotTree(rig.tmp);
     applyParsed(rig.tmp, { layouts: { "layouts/Templates Layout.json": [{ op: "add-layer", name: "P277" }] } } as any, {
       regenerate: true,
       log: () => {},
     });
+    // Since mcp-utils 0.12 start() primes a content baseline holding the ORIGINAL layout. Without
+    // delivering the seed's events, removing P277 would restore those bytes and the remove would be a
+    // no-op to the ledger whether or not the handler registered its write. Deliver them inside a
+    // suppress window so the ledger records the seeded content (no bump) and the remove is a real change.
+    await rig.ctx.watcher.suppress(async () => {
+      rig!.fireChanged(preSeed);
+    });
+    expect(rig.ctx.watcher.txId, "seeding must be silent (txId)").to.equal(startTx);
+    expect(rig.ctx.extractedDirty, "seeding must be silent (dirty)").to.equal(false);
     const before = snapshotTree(rig.tmp);
     const layout = JSON.parse(fs.readFileSync(path.join(rig.tmp, "layouts", "Templates Layout.json"), "utf-8"));
     const cand = layout.layers.find((l: any) => l.name === "P277");
