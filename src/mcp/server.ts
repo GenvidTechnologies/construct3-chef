@@ -36,7 +36,7 @@ import { find_all_eventsheets_path, find_all_layouts_path } from "@genvidtech/c3
 import type { EventSheet } from "@genvidtech/c3source";
 import { resolveIncludeTree, formatIncludeTree, flattenIncludeTree } from "../c3/includeTree.js";
 import { search } from "../c3/search.js";
-import { createSourceWatcher } from "./sourceWatcher.js";
+import { createSourceWatcher, routeWatcherLog } from "./sourceWatcher.js";
 import { resolveAnchor } from "../c3/anchorResolver.js";
 import type { ChefConfig } from "../c3/chefConfig.js";
 import {
@@ -446,6 +446,16 @@ function setupWatchers(ctx: ProjectContext): void {
     onSourceChange: (filePath) => {
       ctx.extractedDirty = true;
       emitLog("warning", `External change detected: ${filePath} (txId → ${ctx.watcher.txId})`);
+    },
+    // The baseline summary is logged at start(), which runs before
+    // server.connect(); emitLog is a no-op until then (the SDK throws
+    // "Not connected" and emitLog swallows it). stderr is the reliable
+    // channel, so write to both. Never stdout: it is the MCP stdio transport.
+    logger: (...a) => {
+      const r = routeWatcherLog(a);
+      if (!r) return;
+      console.error(`[construct3-chef] [${ctx.id}] ${r.message}`);
+      emitLog(r.level, `[${ctx.id}] ${r.message}`);
     },
   });
   ctx.watcher.start();
@@ -2198,6 +2208,10 @@ export async function startServer(
       `[construct3-chef] Warning: project.c3proj not found in ${defaultCtx.root} — not a Construct 3 project directory`,
     );
   }
+  // Start watchers before anything reads the source tree, so their primed
+  // baseline cannot absorb a write that lands in between.
+  const opsRegistries = wireAllProjects();
+
   if (!fs.existsSync(defaultCtx.extractedDir)) {
     console.error(`[construct3-chef] extracted/ not found — auto-generating...`);
     try {
@@ -2212,8 +2226,6 @@ export async function startServer(
     }
   }
   console.error(`[construct3-chef] Starting server in ${defaultCtx.root}`);
-
-  const opsRegistries = wireAllProjects();
 
   // Graceful shutdown
   function shutdown() {

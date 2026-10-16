@@ -249,6 +249,37 @@ describe("MCP watcher self-writes (#277)", function () {
     expect(rig.ctx.watcher.txId, "live txId should equal the error response's counter").to.equal(token);
   });
 
+  it("MU12-L3: the production wiring routes the watcher's baseline line to stderr, complete", async function () {
+    this.timeout(30_000);
+    const root = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "l3-"));
+    const ops: Array<{ stop?: () => void }> = [];
+    const captured: string[] = [];
+    const realError = console.error;
+    let ctx: ProjectContext | undefined;
+    try {
+      for (const d of ["layouts", "objectTypes", "eventSheets", "scripts"]) fs.mkdirSync(path.join(root, d));
+      fs.writeFileSync(path.join(root, "project.c3proj"), fs.readFileSync(path.join(FIXTURE_DIR, "project.c3proj")));
+      ctx = await createProjectContext("l3proj", root);
+      const reg = new ProjectRegistry();
+      reg.add(ctx);
+      __setRegistry(reg);
+      console.error = (...a: unknown[]) => {
+        captured.push(a.map(String).join(" "));
+      };
+      ops.push(...(__wireAllProjects() as Array<{ stop?: () => void }>));
+      console.error = realError;
+      const baseline = captured.filter((l) => l.includes("OptimisticWatcher baseline:") && l.includes("l3proj"));
+      expect(baseline, `captured: ${JSON.stringify(captured)}`).to.have.lengthOf(1);
+      expect(captured.filter((l) => l.includes("baseline incomplete"))).to.deep.equal([]);
+    } finally {
+      console.error = realError;
+      ctx?.watcher?.stop();
+      for (const o of ops) o.stop?.();
+      __resetTestState();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("W6: real fs.watch through the production wiring - own writes are silent, an external edit is not", async function () {
     this.timeout(90_000);
     const root = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "w6-"));
