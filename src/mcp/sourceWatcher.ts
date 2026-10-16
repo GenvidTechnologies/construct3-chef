@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
+  ObservedState,
   OptimisticWatcher,
   contentFingerprint,
   type ExpectedChanges,
@@ -155,9 +156,10 @@ export function createSourceWatcher(opts: SourceWatcherOptions): OptimisticWatch
   const watchDirs = SOURCE_DIRS.map((d) => path.join(opts.projectRoot, d)).filter((d) => fs.existsSync(d));
   if (fs.existsSync(c3projPath)) watchDirs.push(c3projPath);
 
-  // Filter editor-local paths out BEFORE they reach OptimisticWatcher.handleEvent,
-  // which bumps txId unconditionally before invoking onExternalChange — a filter
-  // placed inside onExternalChange could suppress extractedDirty but not the bump.
+  // Filter editor-local paths out BEFORE they reach OptimisticWatcher.handleEvent.
+  // The ledger there decides whether an event is a change, and only a change
+  // bumps txId and invokes onExternalChange — a filter placed inside
+  // onExternalChange could suppress extractedDirty but not the bump.
   // Wraps the SELECTED factory (not just fsWatchFactory), so an injected test
   // stub is filtered too. See ADR 0018.
   const baseFactory = opts.watcherFactory ?? fsWatchFactory;
@@ -171,6 +173,11 @@ export function createSourceWatcher(opts: SourceWatcherOptions): OptimisticWatch
     expected: opts.expected,
     watcherFactory: filteringFactory,
     logger: opts.logger,
+    // One ledger per call, i.e. per project context; sized from the watched tree.
+    observed: new ObservedState({
+      maxEntries: ledgerCapacity(countWatchedEntries(watchDirs)),
+      fingerprint: editorLocalAwareFingerprint(opts.projectRoot),
+    }),
     onExternalChange: (filePath) => {
       // project.c3proj bumps txId but does NOT mark extracted/ dirty.
       if (path.resolve(filePath) !== c3projPath) {
