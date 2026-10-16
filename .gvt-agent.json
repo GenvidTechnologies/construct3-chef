@@ -19,7 +19,13 @@
 		"docs/TOC.md": "wiki/index.md",
 		"docs/decisions/": "wiki/decisions/",
 		"docs/issue-triage.md": "wiki/process/issue-triage.md",
-		"docs/wiki-schema.md": "wiki/wiki-schema.md"
+		"docs/wiki-schema.md": "wiki/wiki-schema.md",
+		"docs/architecture.md": "wiki/architecture/index.md",
+		"docs/design-patterns.md": "wiki/decisions/index.md",
+		"docs/coding-conventions.md": "CLAUDE.md",
+		"docs/code-review-context.md": "wiki/architecture/index.md",
+		"docs/code-review-patterns.md": "wiki/process/verification-traps.md",
+		"docs/code-review-docs.md": "wiki/index.md"
 	},
 	"hygiene": {
 		"excludePaths": ["wiki/decisions/"]
