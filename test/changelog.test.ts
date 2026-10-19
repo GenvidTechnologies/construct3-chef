@@ -33,11 +33,12 @@ describe("CHANGELOG.md", () => {
     const sections = sectionVersions(CHANGELOG_TEXT);
     const linkRefs = linkRefVersions(CHANGELOG_TEXT);
 
-    it("finds all 19 dated+[Unreleased] sections", () => {
+    it("finds at least the 20 dated+[Unreleased] sections present at 2.1.0", () => {
       // Guards against a vacuous pass: a regex that matched nothing would
       // make the set-equality assertion below trivially true over two empty
-      // arrays.
-      expect(sections.length).to.equal(19);
+      // arrays. A floor rather than an exact count, so each release's new
+      // dated section doesn't break it.
+      expect(sections.length).to.be.at.least(20);
     });
 
     it("every section heading has a matching link-reference line", () => {
