@@ -44,6 +44,6 @@ Validating first is sufficient here, where it was not for recipe apply. ADR 0047
 
 ## Consequences
 
-- A refused rename writes nothing, in every mode, and `--dry-run` now predicts apply's refusal.
+- A refused rename writes nothing, in every mode, and `--dry-run` now predicts apply's refusal. It still prints the lines logged before the validation pass (the replacement list, the scan count and the matched files) before it throws.
 - Writes can still fail after the first one has begun, as in ADR 0047: an I/O error part-way through the write loop can leave a partial rename, and regeneration after the write can fail (reported by `regenerateAfterWrite`'s message).
-- Recipe apply's dry-run and apply branches still differ in sheet label and check order; unifying them stays with #280.
+- Recipe apply is unaffected: its dry-run and apply branches keep the differences ADR 0047's Consequences lists, and unifying them stays with #280.
