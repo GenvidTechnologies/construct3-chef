@@ -5,6 +5,7 @@ import * as path from "node:path";
 
 import { renameSymbols } from "../../src/c3/recipeApplier.js";
 import { copyFixture } from "../helpers/applyFixtures.js";
+import { runCli } from "../helpers/runCli.js";
 
 // These pin the pre-#283 success output of renameSymbols so the atomicity fix cannot drift it.
 
@@ -81,5 +82,110 @@ describe("renameSymbols success output pins (#283)", () => {
       "      + zzRenamed();",
       "\nDry run complete. Run without --dry-run to apply.",
     ]);
+  });
+});
+
+describe("renameSymbols validates every sheet before the first write (#283)", () => {
+  let tmp: string;
+  let sheetA: string;
+  let sheetB: string;
+  const scriptEvent = {
+    eventType: "block",
+    conditions: [],
+    actions: [{ type: "script", language: "typescript", script: ["zzProbe();"] }],
+    sid: 100000000000001,
+  };
+  const BAD_LABEL = `Editor-validation failed for ${path.join("eventSheets", "B_bad.json")}:`;
+
+  beforeEach(() => {
+    tmp = copyFixture("c3chef-rename-validate-first-");
+    sheetA = path.join(tmp, "eventSheets", "A_ok.json");
+    sheetB = path.join(tmp, "eventSheets", "B_bad.json");
+    writeFileSync(sheetA, JSON.stringify({ name: "A_ok", events: [scriptEvent], sid: 100000000000002 }, null, "\t"));
+    // A variable event with no `comment` trips the eventvar-comment-required editor rule.
+    const badVariable = {
+      eventType: "variable",
+      name: "v",
+      type: "number",
+      initialValue: "0",
+      isStatic: false,
+      isConstant: false,
+      sid: 100000000000003,
+    };
+    const badEvent = { ...scriptEvent, sid: 100000000000004 };
+    writeFileSync(
+      sheetB,
+      JSON.stringify({ name: "B_bad", events: [badVariable, badEvent], sid: 100000000000005 }, null, "\t"),
+    );
+  });
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  function attempt(dryRun: boolean, preview: boolean) {
+    const aBefore = readFileSync(sheetA, "utf8");
+    const bBefore = readFileSync(sheetB, "utf8");
+    const lines: string[] = [];
+    let message = "";
+    try {
+      renameSymbols(
+        tmp,
+        [{ from: "zzProbe", to: "zzRenamed" }],
+        dryRun,
+        preview,
+        false,
+        "extracted",
+        (...a: unknown[]) => lines.push(a.join(" ")),
+      );
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    return {
+      firstLine: message.split("\n")[0],
+      aUnchanged: readFileSync(sheetA, "utf8") === aBefore,
+      bUnchanged: readFileSync(sheetB, "utf8") === bBefore,
+      lines,
+    };
+  }
+
+  it("RN1: apply refuses with the relative sheet path and writes nothing", () => {
+    const r = attempt(false, false);
+    assert.deepEqual(
+      { firstLine: r.firstLine, aUnchanged: r.aUnchanged, bUnchanged: r.bUnchanged },
+      { firstLine: BAD_LABEL, aUnchanged: true, bUnchanged: true },
+    );
+  });
+
+  it("RN2: --dry-run refuses like apply and never reports completion", () => {
+    const r = attempt(true, false);
+    assert.deepEqual(
+      {
+        firstLine: r.firstLine,
+        aUnchanged: r.aUnchanged,
+        bUnchanged: r.bUnchanged,
+        dryRunLogged: r.lines.some((l) => l.includes("Dry run complete")),
+      },
+      { firstLine: BAD_LABEL, aUnchanged: true, bUnchanged: true, dryRunLogged: false },
+    );
+  });
+
+  it("RN3: --preview refuses before printing any diff", () => {
+    const r = attempt(false, true);
+    assert.deepEqual(
+      {
+        firstLine: r.firstLine,
+        headerLogged: r.lines.some((l) => l.includes("--- Preview (script diffs) ---")),
+      },
+      { firstLine: BAD_LABEL, headerLogged: false },
+    );
+  });
+
+  it("RN6: the CLI --dry-run exits 1 with the editor-validation message", function () {
+    this.timeout(120000);
+    const r = runCli(["rename-symbol", "zzProbe", "zzRenamed", "--dry-run", "--project-dir", tmp]);
+    assert.deepEqual(
+      { exitCode: r.exitCode, named: (r.stdout + r.stderr).includes("Editor-validation failed for") },
+      { exitCode: 1, named: true },
+    );
   });
 });

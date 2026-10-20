@@ -28,6 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`rename-symbol` now validates every modified sheet before writing any**,
+  so a refused rename leaves every sheet unchanged (earlier sheets were
+  previously already written when a later one failed editor validation).
+  `--dry-run` now reports the same editor-validation failure the real run
+  would, where it used to print "Dry run complete"; `--preview` refuses before
+  printing any diff; and the error names the sheet by its project-relative
+  path in every mode (apply used to print the absolute path)
+  ([#283](https://github.com/GenvidTechnologies/construct3-chef/issues/283)).
+
 - **The MCP read tools `read-dsl`, `read-dsl-index`, `read-event-sids`,
   `read-scripts`, `resolve-anchor` and `read-layout` now refuse a `sheet` or
   `layout` argument that escapes `eventSheets/` or `layouts/`**, with
