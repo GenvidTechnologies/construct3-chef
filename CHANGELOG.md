@@ -26,6 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The MCP read tools `read-dsl`, `read-dsl-index`, `read-event-sids`,
+  `read-scripts`, `resolve-anchor` and `read-layout` now refuse a `sheet` or
+  `layout` argument that escapes `eventSheets/` or `layouts/`**, with
+  `Invalid sheet path '<x>' — must stay within eventSheets/` (or the `layout`
+  equivalent), before reading or checking any file. A value such as `../secret`
+  could previously read a JSON file outside the project, probe whether one
+  existed, or mark the read surface stale and move the project's `txId`
+  ([#275](https://github.com/GenvidTechnologies/construct3-chef/issues/275)).
+
 ## [2.1.0] - 2026-10-19
 
 ### Added
