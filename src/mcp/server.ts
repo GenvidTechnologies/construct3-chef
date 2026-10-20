@@ -577,6 +577,8 @@ regP(
 
 // #275: a caller-supplied sheet/layout name must stay inside its section directory (checked with
 // the `.json` extension appended) before any freshness stat, existence probe or read touches it.
+// This also contains the extracted-side path: it appends the same name to `<extractedDir>/<section>`,
+// and a lexically contained name stays contained whatever base it is appended to.
 function resolveSectionJson(
   sectionDir: string,
   kind: "sheet" | "layout",
@@ -609,11 +611,7 @@ regP(
     ctx.rwlock.read(async () => {
       const guard = resolveSectionJson(ctx.project.eventSheetsDir, "sheet", sheet, "eventSheets", "read-dsl");
       if ("error" in guard) return guard.error;
-      checkSourceFreshness(
-        ctx,
-        path.join(ctx.project.eventSheetsDir, `${sheet}.json`),
-        path.join(ctx.extractedDir, "eventSheets", `${sheet}.dsl.txt`),
-      );
+      checkSourceFreshness(ctx, guard.path, path.join(ctx.extractedDir, "eventSheets", `${sheet}.dsl.txt`));
       const text = readExtracted(ctx, `eventSheets/${sheet}.dsl.txt`);
       if (text === null) {
         return mcpError(`No DSL file found for '${sheet}'. Use list-event-sheets to see available sheets.`, {
@@ -644,11 +642,7 @@ regP(
     ctx.rwlock.read(async () => {
       const guard = resolveSectionJson(ctx.project.eventSheetsDir, "sheet", sheet, "eventSheets", "read-dsl-index");
       if ("error" in guard) return guard.error;
-      checkSourceFreshness(
-        ctx,
-        path.join(ctx.project.eventSheetsDir, `${sheet}.json`),
-        path.join(ctx.extractedDir, "eventSheets", `${sheet}.dsl.idx.txt`),
-      );
+      checkSourceFreshness(ctx, guard.path, path.join(ctx.extractedDir, "eventSheets", `${sheet}.dsl.idx.txt`));
       let text = readExtracted(ctx, `eventSheets/${sheet}.dsl.idx.txt`);
       if (text === null) {
         return mcpError(`No DSL index file found for '${sheet}'. Use list-event-sheets to see available sheets.`, {
@@ -725,11 +719,7 @@ regP(
     ctx.rwlock.read(async () => {
       const guard = resolveSectionJson(ctx.project.eventSheetsDir, "sheet", sheet, "eventSheets", "read-scripts");
       if ("error" in guard) return guard.error;
-      checkSourceFreshness(
-        ctx,
-        path.join(ctx.project.eventSheetsDir, `${sheet}.json`),
-        path.join(ctx.extractedDir, "eventSheets", `${sheet}.ts`),
-      );
+      checkSourceFreshness(ctx, guard.path, path.join(ctx.extractedDir, "eventSheets", `${sheet}.ts`));
       const text = readExtracted(ctx, `eventSheets/${sheet}.ts`);
       if (text === null) {
         return mcpError(
@@ -759,11 +749,7 @@ regP(
     ctx.rwlock.read(async () => {
       const guard = resolveSectionJson(ctx.project.layoutsDir, "layout", layout, "layouts", "read-layout");
       if ("error" in guard) return guard.error;
-      checkSourceFreshness(
-        ctx,
-        path.join(ctx.project.layoutsDir, `${layout}.json`),
-        path.join(ctx.extractedDir, "layouts", `${layout}.layout.txt`),
-      );
+      checkSourceFreshness(ctx, guard.path, path.join(ctx.extractedDir, "layouts", `${layout}.layout.txt`));
       const text = readExtracted(ctx, `layouts/${layout}.layout.txt`);
       if (text === null) {
         return mcpError(`No layout summary found for '${layout}'. Use list-layouts to see available layouts.`, {
@@ -980,11 +966,7 @@ regP(
     ctx.rwlock.read(async () => {
       const guard = resolveSectionJson(ctx.project.eventSheetsDir, "sheet", sheet, "eventSheets", "resolve-anchor");
       if ("error" in guard) return guard.error;
-      checkSourceFreshness(
-        ctx,
-        path.join(ctx.project.eventSheetsDir, `${sheet}.json`),
-        path.join(ctx.extractedDir, "eventSheets", `${sheet}.dsl.idx.txt`),
-      );
+      checkSourceFreshness(ctx, guard.path, path.join(ctx.extractedDir, "eventSheets", `${sheet}.dsl.idx.txt`));
       const text = readExtracted(ctx, `eventSheets/${sheet}.dsl.idx.txt`);
       if (text === null) {
         return mcpError(`No DSL index file found for '${sheet}'. Use list-event-sheets to see available sheets.`, {
