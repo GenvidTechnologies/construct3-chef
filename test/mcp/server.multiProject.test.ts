@@ -15,6 +15,7 @@ import {
 import { createProjectContext } from "../../src/mcp/projectContext.js";
 import { ProjectRegistry } from "../../src/mcp/projectRegistry.js";
 import { OpsRegistry, type RegisterableServer } from "../../src/mcp/opsRegistry.js";
+import { makeExtractedNewerThanSource } from "../helpers/applyFixtures.js";
 
 /**
  * Cross-project behavioural tests for #95's F5 (Seam C: `regP` selector
@@ -88,26 +89,6 @@ function makeFakeOpsServer(): RegisterableServer {
       throw new Error("unexpected registerTool call — T-C6's ops dir should be empty");
     },
   };
-}
-
-// cpSync stamps every copied file with ~the same mtime, and the recursive
-// copy order decides whether extracted/ ends up newer or older than the
-// source dirs. checkSourceFreshness/checkDerivedFreshness compare mtimes
-// with a strict `source > extracted`, so a freshly-copied fixture can read
-// as spuriously stale. Force extracted/ deterministically newer than source
-// (same helper as serverHandlers.test.ts) so staleness never fires as a side
-// effect of the copy itself.
-function makeExtractedNewerThanSource(root: string): void {
-  const future = new Date(Date.now() + 3_600_000);
-  const walk = (dir: string): void => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else fs.utimesSync(full, future, future);
-    }
-  };
-  const extractedDir = path.join(root, "extracted");
-  if (fs.existsSync(extractedDir)) walk(extractedDir);
 }
 
 function copyFixture(prefix: string): string {
