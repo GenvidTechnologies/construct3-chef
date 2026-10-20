@@ -486,3 +486,11 @@ See the [wiki index](../index.md) for the other sections.
   the start-up read of the tree; rejects a fixed capacity, a bare multiple, a
   null ledger, a stat-based fingerprinter and expect() on directories
   ([#296](https://github.com/GenvidTechnologies/construct3-chef/issues/296))
+* [0054. rename-symbol validates every changed sheet before writing any](0054-rename-symbol-validates-every-sheet-before-writing.md) -
+  Amends the write order of `renameSymbols`. It clones each event sheet and
+  applies the replacements in memory, then runs one editor-validation pass
+  over every changed sheet before the preview, dry-run and apply branches. A
+  refusal writes nothing, all three modes report the same first error, and the
+  sheet label is project-relative everywhere. Rejects routing the writes
+  through the `OverlayIo` journal of ADR 0047
+  ([#283](https://github.com/GenvidTechnologies/construct3-chef/issues/283))
