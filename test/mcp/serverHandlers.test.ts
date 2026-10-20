@@ -1137,6 +1137,98 @@ describe("MCP server handler response shaping", () => {
     }
   });
 
+  describe("read-tool argument containment (#275)", () => {
+    const BASELINE = new Date(2020, 0, 1);
+    const NEWER = new Date(BASELINE.getTime() + 100_000);
+    const SHEET_MSG = "Invalid sheet path '../escape' — must stay within eventSheets/";
+    const LAYOUT_MSG = "Invalid layout path '../escape' — must stay within layouts/";
+    const SHEET = "Gameplay/Event sheet 1";
+    const LAYOUT = "Gameplay/Main Layout";
+    const SHEET_TOOLS: ReadonlyArray<{ tool: string; extra: Record<string, unknown>; notFound: string }> = [
+      { tool: "read-dsl", extra: {}, notFound: "No DSL file found" },
+      { tool: "read-dsl-index", extra: {}, notFound: "No DSL index file found" },
+      { tool: "read-event-sids", extra: {}, notFound: "No event sheet found" },
+      { tool: "read-scripts", extra: {}, notFound: "No extracted TypeScript found" },
+      { tool: "resolve-anchor", extra: { by: "line", value: "1" }, notFound: "No DSL index file found" },
+    ];
+
+    async function callFull(tool: string, args: Record<string, unknown>): Promise<{ text: string; isError: boolean }> {
+      const handler = __getHandler(tool)!;
+      expect(handler, `handler ${tool}`).to.exist;
+      const result = (await handler(args, makeExtra())) as any;
+      return { text: result.content[0].text as string, isError: result.isError === true };
+    }
+
+    // Source at <tmp>/escape.json (newer) plus every escaped extracted artifact a tool could stat.
+    function seedEscapedPair(): void {
+      const sheetJson = fs.readFileSync(path.join(tmp, "eventSheets", "Gameplay", "Event sheet 1.json"), "utf-8");
+      fs.writeFileSync(path.join(tmp, "escape.json"), sheetJson);
+      for (const f of ["escape.dsl.txt", "escape.dsl.idx.txt", "escape.ts", "escape.layout.txt"]) {
+        fs.writeFileSync(path.join(tmp, "extracted", f), "x\n");
+      }
+      setAllMtimesRecursive(path.join(tmp, "extracted"), BASELINE);
+      fs.utimesSync(path.join(tmp, "escape.json"), NEWER, NEWER);
+    }
+
+    for (const { tool, extra } of SHEET_TOOLS) {
+      it(`RA1 ${tool}: '../escape' is refused with no txId move and no dirty flag`, async () => {
+        seedEscapedPair();
+        const { text } = await callFull(tool, { sheet: "../escape", ...extra });
+        // One deep-equal so a regression reports the refusal and the txId/dirty side effects together.
+        expect({
+          refused: text.includes(SHEET_MSG),
+          bumped: watcher.bumped,
+          dirty: __getExtractedDirty(),
+        }).to.deep.equal({ refused: true, bumped: 0, dirty: false });
+      });
+    }
+
+    it("RA1 read-layout: '../escape' is refused with no txId move and no dirty flag", async () => {
+      seedEscapedPair();
+      const { text } = await callFull("read-layout", { layout: "../escape" });
+      expect({
+        refused: text.includes(LAYOUT_MSG),
+        bumped: watcher.bumped,
+        dirty: __getExtractedDirty(),
+      }).to.deep.equal({ refused: true, bumped: 0, dirty: false });
+    });
+
+    it("RA2 read-event-sids: a valid sheet JSON outside eventSheets/ is not probed or returned", async () => {
+      seedEscapedPair();
+      const { text } = await callFull("read-event-sids", { sheet: "../escape" });
+      expect(text).to.include(SHEET_MSG);
+      expect(text).to.not.include("No event sheet found");
+      expect(text).to.not.include("Event SID Map");
+    });
+
+    it("RA3 positive control: every tool still reads a real sheet or layout by relative name", async () => {
+      fs.writeFileSync(path.join(tmp, "extracted", "eventSheets", "Gameplay", "Event sheet 1.ts"), "// ts\n");
+      for (const { tool, extra } of SHEET_TOOLS) {
+        const { text, isError } = await callFull(tool, { sheet: SHEET, ...extra });
+        expect(isError, `${tool}: ${text}`).to.equal(false);
+        expect(text, tool).to.not.include("must stay within");
+      }
+      const layout = await callFull("read-layout", { layout: LAYOUT });
+      expect(layout.isError, layout.text).to.equal(false);
+      expect(layout.text).to.not.include("must stay within");
+    });
+
+    for (const bad of ["", "."]) {
+      for (const { tool, extra, notFound } of SHEET_TOOLS) {
+        it(`RA4 ${tool}: sheet ${JSON.stringify(bad)} gets the not-found message, not containment`, async () => {
+          const { text } = await callFull(tool, { sheet: bad, ...extra });
+          expect(text).to.include(notFound);
+          expect(text).to.not.include("must stay within");
+        });
+      }
+      it(`RA4 read-layout: layout ${JSON.stringify(bad)} gets the not-found message, not containment`, async () => {
+        const { text } = await callFull("read-layout", { layout: bad });
+        expect(text).to.include("No layout summary found");
+        expect(text).to.not.include("must stay within");
+      });
+    }
+  });
+
   // ── 15. [strays] detection-only report at the MCP surfaces (#177) ───────────
   // KNOWN-RED at the commit that introduces these two rows: nothing in
   // `server.ts` emits a `[strays]` line until the wiring task lands. Their red

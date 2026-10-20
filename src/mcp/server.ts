@@ -575,6 +575,24 @@ regP(
 
 // ── Read Tools ────────────────────────────────────────────────────────────────
 
+// #275: a caller-supplied sheet/layout name must stay inside its section directory (checked with
+// the `.json` extension appended) before any freshness stat, existence probe or read touches it.
+function resolveSectionJson(
+  sectionDir: string,
+  kind: "sheet" | "layout",
+  name: string,
+  sectionName: string,
+  toolName: string,
+): { path: string } | { error: ReturnType<typeof mcpError> } {
+  const resolved = resolveWithin(sectionDir, `${name}.json`);
+  if (resolved === null) {
+    return {
+      error: mcpError(`Invalid ${kind} path '${name}' — must stay within ${sectionName}/`, { prefix: `${toolName}:` }),
+    };
+  }
+  return { path: resolved };
+}
+
 regP(
   "read-dsl",
   {
@@ -589,6 +607,8 @@ regP(
   },
   async (ctx, { sheet, offset, limit }) =>
     ctx.rwlock.read(async () => {
+      const guard = resolveSectionJson(ctx.project.eventSheetsDir, "sheet", sheet, "eventSheets", "read-dsl");
+      if ("error" in guard) return guard.error;
       checkSourceFreshness(
         ctx,
         path.join(ctx.project.eventSheetsDir, `${sheet}.json`),
@@ -622,6 +642,8 @@ regP(
   },
   async (ctx, { sheet, grep, offset, limit }) =>
     ctx.rwlock.read(async () => {
+      const guard = resolveSectionJson(ctx.project.eventSheetsDir, "sheet", sheet, "eventSheets", "read-dsl-index");
+      if ("error" in guard) return guard.error;
       checkSourceFreshness(
         ctx,
         path.join(ctx.project.eventSheetsDir, `${sheet}.json`),
@@ -661,7 +683,9 @@ regP(
   },
   async (ctx, { sheet, grep }) =>
     ctx.rwlock.read(async () => {
-      const sourcePath = path.join(ctx.project.eventSheetsDir, `${sheet}.json`);
+      const guard = resolveSectionJson(ctx.project.eventSheetsDir, "sheet", sheet, "eventSheets", "read-event-sids");
+      if ("error" in guard) return guard.error;
+      const sourcePath = guard.path;
       if (!fs.existsSync(sourcePath)) {
         return mcpError(`No event sheet found for '${sheet}'. Use list-event-sheets to see available sheets.`, {
           prefix: "read-event-sids:",
@@ -699,6 +723,8 @@ regP(
   },
   async (ctx, { sheet, offset, limit }) =>
     ctx.rwlock.read(async () => {
+      const guard = resolveSectionJson(ctx.project.eventSheetsDir, "sheet", sheet, "eventSheets", "read-scripts");
+      if ("error" in guard) return guard.error;
       checkSourceFreshness(
         ctx,
         path.join(ctx.project.eventSheetsDir, `${sheet}.json`),
@@ -731,6 +757,8 @@ regP(
   },
   async (ctx, { layout, offset, limit }) =>
     ctx.rwlock.read(async () => {
+      const guard = resolveSectionJson(ctx.project.layoutsDir, "layout", layout, "layouts", "read-layout");
+      if ("error" in guard) return guard.error;
       checkSourceFreshness(
         ctx,
         path.join(ctx.project.layoutsDir, `${layout}.json`),
@@ -950,6 +978,8 @@ regP(
   },
   async (ctx, { sheet, by, value }) =>
     ctx.rwlock.read(async () => {
+      const guard = resolveSectionJson(ctx.project.eventSheetsDir, "sheet", sheet, "eventSheets", "resolve-anchor");
+      if ("error" in guard) return guard.error;
       checkSourceFreshness(
         ctx,
         path.join(ctx.project.eventSheetsDir, `${sheet}.json`),
