@@ -8,6 +8,8 @@ import { copyFixture } from "../helpers/applyFixtures.js";
 import { runCli } from "../helpers/runCli.js";
 
 // These pin the pre-#283 success output of renameSymbols so the atomicity fix cannot drift it.
+// "Scanning 3 eventSheet file(s)" is the canonical fixture's two sheets plus A_ok.json, so a fixture
+// that gains or loses an event sheet moves that line.
 
 const SHEET_REL = path.join("eventSheets", "A_ok.json");
 
@@ -184,7 +186,7 @@ describe("renameSymbols validates every sheet before the first write (#283)", ()
     this.timeout(120000);
     const r = runCli(["rename-symbol", "zzProbe", "zzRenamed", "--dry-run", "--project-dir", tmp]);
     assert.deepEqual(
-      { exitCode: r.exitCode, named: (r.stdout + r.stderr).includes("Editor-validation failed for") },
+      { exitCode: r.exitCode, named: (r.stdout + r.stderr).includes(BAD_LABEL) },
       { exitCode: 1, named: true },
     );
   });
