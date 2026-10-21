@@ -125,11 +125,6 @@ function assertCustomActionsValid(
   }
 }
 
-function writeEventSheet(fullPath: string, sheet: EventSheet): void {
-  assertEditorValid(fullPath, sheet);
-  writeSourceJson(fullPath, sheet);
-}
-
 /**
  * Regenerate `extracted/` in place by running every entry of `GENERATORS`: the same full inventory the MCP
  * path and `construct3-chef generate` run (#256, ADR 0049).
@@ -1191,10 +1186,13 @@ export function renameSymbols(
     log(`  ${m.filePath} (${m.count} action(s))`);
   }
 
+  // Validate every sheet before anything is written or previewed, so a refusal writes nothing and
+  // dry-run, preview and apply refuse alike (#283).
+  for (const m of matched) assertEditorValid(m.filePath, m.modified);
+
   if (preview) {
     log("\n--- Preview (script diffs) ---\n");
     for (const m of matched) {
-      assertEditorValid(m.filePath, m.modified);
       const diffs = diffScripts(m.filePath, m.original, m.modified);
       if (diffs.length === 0) {
         log(`  ${m.filePath} — no script changes`);
@@ -1215,7 +1213,7 @@ export function renameSymbols(
   // Write modified files
   for (const m of matched) {
     const fullPath = path.join(rootDir, m.filePath);
-    writeEventSheet(fullPath, m.modified);
+    writeSourceJson(fullPath, m.modified);
     log(`  MODIFIED ${m.filePath}`);
   }
 

@@ -198,6 +198,8 @@ npx construct3-chef rename-symbol --replacements <file.json> [options]
 | `--preview` | Show diff of script changes (implies `--dry-run`) |
 | `--regenerate` / `--no-regenerate` | Regenerate `extracted/` after applying (default: `true`) |
 
+Every changed sheet is editor-validated before anything is written or previewed. If one fails, the command exits 1 naming that sheet, writes nothing, and prints no diff, in every mode including `--dry-run` and `--preview` ([#283](https://github.com/GenvidTechnologies/construct3-chef/issues/283)).
+
 Replacements file format:
 
 ```json
