@@ -24,7 +24,11 @@ export function guardHandler(h: Handler, report: Report = reportCliError): (argv
   };
 }
 
-/** Wraps the handler of every `.command(...)` registered after this call, so a new command is covered by default. */
+/**
+ * Wraps the handler of every `.command(...)` registered after this call, so a new command is covered by default.
+ * Covers the positional `(name, description, builder, handler)` form and a single command-module object; a
+ * `(name, description, { builder, handler })` definition and `commandDir` are not wrapped.
+ */
 export function guardAllHandlers<Y extends { command: (...args: any[]) => any }>(
   y: Y,
   report: Report = reportCliError,

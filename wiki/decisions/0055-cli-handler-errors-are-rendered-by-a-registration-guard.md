@@ -23,7 +23,7 @@ generated: { by: process:tech-writer, at: 2026-10-21T00:00:00Z }
 
 ## Context
 
-A handler in `src/cli.ts` that threw, or whose promise rejected, reached yargs. Depending on the shape, the user saw a raw stack trace or the full help dump that yargs prints for a failure, which buries the actual message. Only the two scaffold handlers rendered their own errors, through local try/catch blocks added in #259.
+A handler in `src/cli.ts` that threw, or whose promise rejected, reached yargs. Depending on the shape, the user saw a raw stack trace or the full help dump that yargs prints for a failure, which buries the actual message. Only the two scaffold handlers rendered `Error: <message>` themselves, through local try/catch blocks added in #259. `server`, `validate-project` and `search-dsl` caught some of their own errors too, but printed them unprefixed.
 
 Behaviour measured on yargs 17.7.2:
 
@@ -34,7 +34,7 @@ So a single `.fail()` hook cannot tell the two classes apart, and cannot see som
 
 ## Decision
 
-1. **Guard every handler at registration.** `src/cliErrors.ts` (off-barrel) provides `guardAllHandlers(y)`, which patches the yargs instance's `command` method so that every handler registered afterwards is wrapped by `guardHandler`. The root instance in `src/cli.ts` is `guardAllHandlers(yargs(hideBin(process.argv)))`, and the 21 `.command(` call sites are not edited. The wrapper catches synchronous throws and async rejections and passes them to `reportCliError`, so they never reach yargs.
+1. **Guard every handler at registration.** `src/cliErrors.ts` (off-barrel) provides `guardAllHandlers(y)`, which patches the yargs instance's `command` method so that every handler registered afterwards is wrapped by `guardHandler`. It wraps the two registration forms it recognises: a function in the fourth position, `.command(name, description, builder, handler)`, and a single command-module object. A `.command(name, description, { builder, handler })` definition and `commandDir` are not wrapped; `src/cli.ts` uses neither. The root instance in `src/cli.ts` is `guardAllHandlers(yargs(hideBin(process.argv)))`, and the 21 `.command(` call sites are not edited. The wrapper catches synchronous throws and async rejections and passes them to `reportCliError`, so they never reach yargs.
 2. **One rendering.** `formatCliError(err)` returns `"Error: "` followed by the message, verbatim (multi-line allowed), or `String(e)` for a non-`Error`. `reportCliError(err)` writes that line to stderr and sets `process.exitCode = 1`. The stack and `cause` are never printed: the stack is noise to a CLI user, and every error in `src/` that is thrown with a `cause` today (in `src/c3/recipeApplier.ts` and `src/c3/customAceIndex.ts`) already folds the cause's message into its own, and `regenerateAfterWrite`'s also carries the recovery hint, so nothing a user needs is lost. No verbose switch was asked for. A caller who needs them can reproduce through the library.
 3. **Classification.**
    - *Handler errors* (thrown or rejected from a handler body, including `apply-op`'s `--param` and `--params-file` shape checks) render as the one `Error:` line, exit 1.
@@ -54,7 +54,7 @@ Chosen: "Option C: guard every handler at registration (recommended)".
 
 ## Consequences
 
-- Every subcommand, including ones added later, gets the same failure rendering without an edit at its call site. Test CE16 pins that a command registered after the patch is covered; tests CE1 to CE18 are in `test/cliErrors.test.ts`.
+- Every subcommand, including ones added later in the same positional form, gets the same failure rendering without an edit at its call site. A command registered with a `{ builder, handler }` definition object or through `commandDir` would bypass the guard. Test CE16 pins that a command registered after the patch is covered; tests CE1 to CE18 are in `test/cliErrors.test.ts`.
 - **Option C patches a method on a third-party instance.** It relies on `command` being an overridable instance method whose fourth argument is the handler. A yargs upgrade that changes that signature breaks the guard, and CE16 is the row that notices.
 - The `Error: ` prefix now also appears on `server` startup failures, and the empty-`from` message from `renameSymbols` no longer carries its own. Both are in the CHANGELOG.
 - Stack and `cause` are unavailable from the CLI. Debugging a failure that the message does not explain means reproducing it through the library.
