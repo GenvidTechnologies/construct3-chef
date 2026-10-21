@@ -6,6 +6,7 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { walkFiles, toPosixPath } from "@genvidtech/mcp-utils";
 import { openProject } from "@genvidtech/c3source";
+import { guardAllHandlers, reportCliError } from "./cliErrors.js";
 import { loadChefConfig, resolveOpsDir } from "./c3/chefConfig.js";
 import { GENERATORS, GENERATOR_NAMES, type GeneratorName } from "./c3/generators.js";
 import { applyParsed, renameSymbols } from "./c3/recipeApplier.js";
@@ -64,7 +65,7 @@ function runGenerators(rootDir: string, extractedDir: string, only?: GeneratorNa
   console.log("\n=== Done ===");
 }
 
-yargs(hideBin(process.argv))
+guardAllHandlers(yargs(hideBin(process.argv)))
   .option("project-dir", {
     type: "string",
     defaultDescription: "cwd",
@@ -103,7 +104,7 @@ yargs(hideBin(process.argv))
       try {
         await startServer(argv.projectDir, undefined, argv.defaultProject, argv.discoverProjects);
       } catch (err) {
-        console.error(err instanceof Error ? err.message : String(err));
+        reportCliError(err);
         process.exit(1);
       }
     },
