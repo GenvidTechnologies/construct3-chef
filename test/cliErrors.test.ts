@@ -259,9 +259,51 @@ describe("cliErrors", () => {
       });
     });
 
+    it("CE14: scaffold-layout errors go through the shared guard as one Error line", () => {
+      const d = tmp();
+      mkdirSync(path.join(d, "layouts"), { recursive: true });
+      mkdirSync(path.join(d, "eventSheets"), { recursive: true });
+      writeFileSync(path.join(d, "layouts", "Broken.json"), "{ bad");
+      const r = runCli(
+        [
+          "scaffold-layout",
+          "--project-dir",
+          d,
+          "--source",
+          "layouts/Broken.json",
+          "--out",
+          "layouts/Copy.json",
+          "--name",
+          "Copy",
+          "--event-sheet",
+          "Copy",
+        ],
+        { cwd: d },
+      );
+      const stderr = r.stderr.replace(/\r\n/g, "\n").trimEnd();
+      expect({
+        exitCode: r.exitCode,
+        oneLine: !stderr.includes("\n"),
+        prefixed: stderr.startsWith("Error: "),
+        hasOptions: stderr.includes("Options:"),
+        frames: /^\s+at /m.test(stderr),
+      }).to.deep.equal({ exitCode: 1, oneLine: true, prefixed: true, hasOptions: false, frames: false });
+    });
+
     it("CE18: the guard is installed on the root yargs instance", () => {
       const src = readFileSync(path.resolve("src/cli.ts"), "utf-8");
       expect(src.split("guardAllHandlers(yargs(hideBin(process.argv)))").length - 1).to.equal(1);
+    });
+
+    it("CE17: only the server, validate-project and search-dsl handlers keep a local catch", () => {
+      const src = readFileSync(path.resolve("src/cli.ts"), "utf-8");
+      const count = (needle: string) => src.split(needle).length - 1;
+      expect({
+        catches: count("} catch ("),
+        localErrorLines: count("Error: ${"),
+        driftCatch: count("driftFailed = true;") >= 1,
+        regexCatch: count("Invalid regex: ") >= 1,
+      }).to.deep.equal({ catches: 3, localErrorLines: 0, driftCatch: true, regexCatch: true });
     });
   });
 });
