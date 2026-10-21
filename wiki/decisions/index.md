@@ -494,3 +494,10 @@ See the [wiki index](../index.md) for the other sections.
   sheet label is project-relative everywhere. Rejects routing the writes
   through the `OverlayIo` journal of ADR 0047
   ([#283](https://github.com/GenvidTechnologies/construct3-chef/issues/283))
+* [0055. CLI handler errors are rendered by a guard applied at registration](0055-cli-handler-errors-are-rendered-by-a-registration-guard.md) -
+  Every CLI subcommand handler is wrapped as it is registered, so a thrown
+  error or rejected promise prints one `Error: <message>` line on stderr and
+  exits 1, with no stack and no yargs help dump. Argument-validation errors
+  keep yargs' usage output. Rejects wrapping each handler by hand and rejects
+  a `.fail()` hook with a top-level catch
+  ([#266](https://github.com/GenvidTechnologies/construct3-chef/issues/266))

@@ -64,4 +64,4 @@ The scaffold tools and the CREATE-target check (ADRs 0044 and 0043) compared nam
 - `toLowerCase` Unicode folding may differ from NTFS's own folding for exotic characters.
 - A case variant of an *empty* folder is not detected, since the listing is derived from files.
 - Non-sheet CREATE targets still use `existsSync`. The objectTypes CREATE case/subfolder gap is [#274](https://github.com/GenvidTechnologies/construct3-chef/issues/274).
-- The CLI help text is untouched; it stays with [#266](https://github.com/GenvidTechnologies/construct3-chef/issues/266).
+- The CLI help text is untouched; it stays with [#266](https://github.com/GenvidTechnologies/construct3-chef/issues/266). *(Resolved by ADR [0055](0055-cli-handler-errors-are-rendered-by-a-registration-guard.md).)*

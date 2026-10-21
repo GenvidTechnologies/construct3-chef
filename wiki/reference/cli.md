@@ -23,6 +23,14 @@ npx construct3-chef <subcommand> [options]
 | ------ | ------- | ----------- |
 | `--project-dir <path>` | `cwd` | Root directory of the C3 project (must contain `project.c3proj`). A `string` option for every subcommand **except** `server`, where it is repeatable — see [Multi-root launch config](#multi-root-launch-config). |
 
+## Errors and exit codes
+
+- **Handler errors.** An error thrown or rejected from a subcommand's handler prints one `Error: <message>` line on stderr and exits 1, with no stack trace and no help text. A multi-line message prints as written. `server` startup failures follow the same form.
+- **Argument errors** (unknown flag, missing required option, invalid `choices` value, a failed `--skip-gate` or `rename-symbol` check) keep yargs' usage output and message.
+- **Command-specific reports.** Some commands print their own rejection or report lines and set the exit code themselves: scaffold plan rejections, `apply-op`'s unknown-op line, the addon not-found lines, and the findings exit codes documented in each command's section. Those texts are unchanged.
+
+The rendering lives in `src/cliErrors.ts`; the reasoning is in ADR [0055](../decisions/0055-cli-handler-errors-are-rendered-by-a-registration-guard.md) ([#266](https://github.com/GenvidTechnologies/construct3-chef/issues/266)).
+
 ---
 
 ## Configuration file
@@ -290,7 +298,7 @@ After scaffolding, `project.c3proj` is automatically synced and `extracted/` is 
 
 `scaffold-layout` never overwrites. It refuses when the `--out` file already exists, or when a layout with the same file name exists in another folder. Every conflict is listed in one message, nothing is written (no sync, no regenerate), and the command exits 1 ([#254](https://github.com/GenvidTechnologies/construct3-chef/issues/254), ADR [0044](../decisions/0044-scaffold-tools-refuse-existing-targets.md)). Names are compared with letter case ignored, and the refusal reports the on-disk spelling; `output-exists` is decided by the exact name on disk ([#253](https://github.com/GenvidTechnologies/construct3-chef/issues/253), [ADR 0046](../decisions/0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md)).
 
-Paths are contained to `layouts/`. A `--out` or `--source` outside it is rejected with `Invalid output path '<arg>' — must stay within layouts/` (`Invalid source path …` for `--source`), exit 1, nothing written. A missing source prints `Source layout not found: <path>`. Each rejection is that one message line, with no prefix; any other error (an unreadable source, say) prints one `Error: <message>` line instead of a stack trace or help text. Success lines use `/` separators on every platform ([#259](https://github.com/GenvidTechnologies/construct3-chef/issues/259), ADR [0045](../decisions/0045-scaffold-plan-write-split-and-cli-path-containment.md)).
+Paths are contained to `layouts/`. A `--out` or `--source` outside it is rejected with `Invalid output path '<arg>' — must stay within layouts/` (`Invalid source path …` for `--source`), exit 1, nothing written. A missing source prints `Source layout not found: <path>`. Each rejection is that one message line, with no prefix; any other error (an unreadable source, say) is reported as on every command, by the [CLI-wide error rendering](#errors-and-exit-codes). Success lines use `/` separators on every platform ([#259](https://github.com/GenvidTechnologies/construct3-chef/issues/259), ADR [0045](../decisions/0045-scaffold-plan-write-split-and-cli-path-containment.md)).
 
 ---
 
