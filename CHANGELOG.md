@@ -28,6 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CLI subcommands now report a handler failure as one `Error: <message>`
+  line on stderr (exit 1)** instead of a raw stack trace or a yargs help dump.
+  Argument errors (unknown flag, missing option, bad `choices` value) still
+  show yargs' usage. `server` startup failures now carry the `Error:` prefix
+  too ([#266](https://github.com/GenvidTechnologies/construct3-chef/issues/266)).
+
+- **`renameSymbols`' empty-`from` error message no longer starts with
+  `Error: `** (library callers of the barrel-exported function see the changed
+  text; the CLI adds the prefix itself)
+  ([#266](https://github.com/GenvidTechnologies/construct3-chef/issues/266)).
+
 - **`rename-symbol` now validates every modified sheet before writing any**,
   so a refused rename leaves every sheet unchanged (earlier sheets were
   previously already written when a later one failed editor validation).

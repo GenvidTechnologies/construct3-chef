@@ -6,6 +6,7 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { walkFiles, toPosixPath } from "@genvidtech/mcp-utils";
 import { openProject } from "@genvidtech/c3source";
+import { guardAllHandlers, reportCliError } from "./cliErrors.js";
 import { loadChefConfig, resolveOpsDir } from "./c3/chefConfig.js";
 import { GENERATORS, GENERATOR_NAMES, type GeneratorName } from "./c3/generators.js";
 import { applyParsed, renameSymbols } from "./c3/recipeApplier.js";
@@ -64,7 +65,7 @@ function runGenerators(rootDir: string, extractedDir: string, only?: GeneratorNa
   console.log("\n=== Done ===");
 }
 
-yargs(hideBin(process.argv))
+guardAllHandlers(yargs(hideBin(process.argv)))
   .option("project-dir", {
     type: "string",
     defaultDescription: "cwd",
@@ -103,7 +104,7 @@ yargs(hideBin(process.argv))
       try {
         await startServer(argv.projectDir, undefined, argv.defaultProject, argv.discoverProjects);
       } catch (err) {
-        console.error(err instanceof Error ? err.message : String(err));
+        reportCliError(err);
         process.exit(1);
       }
     },
@@ -265,32 +266,27 @@ yargs(hideBin(process.argv))
           describe: "Regenerate extracted/ files after scaffolding",
         }),
     async (argv) => {
-      try {
-        const rootDir = resolveProjectDir(argv);
-        const extractedDir = await resolveExtractedDir(rootDir);
-        const plan = planLayoutScaffold({
-          rootDir,
-          layoutsDir: openProject(rootDir).layoutsDir,
-          extractedDirAbs: path.join(rootDir, extractedDir),
-          pathBase: "project-root",
-          source: argv.source,
-          out: argv.out,
-          name: argv.name,
-          eventSheet: argv.eventSheet,
-        });
-        if (!plan.ok) {
-          console.error(plan.message);
-          process.exitCode = 1;
-          return;
-        }
-        writeLayoutScaffold(plan, console.log);
-        runSync(rootDir, false, console.log);
-        if (argv.regenerate) {
-          runGenerators(rootDir, extractedDir);
-        }
-      } catch (e) {
-        console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      const rootDir = resolveProjectDir(argv);
+      const extractedDir = await resolveExtractedDir(rootDir);
+      const plan = planLayoutScaffold({
+        rootDir,
+        layoutsDir: openProject(rootDir).layoutsDir,
+        extractedDirAbs: path.join(rootDir, extractedDir),
+        pathBase: "project-root",
+        source: argv.source,
+        out: argv.out,
+        name: argv.name,
+        eventSheet: argv.eventSheet,
+      });
+      if (!plan.ok) {
+        console.error(plan.message);
         process.exitCode = 1;
+        return;
+      }
+      writeLayoutScaffold(plan, console.log);
+      runSync(rootDir, false, console.log);
+      if (argv.regenerate) {
+        runGenerators(rootDir, extractedDir);
       }
     },
   )
@@ -315,30 +311,25 @@ yargs(hideBin(process.argv))
           describe: "Regenerate extracted/ files after scaffolding",
         }),
     async (argv) => {
-      try {
-        const rootDir = resolveProjectDir(argv);
-        const extractedDir = await resolveExtractedDir(rootDir);
-        const project = openProject(rootDir);
-        const plan = planSpriteScaffold({
-          rootDir,
-          objectTypesDir: project.objectTypesDir,
-          imagesDir: project.imagesDir,
-          source: argv.source,
-          name: argv.name,
-        });
-        if (!plan.ok) {
-          console.error(plan.message);
-          process.exitCode = 1;
-          return;
-        }
-        writeSpriteScaffold(plan, console.log);
-        runSync(rootDir, false, console.log);
-        if (argv.regenerate) {
-          runGenerators(rootDir, extractedDir);
-        }
-      } catch (e) {
-        console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      const rootDir = resolveProjectDir(argv);
+      const extractedDir = await resolveExtractedDir(rootDir);
+      const project = openProject(rootDir);
+      const plan = planSpriteScaffold({
+        rootDir,
+        objectTypesDir: project.objectTypesDir,
+        imagesDir: project.imagesDir,
+        source: argv.source,
+        name: argv.name,
+      });
+      if (!plan.ok) {
+        console.error(plan.message);
         process.exitCode = 1;
+        return;
+      }
+      writeSpriteScaffold(plan, console.log);
+      runSync(rootDir, false, console.log);
+      if (argv.regenerate) {
+        runGenerators(rootDir, extractedDir);
       }
     },
   )

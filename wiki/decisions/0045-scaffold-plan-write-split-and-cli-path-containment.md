@@ -85,6 +85,7 @@ implementations of the same validation, one in `src/cli.ts` and one in
    code 1. Scaffold handler errors render `Error: <message>` with no stack and
    no help text. This is scoped to the scaffold handlers; a CLI-wide yargs
    `.fail()` is a separate follow-up, not part of this change.
+   *(Superseded in part by ADR [0055](0055-cli-handler-errors-are-rendered-by-a-registration-guard.md): a registration guard now renders every CLI handler error, and the local scaffold catches are gone.)*
 6. **#261 shipped in the same change.** The option is now declared as
    `regenerate` (boolean, default true), as on the other four regenerating
    commands, so `--no-regenerate` parses. It needs no decision of its own.
@@ -120,4 +121,4 @@ implementations of the same validation, one in `src/cli.ts` and one in
 - **The sprite name check is a substring test.** Any `..` is rejected, so a
   legal but unusual name such as `a..b` is refused too. This is MCP's existing
   rule, adopted unchanged rather than loosened.
-- A yargs-wide error renderer for the remaining CLI commands is a follow-up.
+- A yargs-wide error renderer for the remaining CLI commands is a follow-up. *(Resolved by ADR [0055](0055-cli-handler-errors-are-rendered-by-a-registration-guard.md), [#266](https://github.com/GenvidTechnologies/construct3-chef/issues/266).)*

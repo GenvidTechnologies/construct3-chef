@@ -1149,7 +1149,7 @@ export function renameSymbols(
   // Validate replacements
   for (const r of replacements) {
     if (!r.from) {
-      throw new Error("Error: replacement 'from' field must be non-empty");
+      throw new Error("replacement 'from' field must be non-empty");
     }
   }
 
