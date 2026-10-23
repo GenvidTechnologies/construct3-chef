@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **MCP recipe tools now seed new SIDs from the configured `extractedDir`.**
+  On a project whose `construct3-chef.config.json` sets `extractedDir`,
+  `validate-recipe`, `apply-recipe`, the op tools and the workflow tools read
+  `sid-registry.txt` from the default `extracted/` instead, so they failed with
+  "SID registry not found", or seeded from a stale leftover registry. The CLI
+  was already correct
+  ([#289](https://github.com/GenvidTechnologies/construct3-chef/issues/289)).
+
 - **CLI subcommands now report a handler failure as one `Error: <message>`
   line on stderr (exit 1)** instead of a raw stack trace or a yargs help dump.
   Argument errors (unknown flag, missing option, bad `choices` value) still
