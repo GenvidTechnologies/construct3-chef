@@ -1042,7 +1042,7 @@ regP(
           if (errors.length > 0) {
             return mcpError(`Validation errors:\n${errors.join("\n")}`, { extraLines: [txIdLine(ctx)] });
           }
-          applyParsed(ctx.root, recipe, { dryRun: true, log });
+          applyParsed(ctx.root, recipe, { dryRun: true, log, extractedDir: ctx.config.extractedDir });
           return mcpContent(text(), txIdLine(ctx));
         },
         { prefix: "Error:", extraLines: () => [txIdLine(ctx)] },
@@ -1083,6 +1083,7 @@ async function applyRecipeWithConcurrency(
           await sendProgress(extra, 0, totalSteps, label);
           applyParsed(ctx.root, recipe, {
             regenerate: false,
+            extractedDir: ctx.config.extractedDir,
             log,
             beforeSourceWrite: (abs) => {
               writes.source = true;
@@ -1760,6 +1761,7 @@ async function runWorkflowRecipe(
         await sendProgress(extra, 0, totalSteps, "Applying workflow");
         applyParsed(ctx.root, recipe, {
           regenerate: false,
+          extractedDir: ctx.config.extractedDir,
           log,
           beforeSourceWrite: (abs) => {
             writes.source = true;
