@@ -501,3 +501,10 @@ See the [wiki index](../index.md) for the other sections.
   keep yargs' usage output. Rejects wrapping each handler by hand and rejects
   a `.fail()` hook with a top-level catch
   ([#266](https://github.com/GenvidTechnologies/construct3-chef/issues/266))
+* [0056. scaffold-sprite resolves a bare source across objectTypes subfolders](0056-scaffold-sprite-resolves-a-bare-source-across-objecttypes-subfolders.md) -
+  `scaffold-sprite --source <name>` now finds the objectType in any subfolder
+  of `objectTypes/`, through c3source's collector plus a pure off-barrel
+  identity helper shared with the target-name conflict check. A name matching
+  only by letter case, or present in more than one location, is refused rather
+  than guessed. Paths are still rejected and the clone stays flat
+  ([#294](https://github.com/GenvidTechnologies/construct3-chef/issues/294))

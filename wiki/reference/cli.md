@@ -316,19 +316,21 @@ npx construct3-chef scaffold-sprite \
 
 | Option | Required | Description |
 | ------ | -------- | ----------- |
-| `--source <name>` | yes | Source objectType name (plain name, no path or extension) |
+| `--source <name>` | yes | Source objectType name (plain name, no path or extension), looked up in every `objectTypes/` subfolder |
 | `--name <name>` | yes | Target objectType name |
 | `--no-regenerate` | no | Skip regenerating `extracted/` after scaffolding (`--regenerate=false` is equivalent; default: regenerate) |
 
 The command:
-- Reads `objectTypes/<source>.json`
+- Looks up the source objectType by name in every subfolder of `objectTypes/` (so `Sprite2` finds `objectTypes/images/Sprite2.json`); editor-local files such as `*.uistate.json` and `tsconfig.json` are never a source ([#294](https://github.com/GenvidTechnologies/construct3-chef/issues/294), ADR [0056](../decisions/0056-scaffold-sprite-resolves-a-bare-source-across-objecttypes-subfolders.md))
 - Clones it with new SIDs and the next available imageSpriteId
-- Writes `objectTypes/<name>.json`
+- Writes `objectTypes/<name>.json` (always at the flat root, whichever subfolder the source came from)
 - Copies the source objectType's own images into `images/`, as c3source's `deriveExpectedImages` derives them: one per animation frame, or the single image of a tiled background, 9-patch or tilemap. Each keeps its own extension from `fileType`; an image with no `fileType` is found by its stem and keeps its real extension; an expected image missing from `images/` is skipped. Each target is `<name>` lowercased plus the same remainder ([#262](https://github.com/GenvidTechnologies/construct3-chef/issues/262), ADR [0051](../decisions/0051-sprite-image-copies-are-derived-from-the-source-objecttype.md))
 - Syncs `project.c3proj`
 - Regenerates `extracted/` (every generator, so the new objectType's SIDs reach `sid-registry.txt`) unless `--no-regenerate` is passed ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256))
 
 `--source` and `--name` are plain objectType names: one containing `/`, `\` or `..` is rejected (exit 1, nothing written), and a missing source prints `Source objectType not found: …`. `images/` is optional; with no images folder there are no image copies ([#259](https://github.com/GenvidTechnologies/construct3-chef/issues/259), ADR [0045](../decisions/0045-scaffold-plan-write-split-and-cli-path-containment.md)).
+
+The source lookup compares names with letter case ignored and refuses two cases rather than guess, each exiting 1 with nothing written. A name that matches only when letter case is ignored prints the on-disk spelling to use instead, so the result does not depend on the filesystem. A name that matches more than one objectType, whether in the same spelling or differing only in case, prints every matching file (sorted) and asks you to rename all but one, rather than picking the first. A path such as `images/Sprite2` is still rejected: give the bare name.
 
 `scaffold-sprite` never overwrites. It refuses when `objectTypes/<name>.json` already exists, when an objectType of that name exists in any subfolder, or when an image it would copy already exists (the same derived set as the copy). Every conflict is listed in one message, nothing is written (no sync, no regenerate), and the command exits 1 ([#254](https://github.com/GenvidTechnologies/construct3-chef/issues/254), ADR [0044](../decisions/0044-scaffold-tools-refuse-existing-targets.md)). Names are compared with letter case ignored, and the refusal reports the on-disk spelling; `output-exists` is decided by the exact name on disk ([#253](https://github.com/GenvidTechnologies/construct3-chef/issues/253), [ADR 0046](../decisions/0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md)).
 

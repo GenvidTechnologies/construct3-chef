@@ -1668,7 +1668,9 @@ regP(
       "Clone an existing objectType (sprite) to create a new one; never overwrites existing files. Remaps all SIDs and imageSpriteIds for uniqueness, copies associated image files, writes the new objectType JSON, and syncs project.c3proj. Optionally regenerates extracted/ files.",
     annotations: MUTATE,
     inputSchema: {
-      source: z.string().describe("Source objectType name (e.g. 'StoryBookIcon')"),
+      source: z
+        .string()
+        .describe("Source objectType name (e.g. 'StoryBookIcon'), looked up in every objectTypes/ subfolder"),
       name: z.string().describe("Target objectType name (e.g. 'VideosIcon')"),
       txId: z.string().optional().describe("Expected txId — if stale, scaffold is rejected"),
       regenerate: z.boolean().optional().describe("Regenerate extracted/ files after scaffolding (default: true)"),

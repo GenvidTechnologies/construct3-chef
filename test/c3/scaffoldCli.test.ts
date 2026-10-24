@@ -200,6 +200,19 @@ describe("scaffold-layout / scaffold-sprite CLI refuse overwrites (#254)", funct
     expect(existsSync(path.join(tmp, "objectTypes", "FreshCli.json"))).to.be.true;
   });
 
+  it("SR12: scaffold-sprite clones a source the fixture keeps in a subfolder, writing the clone flat", () => {
+    const r = runCli(
+      ["scaffold-sprite", "--project-dir", tmp, "--source", "Sprite2", "--name", "SR12Clone", "--no-regenerate"],
+      { cwd: tmp },
+    );
+
+    expect(r.exitCode, r.stderr).to.equal(0);
+    expect(existsSync(path.join(tmp, "objectTypes", "SR12Clone.json"))).to.be.true;
+    expect(existsSync(path.join(tmp, "images", "sr12clone-animation 1-000.png"))).to.be.true;
+    expect(existsSync(path.join(tmp, "objectTypes", "Sprite2.json"))).to.be.false;
+    expect(readFileSync(path.join(tmp, "project.c3proj"), "utf8")).to.include("SR12Clone");
+  });
+
   const registryRows = (file: string): number =>
     readFileSync(path.join(tmp, "extracted", "sid-registry.txt"), "utf8")
       .split(/\r?\n/)

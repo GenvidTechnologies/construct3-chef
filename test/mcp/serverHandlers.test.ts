@@ -37,6 +37,8 @@ import {
   formatScaffoldPathRejection,
   formatScaffoldNameRejection,
   formatScaffoldSourceNotFound,
+  formatScaffoldSourceCaseMismatch,
+  formatScaffoldSourceAmbiguous,
 } from "../../src/c3/scaffoldPlan.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1723,17 +1725,6 @@ describe("MCP server handler response shaping", () => {
 
     const textOf = (result: any): string => result.content.map((b: any) => b.text).join("\n");
 
-    /**
-     * scaffold-sprite resolves its source at the flat objectTypes/<source>.json, and the fixture keeps Sprite2
-     * in a subfolder, so copy it up: a real fixture objectType whose derived image is images/sprite2-animation 1-000.png.
-     */
-    function plantFlatSpriteSource(): void {
-      fs.copyFileSync(
-        path.join(tmp, "objectTypes", "images", "Sprite2.json"),
-        path.join(tmp, "objectTypes", "Sprite2.json"),
-      );
-    }
-
     it("H1: scaffold-layout with source == path is refused: names the file, leaves bytes, no bump, no suppress", async () => {
       const handler = __getHandler("scaffold-layout")!;
       expect(handler).to.exist;
@@ -1790,7 +1781,6 @@ describe("MCP server handler response shaping", () => {
     it("H3: scaffold-sprite collects every conflict (objectType name + image target) and writes nothing", async () => {
       const handler = __getHandler("scaffold-sprite")!;
       expect(handler).to.exist;
-      plantFlatSpriteSource();
       const before = snapshotTree(tmp);
 
       const result = (await handler({ source: "Sprite2", name: "Sprite3" }, makeExtra())) as any;
@@ -1837,7 +1827,6 @@ describe("MCP server handler response shaping", () => {
 
     it("C4: the CLI refusal is byte-identical to the MCP refusal (minus the txId line) and to formatScaffoldRefusal", async function () {
       this.timeout(60_000);
-      plantFlatSpriteSource();
       const handler = __getHandler("scaffold-sprite")!;
       const mcp = (await handler({ source: "Sprite2", name: "Sprite3" }, makeExtra())) as any;
       expect(mcp.isError).to.be.true;
@@ -1854,6 +1843,52 @@ describe("MCP server handler response shaping", () => {
       expect(cli.exitCode).to.equal(1);
       expect(cli.stderr.trimEnd()).to.equal(mcpMessage);
       expect(mcpMessage).to.equal(expected);
+    });
+
+    it("SR13: scaffold-sprite finds a source that the fixture keeps in a subfolder and writes the clone flat", async () => {
+      const handler = __getHandler("scaffold-sprite")!;
+      const result = (await handler({ source: "Sprite2", name: "SR13Clone", regenerate: false }, makeExtra())) as any;
+
+      expect(result.isError, textOf(result)).to.be.undefined;
+      expect(fs.existsSync(path.join(tmp, "objectTypes", "SR13Clone.json"))).to.be.true;
+      expect(fs.existsSync(path.join(tmp, "images", "sr13clone-animation 1-000.png"))).to.be.true;
+      expect(fs.existsSync(path.join(tmp, "objectTypes", "Sprite2.json"))).to.be.false;
+      expect(watcher.bumped).to.equal(1);
+    });
+
+    it("SR14: a case-only source mismatch renders byte-identically on CLI and MCP", async function () {
+      this.timeout(60_000);
+      const handler = __getHandler("scaffold-sprite")!;
+      const mcp = (await handler({ source: "text", name: "SR14Clone" }, makeExtra())) as any;
+      expect(mcp.isError).to.be.true;
+      const lines = textOf(mcp).split("\n");
+      expect(lines.pop()).to.equal("txId: default:5");
+      const mcpMessage = lines.join("\n");
+
+      const cli = runCli(["scaffold-sprite", "--project-dir", tmp, "--source", "text", "--name", "SR14Clone"]);
+
+      const expected = formatScaffoldSourceCaseMismatch("text", "objectTypes/Text.json");
+      expect(mcpMessage).to.equal(expected);
+      expect(cli.exitCode).to.equal(1);
+      expect(cli.stderr.trimEnd()).to.equal(expected);
+    });
+
+    it("SR15: an ambiguous source renders byte-identically on CLI and MCP", async function () {
+      this.timeout(60_000);
+      fs.copyFileSync(path.join(tmp, "objectTypes", "Text.json"), path.join(tmp, "objectTypes", "tiles", "Text.json"));
+      const handler = __getHandler("scaffold-sprite")!;
+      const mcp = (await handler({ source: "Text", name: "SR15Clone" }, makeExtra())) as any;
+      expect(mcp.isError).to.be.true;
+      const lines = textOf(mcp).split("\n");
+      expect(lines.pop()).to.equal("txId: default:5");
+      const mcpMessage = lines.join("\n");
+
+      const cli = runCli(["scaffold-sprite", "--project-dir", tmp, "--source", "Text", "--name", "SR15Clone"]);
+
+      const expected = formatScaffoldSourceAmbiguous("Text", ["objectTypes/Text.json", "objectTypes/tiles/Text.json"]);
+      expect(mcpMessage).to.equal(expected);
+      expect(cli.exitCode).to.equal(1);
+      expect(cli.stderr.trimEnd()).to.equal(expected);
     });
 
     it("SC4: a case-only layout name collision renders byte-identically on CLI and MCP, naming the on-disk file", async function () {

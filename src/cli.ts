@@ -298,7 +298,8 @@ guardAllHandlers(yargs(hideBin(process.argv)))
         .option("source", {
           type: "string",
           demandOption: true,
-          describe: "Source objectType name (a plain name, no path separators)",
+          describe:
+            "Source objectType name (a plain name, no path separators), looked up in every objectTypes/ subfolder",
         })
         .option("name", {
           type: "string",

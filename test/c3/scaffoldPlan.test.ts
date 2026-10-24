@@ -1,12 +1,26 @@
 import { describe, it, beforeEach, afterEach } from "mocha";
 import { expect } from "chai";
-import { mkdtempSync, cpSync, rmSync, existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import {
+  mkdtempSync,
+  cpSync,
+  rmSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  copyFileSync,
+  writeFileSync,
+  mkdirSync,
+} from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+import { collectAllObjectTypeSids, collectMaxImageSpriteId } from "../../src/c3/spriteScaffold.js";
 import {
   formatScaffoldNameRejection,
   formatScaffoldPathRejection,
+  formatScaffoldSourceAmbiguous,
+  formatScaffoldSourceCaseMismatch,
   formatScaffoldSourceNotFound,
   planLayoutScaffold,
   planSpriteScaffold,
@@ -177,6 +191,156 @@ describe("scaffoldPlan (T26, #259)", function () {
     });
   });
 
+  // #294: a bare source name is looked up in every objectTypes/ subfolder.
+  describe("sprite source resolution (#294)", () => {
+    const AMBIGUOUS_TEXT =
+      "Source objectType 'Text' is ambiguous: 2 objectTypes have this name (letter case is ignored): " +
+      "objectTypes/Text.json, objectTypes/tiles/Text.json. Rename all but one before cloning.";
+
+    const plantCopy = (fromRel: string, toRel: string): void => {
+      mkdirSync(path.dirname(path.join(tmp, toRel)), { recursive: true });
+      copyFileSync(path.join(tmp, fromRel), path.join(tmp, toRel));
+    };
+
+    /** Every `key` number found anywhere in a parsed JSON value. */
+    const numbersAt = (value: unknown, key: string, out: number[] = []): number[] => {
+      if (value === null || typeof value !== "object") return out;
+      for (const [k, v] of Object.entries(value)) {
+        if (k === key && typeof v === "number") out.push(v);
+        else numbersAt(v, key, out);
+      }
+      return out;
+    };
+
+    it("SR2: the ambiguous message is the same for either input order and matches the literal", () => {
+      const a = formatScaffoldSourceAmbiguous("Text", ["objectTypes/Text.json", "objectTypes/tiles/Text.json"]);
+      const b = formatScaffoldSourceAmbiguous("Text", ["objectTypes/tiles/Text.json", "objectTypes/Text.json"]);
+      expect(a).to.equal(b);
+      expect(a).to.equal(AMBIGUOUS_TEXT);
+    });
+
+    it("SR3: a source filed under a subfolder resolves, and the clone is written flat with fresh ids", () => {
+      const objectTypesDir = path.join(tmp, "objectTypes");
+      const existingSids = collectAllObjectTypeSids(objectTypesDir);
+      const maxBefore = collectMaxImageSpriteId(objectTypesDir);
+      const r = planSpriteScaffold(spriteOpts({ source: "Sprite2", name: "X" }));
+      expect(r.ok, JSON.stringify(r)).to.equal(true);
+      if (!r.ok) return;
+      expect(r.outPath).to.equal(path.join(objectTypesDir, "X.json"));
+      expect(r.imageCopies.map((c) => [c.sourceBasename, c.targetBasename])).to.deep.equal([
+        ["sprite2-animation 1-000.png", "x-animation 1-000.png"],
+      ]);
+      const sids = numbersAt(r.cloned, "sid");
+      expect(sids.length).to.be.greaterThan(0);
+      expect(sids.filter((s) => existingSids.has(s))).to.deep.equal([]);
+      const imageIds = numbersAt(r.cloned, "imageSpriteId");
+      expect(imageIds.length).to.be.greaterThan(0);
+      expect(imageIds.filter((id) => id <= maxBefore)).to.deep.equal([]);
+    });
+
+    it("SR4: a case-only source match is refused with the on-disk spelling", () => {
+      const got: Record<string, { kind: string; message: string }> = {};
+      for (const source of ["text", "sprite2"]) {
+        const r = planSpriteScaffold(spriteOpts({ source })) as ScaffoldRejection;
+        expect(r.ok).to.equal(false);
+        got[source] = { kind: r.kind, message: r.message };
+      }
+      expect(got).to.deep.equal({
+        text: {
+          kind: "source-case-mismatch",
+          message:
+            "Source objectType 'text' matches objectTypes/Text.json only when letter case is ignored. " +
+            "Use the on-disk spelling 'Text', so the result is the same on every filesystem.",
+        },
+        sprite2: {
+          kind: "source-case-mismatch",
+          message:
+            "Source objectType 'sprite2' matches objectTypes/images/Sprite2.json only when letter case is ignored. " +
+            "Use the on-disk spelling 'Sprite2', so the result is the same on every filesystem.",
+        },
+      });
+      expect(got.text!.message).to.equal(formatScaffoldSourceCaseMismatch("text", "objectTypes/Text.json"));
+    });
+
+    it("SR5: the same name in two locations is ambiguous, not first-hit", () => {
+      plantCopy("objectTypes/Text.json", "objectTypes/tiles/Text.json");
+      const r = planSpriteScaffold(spriteOpts({ source: "Text" })) as ScaffoldRejection;
+      expect(r.ok).to.equal(false);
+      expect({ kind: r.kind, message: r.message }).to.deep.equal({ kind: "source-ambiguous", message: AMBIGUOUS_TEXT });
+    });
+
+    it("SR6: a case-variant duplicate in another folder makes the exact name ambiguous", () => {
+      plantCopy("objectTypes/Text.json", "objectTypes/tiles/text.json");
+      const r = planSpriteScaffold(spriteOpts({ source: "Text" })) as ScaffoldRejection;
+      expect(r.kind).to.equal("source-ambiguous");
+      expect(r.message).to.include("objectTypes/Text.json");
+      expect(r.message).to.include("objectTypes/tiles/text.json");
+    });
+
+    it("SR7: source resolution is checked before the name conflict, and a path source is still invalid-name", () => {
+      const caseMismatch = planSpriteScaffold(spriteOpts({ source: "text", name: "Sprite" })) as ScaffoldRejection;
+      plantCopy("objectTypes/Text.json", "objectTypes/tiles/Text.json");
+      const ambiguous = planSpriteScaffold(spriteOpts({ source: "Text", name: "Sprite" })) as ScaffoldRejection;
+      const path_ = planSpriteScaffold(spriteOpts({ source: "images/Sprite", name: "Fresh" })) as ScaffoldRejection;
+      expect([caseMismatch.kind, ambiguous.kind, path_.kind]).to.deep.equal([
+        "source-case-mismatch",
+        "source-ambiguous",
+        "invalid-name",
+      ]);
+    });
+
+    it("SR8: editor-local files are never a source", () => {
+      plantCopy("objectTypes/Text.json", "objectTypes/Ghost.uistate.json");
+      plantCopy("objectTypes/Text.json", "objectTypes/uistate/Ghost2.json");
+      plantCopy("objectTypes/Text.json", "objectTypes/ts-defs/Ghost3.json");
+      plantCopy("objectTypes/Text.json", "objectTypes/tsconfig.json");
+      const sources = ["Ghost.uistate", "Ghost2", "Ghost3", "tsconfig"];
+      const got: Record<string, { kind: string; message: string }> = {};
+      const want: Record<string, { kind: string; message: string }> = {};
+      for (const source of sources) {
+        const r = planSpriteScaffold(spriteOpts({ source })) as ScaffoldRejection;
+        got[source] = { kind: r.kind ?? "ok", message: r.message };
+        want[source] = {
+          kind: "source-not-found",
+          message: formatScaffoldSourceNotFound("objectType", `objectTypes/${source}.json`),
+        };
+      }
+      expect(got).to.deep.equal(want);
+    });
+
+    it("SR9: an editor-local namesake does not make a real source ambiguous", () => {
+      mkdirSync(path.join(tmp, "objectTypes", "uistate"), { recursive: true });
+      writeFileSync(
+        path.join(tmp, "objectTypes", "uistate", "Text.json"),
+        JSON.stringify({ name: "Text", "plugin-id": "Sprite", sid: 1 }),
+      );
+      const r = planSpriteScaffold(spriteOpts({ source: "Text" }));
+      expect(r.ok, JSON.stringify(r)).to.equal(true);
+      if (r.ok) expect(r.cloned["plugin-id"]).to.equal("Text");
+    });
+
+    it("SR10: a project with no objectTypes/ directory reports not-found instead of throwing", () => {
+      rmSync(path.join(tmp, "objectTypes"), { recursive: true, force: true });
+      let r: ReturnType<typeof planSpriteScaffold> | undefined;
+      expect(() => {
+        r = planSpriteScaffold(spriteOpts({ source: "Text" }));
+      }).to.not.throw();
+      const rej = r as ScaffoldRejection;
+      expect(rej.kind).to.equal("source-not-found");
+      expect(rej.message).to.equal("Source objectType not found: objectTypes/Text.json");
+    });
+
+    it("SR11: refusing a case-mismatch or an ambiguous source writes nothing", () => {
+      const before = snapshotTree(tmp);
+      expect(planSpriteScaffold(spriteOpts({ source: "text" })).ok).to.equal(false);
+      expect(snapshotTree(tmp)).to.deep.equal(before);
+      plantCopy("objectTypes/Text.json", "objectTypes/tiles/Text.json");
+      const planted = snapshotTree(tmp);
+      expect(planSpriteScaffold(spriteOpts({ source: "Text" })).ok).to.equal(false);
+      expect(snapshotTree(tmp)).to.deep.equal(planted);
+    });
+  });
+
   describe("sprite name validation", () => {
     for (const bad of ["a..b", "a/b", "a\\b"]) {
       it(`rejects name ${JSON.stringify(bad)} as invalid-name`, () => {
@@ -211,12 +375,7 @@ describe("scaffoldPlan (T26, #259)", function () {
   // #262: the plan's image copies are the source objectType's own derived images.
   describe("image copies (#262)", () => {
     it("PR10: a non-PNG single-image source plans its own image, not a name-prefix glob", () => {
-      // The sprite scaffold resolves its source at the flat objectTypes/<source>.json, and the
-      // fixture keeps JPEGTileBackground under tiles/, so copy it up in the temp copy.
-      cpSync(
-        path.join(tmp, "objectTypes", "tiles", "JPEGTileBackground.json"),
-        path.join(tmp, "objectTypes", "JPEGTileBackground.json"),
-      );
+      // JPEGTileBackground lives under objectTypes/tiles/ in the fixture and is found there by name.
       const r = planSpriteScaffold(spriteOpts({ source: "JPEGTileBackground", name: "Jpeg2" }));
       expect(r.ok).to.equal(true);
       if (r.ok) {

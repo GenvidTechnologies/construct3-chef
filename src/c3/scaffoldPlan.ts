@@ -14,8 +14,10 @@
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import * as path from "node:path";
+import { find_all_objectTypes_path } from "@genvidtech/c3source";
 import { resolveWithin } from "@genvidtech/mcp-utils";
 import { cloneLayout, collectAllUids } from "./layoutScaffold.js";
+import { lookupObjectTypeByName } from "./objectTypeIdentity.js";
 import { findLayoutScaffoldConflicts, findSpriteScaffoldConflicts, formatScaffoldRefusal } from "./scaffoldGuard.js";
 import { readRegistryFile } from "./sidUtils.js";
 import { writeSourceJson } from "./sourceJson.js";
@@ -39,13 +41,22 @@ export function formatScaffoldSourceNotFound(kind: "layout" | "objectType", relP
   return `Source ${kind} not found: ${relPosix}`;
 }
 
+export function formatScaffoldSourceCaseMismatch(source: string, onDiskRel: string): string {
+  return `Source objectType '${source}' matches ${onDiskRel} only when letter case is ignored. Use the on-disk spelling '${path.posix.basename(onDiskRel, ".json")}', so the result is the same on every filesystem.`;
+}
+
+export function formatScaffoldSourceAmbiguous(source: string, matchRels: readonly string[]): string {
+  const sorted = [...matchRels].sort(); // sort POSIX-relative strings: `\` vs `/` order differs by host
+  return `Source objectType '${source}' is ambiguous: ${sorted.length} objectTypes have this name (letter case is ignored): ${sorted.join(", ")}. Rename all but one before cloning.`;
+}
+
 export function formatScaffoldSuccess(name: string, relPosix: string): string {
   return `Scaffolded ${name} → ${relPosix}`;
 }
 
 export interface ScaffoldRejection {
   ok: false;
-  kind: "invalid-path" | "invalid-name" | "source-not-found" | "conflict";
+  kind: "invalid-path" | "invalid-name" | "source-not-found" | "source-case-mismatch" | "source-ambiguous" | "conflict";
   message: string;
 }
 
@@ -140,14 +151,36 @@ export function planSpriteScaffold(opts: SpriteScaffoldPlanOptions): SpriteScaff
     }
   }
 
-  const sourceFile = path.join(objectTypesDir, `${source}.json`);
-  if (!existsSync(sourceFile)) {
+  const listing = existsSync(objectTypesDir) ? find_all_objectTypes_path(objectTypesDir) : [];
+  const hit = lookupObjectTypeByName(listing, source);
+  if (hit.kind === "not-found") {
     return {
       ok: false,
       kind: "source-not-found",
-      message: formatScaffoldSourceNotFound("objectType", relPosix(rootDir, sourceFile)),
+      message: formatScaffoldSourceNotFound(
+        "objectType",
+        relPosix(rootDir, path.join(objectTypesDir, `${source}.json`)),
+      ),
     };
   }
+  if (hit.kind === "case-mismatch") {
+    return {
+      ok: false,
+      kind: "source-case-mismatch",
+      message: formatScaffoldSourceCaseMismatch(source, relPosix(rootDir, hit.onDisk)),
+    };
+  }
+  if (hit.kind === "ambiguous") {
+    return {
+      ok: false,
+      kind: "source-ambiguous",
+      message: formatScaffoldSourceAmbiguous(
+        source,
+        hit.matches.map((m) => relPosix(rootDir, m)),
+      ),
+    };
+  }
+  const sourceFile = hit.path;
 
   const sourceObj = JSON.parse(readFileSync(sourceFile, "utf-8")) as Record<string, unknown>;
 

@@ -12,6 +12,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import * as path from "node:path";
 import { find_all_layouts_path, find_all_objectTypes_path } from "@genvidtech/c3source";
+import { objectTypeNameMatches } from "./objectTypeIdentity.js";
 import { planSpriteImageCopies } from "./spriteScaffold.js";
 
 export type ScaffoldConflictReason = "output-exists" | "layout-name" | "objectType-name" | "image-target";
@@ -120,9 +121,8 @@ export function findSpriteScaffoldConflicts(
   const flat = path.join(objectTypesDir, `${targetName}.json`);
   if (exactBasenameExists(flat)) found.push({ abs: flat, reason: "output-exists" });
   if (existsSync(objectTypesDir)) {
-    for (const p of find_all_objectTypes_path(objectTypesDir)) {
-      if (path.basename(p).toLowerCase() === `${targetName}.json`.toLowerCase())
-        found.push({ abs: p, reason: "objectType-name" });
+    for (const p of objectTypeNameMatches(find_all_objectTypes_path(objectTypesDir), targetName)) {
+      found.push({ abs: p, reason: "objectType-name" });
     }
   }
   if (existsSync(imagesDir)) {

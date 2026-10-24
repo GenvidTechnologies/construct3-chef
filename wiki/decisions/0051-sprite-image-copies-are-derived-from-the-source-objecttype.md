@@ -52,3 +52,5 @@ Derive the copy set from the source objectType JSON with c3source's `deriveExpec
   Such a case is recorded rather than guarded, since `images/` is not project source (ADR 0019).
 - `findSpriteScaffoldConflicts` (off-barrel) now takes the source objectType.
 - Known limit, out of scope here: the sprite scaffold resolves `--source` only at the flat `objectTypes/<source>.json`, so an objectType kept in a subfolder cannot be a source. That is a separate follow-up.
+
+**Resolved by ADR [0056](0056-scaffold-sprite-resolves-a-bare-source-across-objecttypes-subfolders.md):** the known limit above, the flat `--source` lookup ([#294](https://github.com/GenvidTechnologies/construct3-chef/issues/294)).

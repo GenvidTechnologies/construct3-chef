@@ -122,3 +122,5 @@ implementations of the same validation, one in `src/cli.ts` and one in
   legal but unusual name such as `a..b` is refused too. This is MCP's existing
   rule, adopted unchanged rather than loosened.
 - A yargs-wide error renderer for the remaining CLI commands is a follow-up. *(Resolved by ADR [0055](0055-cli-handler-errors-are-rendered-by-a-registration-guard.md), [#266](https://github.com/GenvidTechnologies/construct3-chef/issues/266).)*
+
+**Amended by ADR [0056](0056-scaffold-sprite-resolves-a-bare-source-across-objecttypes-subfolders.md):** the sprite rejection kinds gain `source-case-mismatch` and `source-ambiguous`, and a bare `--source` now resolves in any `objectTypes/` subfolder; a path is still rejected.
