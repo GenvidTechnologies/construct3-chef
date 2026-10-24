@@ -316,7 +316,7 @@ npx construct3-chef scaffold-sprite \
 
 | Option | Required | Description |
 | ------ | -------- | ----------- |
-| `--source <name>` | yes | Source objectType name (plain name, no path or extension) |
+| `--source <name>` | yes | Source objectType name (plain name, no path or extension), looked up in every `objectTypes/` subfolder |
 | `--name <name>` | yes | Target objectType name |
 | `--no-regenerate` | no | Skip regenerating `extracted/` after scaffolding (`--regenerate=false` is equivalent; default: regenerate) |
 

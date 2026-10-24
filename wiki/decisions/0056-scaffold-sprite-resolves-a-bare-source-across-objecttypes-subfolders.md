@@ -29,7 +29,7 @@ The flat `existsSync` also left two cases to the host or to chance. On Windows `
 
 ## Decision
 
-1. **Resolve a bare name against a listing.** `planSpriteScaffold` lists `objectTypes/` with c3source's `find_all_objectTypes_path` and passes the listing to `lookupObjectTypeByName` in the pure, off-barrel `src/c3/objectTypeIdentity.ts` (no `node:fs`). `scaffoldGuard`'s target-name conflict check now uses the same module's `objectTypeNameMatches`, so there is one definition of objectType-name identity. This is the chef-local, listing-injected shape ADR 0046 §4 uses for recipe keys.
+1. **Resolve a bare name against a listing.** `planSpriteScaffold` lists `objectTypes/` with c3source's `find_all_objectTypes_path` and passes the listing to `lookupObjectTypeByName` in the pure, off-barrel `src/c3/objectTypeIdentity.ts` (no `node:fs`). `scaffoldGuard`'s target-name conflict check now uses the same module's `objectTypeNameMatches`, so there is one definition of objectType-name identity. It has the same pure, listing-injected shape as `findSpellingMismatches` in `recipeKeys.ts`, and applies ADR 0046 §4's rule (refuse a case-only match, naming the on-disk spelling) to the scaffold source.
 2. **Four dispositions.**
    - *found*: exactly one match with the exact spelling.
    - *not-found*: no match. The message is unchanged: `Source objectType not found: objectTypes/<source>.json`.

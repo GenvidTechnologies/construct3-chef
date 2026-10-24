@@ -34,9 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`images/Sprite2`, `tiles/JPEGTileBackground`) failed as "not found". The
   clone is still written flat. The lookup also refuses three inputs that
   used to be accepted: a name that matches only when letter case is ignored
-  (the error names the on-disk spelling, so the result no longer depends on
-  the host filesystem), a name present in more than one `objectTypes/`
-  location (the error names every file), and editor-local names such as
+  (accepted on Windows only; the error names the on-disk spelling, so the
+  result no longer depends on the host filesystem), a name present in
+  more than one `objectTypes/` location (the error names every file), and
+  editor-local names such as
   `Ghost.uistate` or `tsconfig`, which now report "not found"
   ([#294](https://github.com/GenvidTechnologies/construct3-chef/issues/294)).
 
