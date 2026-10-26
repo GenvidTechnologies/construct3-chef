@@ -78,13 +78,15 @@ Creates C3 data-plugin objectType files and updates TypeScript definitions in on
 
 **Effects per entry:**
 
-- Creates `objectTypes/[folder/]Name.json` (SID = 0; C3 assigns real SIDs on next save)
+- Creates `objectTypes/[folder/]Name.json` (a SID is minted for the objectType and for each instance variable)
 - Appends class to `scripts/ts-defs/instanceTypes.d.ts`
 - Appends property to `scripts/ts-defs/objects.d.ts`
 
 If that `.d.ts` file is not present, the update is skipped with a `SKIP` line and nothing is created under `scripts/`.
 
-**Idempotent**: if the objectType file already exists, prints `SKIP` and does NOT re-update ts-defs.
+**Idempotent for an exact re-declaration only**: if the objectType already exists at the entry's own target path (same folder, same letter case), prints `SKIP` and does NOT re-update ts-defs. Dry-run behaves the same and prints no ts-def `UPDATE` lines for a skipped type.
+
+**Refused, before anything is written** (in dry-run, `--preview` and `validate-recipe` as well as apply): a `name` that matches an existing objectType in another subfolder, or only by letter case, or in more than one place. The error lists the on-disk paths. A `name` that is not one path segment (empty, containing `/`, `\` or `:`, `.`, `..`, or only dots and spaces) is refused, as is a `folder` that is empty, not a string, absolute or drive-lettered, has a `..` segment, or has a `:` or dots-and-spaces segment (a trailing `/` or interior `//` in a folder is tolerated). Two entries in one recipe whose names are equal ignoring letter case, in any folder, are refused with one error per group ([#274](https://github.com/GenvidTechnologies/construct3-chef/issues/274), [ADR 0059](../decisions/0059-recipe-objecttypes-create-uses-the-objecttype-identity.md)).
 
 **After applying:** run `sync-project` to register new objectType files with C3.
 
@@ -110,7 +112,7 @@ Adds instance variables to existing objectTypes and updates all references (obje
 
 | Field | Required | Description |
 | ----- | -------- | ----------- |
-| `type` | yes | Existing objectType name |
+| `type` | yes | Existing objectType name, in its exact on-disk spelling. A case-only match is refused naming the on-disk spelling; a name matching more than one objectType file is refused listing every match ([ADR 0059](../decisions/0059-recipe-objecttypes-create-uses-the-objecttype-identity.md)) |
 | `instanceVariables` | yes | Non-empty `[{ name, type }]` — type is `"string"` \| `"number"` \| `"boolean"` |
 
 **Effects per entry (3 locations):**
@@ -133,7 +135,7 @@ Adds instance variables to existing objectTypes and updates all references (obje
 
 Creates a new event sheet from scratch using builder events. Sheet name is derived from the file path (basename without `.json`). A key that matches an existing sheet or layout only when letter case is ignored is refused, naming the on-disk spelling ([#253](https://github.com/GenvidTechnologies/construct3-chef/issues/253), [ADR 0046](../decisions/0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md)).
 
-⚠️ **A CREATE never overwrites.** If the target path already holds a file, the whole recipe is rejected before anything is written — in dry-run and `--preview` as well as a real apply, with the same error. The match is case-insensitive: a target that equals an existing file only when letter case is ignored is refused too, and the message prints `(on disk: …)`. This differs from `objectTypes`, which `SKIP`s a type whose file already exists. Use an ops array to edit an existing sheet ([#249](https://github.com/GenvidTechnologies/construct3-chef/issues/249); rationale in [ADR 0043](../decisions/0043-files-create-refuses-existing-targets.md)).
+⚠️ **A CREATE never overwrites.** If the target path already holds a file, the whole recipe is rejected before anything is written — in dry-run and `--preview` as well as a real apply, with the same error. The match is case-insensitive: a target that equals an existing file only when letter case is ignored is refused too, and the message prints `(on disk: …)`. This differs from `objectTypes`, which still `SKIP`s an exact re-declaration (same folder, same letter case) but refuses a near-match elsewhere. Use an ops array to edit an existing sheet ([#249](https://github.com/GenvidTechnologies/construct3-chef/issues/249); rationale in [ADR 0043](../decisions/0043-files-create-refuses-existing-targets.md)).
 
 After a real apply, the `sync-project` reminder prints only when the apply created a file that didn't exist before: a new objectType, or a CREATE at a new path ([#245](https://github.com/GenvidTechnologies/construct3-chef/issues/245)).
 
