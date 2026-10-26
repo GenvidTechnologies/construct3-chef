@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   folder at all) now generates.** MCP `regenerate`, CLI `generate`, and the
   apply / scaffold / rename paths that regenerate afterwards no longer fail
   with ENOENT; the missing file means zero imports (#309).
+- **`apply-recipe` `objectTypes` / `addInstVars` now work on a project without
+  `scripts/ts-defs/instanceTypes.d.ts` or `objects.d.ts`.** Each missing file
+  is skipped with a `SKIP` line instead of failing with ENOENT; chef never
+  creates ts-defs (the C3 editor writes them). The library functions
+  `updateInstanceTypes`, `updateObjects` and `processAddInstVars` likewise
+  skip and log instead of throwing (#309).
 - **`scaffold-sprite` (CLI and MCP) now finds its `--source` objectType in
   any `objectTypes/` subfolder.** It looked only at the flat
   `objectTypes/<source>.json`, so a source C3 had filed under a subfolder

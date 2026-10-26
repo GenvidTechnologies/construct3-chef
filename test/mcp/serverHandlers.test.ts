@@ -478,6 +478,22 @@ describe("MCP server handler response shaping", () => {
         text: result.isError === true ? result.content?.[0]?.text : undefined,
       }).to.deep.equal({ isError: false, dirty: false, tsconfig: true, text: undefined });
     });
+
+    it("SL20: apply-recipe with objectTypes succeeds, writes the objectType and clears extractedDirty", async () => {
+      fs.rmSync(path.join(tmp, "scripts"), { recursive: true, force: true });
+      __setExtractedDirty(true); // skip registry freshness scan
+      const handler = __getHandler("apply-recipe")!;
+      const recipe = JSON.stringify({ objectTypes: [{ name: "ProbeJ", plugin: "Json" }] });
+
+      const result = (await handler({ recipe, txId: "default:5" }, makeExtra())) as any;
+
+      expect({
+        isError: result.isError === true,
+        probeJ: fs.existsSync(path.join(tmp, "objectTypes", "ProbeJ.json")),
+        dirty: __getExtractedDirty(),
+        text: result.isError === true ? result.content?.[0]?.text : undefined,
+      }).to.deep.equal({ isError: false, probeJ: true, dirty: false, text: undefined });
+    });
   });
 
   // ── 8. list-event-sheets pagination ──────────────────────────────────────

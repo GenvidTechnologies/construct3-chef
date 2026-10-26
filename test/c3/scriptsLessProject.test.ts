@@ -13,7 +13,9 @@ import {
 import path from "node:path";
 import os from "node:os";
 import { extractScripts, generateDSL, generateLayoutSummaries } from "../../src/c3/generators.js";
-import { copyFixture } from "../helpers/applyFixtures.js";
+import { applyParsed } from "../../src/c3/recipeApplier.js";
+import type { Recipe } from "../../src/c3/recipeInterpreter.js";
+import { copyFixture, snapshotTree } from "../helpers/applyFixtures.js";
 import { runCli } from "../helpers/runCli.js";
 
 /**
@@ -198,6 +200,93 @@ describe("generators leave extracted/ untouched when a run fails (#309)", () => 
     assert.notInclude(r.stdout + r.stderr, "failed after writing");
     const registry = readFileSync(path.join(root, "extracted", "sid-registry.txt"), "utf8");
     assert.isAtLeast(registry.split(/\r?\n/).filter((l) => l.includes("eventSheets/SL14.json")).length, 1);
+  });
+
+  const SKIP_INSTANCE_TYPES =
+    "  SKIP scripts/ts-defs/instanceTypes.d.ts (not present; ts-defs are written by the C3 editor)";
+  const SKIP_OBJECTS = "  SKIP scripts/ts-defs/objects.d.ts (not present; ts-defs are written by the C3 editor)";
+  const TS_DEFS_RECIPE = {
+    objectTypes: [{ name: "ProbeJ", plugin: "Json" }],
+    addInstVars: [{ type: "Text", instanceVariables: [{ name: "probeIv", type: "number" }] }],
+  };
+
+  function applyCollect(root: string, recipe: unknown, dryRun: boolean): string[] {
+    const lines: string[] = [];
+    applyParsed(root, recipe as Recipe, {
+      dryRun,
+      regenerate: false,
+      log: (...a: unknown[]) => lines.push(a.join(" ")),
+    });
+    return lines;
+  }
+
+  it("SL15: apply objectTypes + addInstVars with no scripts/ skips both ts-defs files and creates nothing there", () => {
+    const root = copyFixture("c3chef-sl15-");
+    tmpDirs.push(root);
+    rmSync(path.join(root, "scripts"), { recursive: true });
+
+    const lines = applyCollect(root, TS_DEFS_RECIPE, false);
+
+    assert.deepEqual(
+      {
+        probeJ: existsSync(path.join(root, "objectTypes", "ProbeJ.json")),
+        skipInstanceTypes: lines.includes(SKIP_INSTANCE_TYPES),
+        skipObjects: lines.includes(SKIP_OBJECTS),
+        scripts: existsSync(path.join(root, "scripts")),
+      },
+      { probeJ: true, skipInstanceTypes: true, skipObjects: true, scripts: false },
+    );
+  });
+
+  it("SL16: dry run of the same recipe with no scripts/ logs both SKIP lines and changes nothing", () => {
+    const root = copyFixture("c3chef-sl16-");
+    tmpDirs.push(root);
+    rmSync(path.join(root, "scripts"), { recursive: true });
+    const before = snapshotTree(root);
+
+    const lines = applyCollect(root, TS_DEFS_RECIPE, true);
+
+    assert.deepEqual(
+      {
+        skipInstanceTypes: lines.includes(SKIP_INSTANCE_TYPES),
+        skipObjects: lines.includes(SKIP_OBJECTS),
+        unchanged: [...snapshotTree(root)].join("|") === [...before].join("|"),
+      },
+      { skipInstanceTypes: true, skipObjects: true, unchanged: true },
+    );
+  });
+
+  it("SL17: with only scripts/ts-defs removed, apply succeeds and does not recreate scripts/ts-defs", () => {
+    const root = copyFixture("c3chef-sl17-");
+    tmpDirs.push(root);
+    rmSync(path.join(root, "scripts", "ts-defs"), { recursive: true });
+
+    applyCollect(root, TS_DEFS_RECIPE, false);
+
+    assert.deepEqual(
+      {
+        probeJ: existsSync(path.join(root, "objectTypes", "ProbeJ.json")),
+        tsDefs: existsSync(path.join(root, "scripts", "ts-defs")),
+      },
+      { probeJ: true, tsDefs: false },
+    );
+  });
+
+  it("SL18: with only objects.d.ts removed, instanceTypes.d.ts is updated and objects.d.ts is skipped", () => {
+    const root = copyFixture("c3chef-sl18-");
+    tmpDirs.push(root);
+    rmSync(path.join(root, "scripts", "ts-defs", "objects.d.ts"));
+
+    const lines = applyCollect(root, TS_DEFS_RECIPE, false);
+
+    assert.deepEqual(
+      {
+        updated: lines.includes("  UPDATED scripts/ts-defs/instanceTypes.d.ts"),
+        skipObjects: lines.includes(SKIP_OBJECTS),
+        objectsRecreated: existsSync(path.join(root, "scripts", "ts-defs", "objects.d.ts")),
+      },
+      { updated: true, skipObjects: true, objectsRecreated: false },
+    );
   });
 
   it("SL6: extractScripts keeps the previous .ts and tsconfig.json when a sheet is malformed", () => {
