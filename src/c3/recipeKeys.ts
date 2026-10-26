@@ -76,6 +76,36 @@ export function keyIssue(key: string, section: RecipeKeySection): string | undef
   return undefined;
 }
 
+/** True for a segment Windows would strip down to nothing (`.. `, `...`); a bare `.` and `` are not flagged. */
+function isDotsAndSpaces(segment: string): boolean {
+  return segment !== "." && segment !== "" && segment.replace(/[ .]+$/, "") === "";
+}
+
+/**
+ * Why an `objectTypes` entry's `name` / `folder` is unusable (#274), as a neutral message fragment the caller
+ * prefixes with `objectTypes[i]:`; `undefined` when both are acceptable. `name` must be ONE path segment: not empty,
+ * no `/` or `\`, not `.` or `..`, no `:`, not only dots and spaces. `folder` (when not `undefined`) must be a non-empty
+ * relative path: no `..` segment (backslashes count as `/`), not absolute or drive-letter, no `:`, no segment made
+ * only of dots and spaces. An empty-string folder is refused (omit `folder` instead). A trailing `/` and interior
+ * `//` are tolerated (they name the same folder).
+ */
+export function objectTypeEntryIssue(name: string, folder: string | undefined): string | undefined {
+  if (name === "") return 'has an empty "name"';
+  if (name.includes("/") || name.includes("\\")) return "\"name\" must be a single name, not contain '/' or '\\'";
+  if (name === "." || name === "..") return `"name" must not be '${name}'`;
+  if (name.includes(":")) return "\"name\" must not contain ':' (host-dependent on Windows)";
+  if (isDotsAndSpaces(name)) return '"name" must not be only dots and spaces';
+  if (folder === undefined) return undefined;
+  if (folder === "") return '"folder" must not be empty (omit it for the objectTypes root)';
+  const slashed = toSlashes(folder);
+  if (hasDotDotSegment(slashed)) return "\"folder\" must not contain a '..' segment";
+  if (isAbsoluteOrDrive(slashed)) return '"folder" must be a relative path, not an absolute or drive-letter path';
+  const raw = slashed.split("/");
+  if (raw.some((s) => s.includes(":"))) return "\"folder\" must not contain ':' (host-dependent on Windows)";
+  if (raw.some(isDotsAndSpaces)) return '"folder" must not contain a segment that is only dots and spaces';
+  return undefined;
+}
+
 /**
  * Identity of a canonical key (#252/#273): two keys name the same file iff their canonical forms are equal ignoring
  * letter case, so a case-insensitive filesystem cannot see them as two files.
