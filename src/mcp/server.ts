@@ -776,7 +776,7 @@ regP(
       checkDerivedFreshness(ctx, path.join(ctx.extractedDir, "template-scope.txt"));
       const text = readExtracted(ctx, "template-scope.txt");
       if (text === null) {
-        return mcpError("template-scope.txt not found. Run 'npm run generate-c3' to generate it.", {
+        return mcpError("template-scope.txt not found. Run 'regenerate' to generate it.", {
           prefix: "read-template-scope:",
         });
       }
@@ -798,7 +798,7 @@ regP(
       checkDerivedFreshness(ctx, path.join(ctx.extractedDir, "sid-registry.txt"));
       const text = readExtracted(ctx, "sid-registry.txt");
       if (text === null) {
-        return mcpError("sid-registry.txt not found. Run 'npm run generate-c3' to generate it.", {
+        return mcpError("sid-registry.txt not found. Run 'regenerate' to generate it.", {
           prefix: "read-sid-registry:",
         });
       }
@@ -2238,7 +2238,9 @@ export async function startServer(
       console.error(
         `[construct3-chef] Warning: auto-generation failed — ${e instanceof Error ? e.message : String(e)}`,
       );
-      console.error(`[construct3-chef] Run 'npm run generate-c3' manually to generate extracted files`);
+      console.error(
+        `[construct3-chef] Run the 'regenerate' MCP tool, or 'construct3-chef generate --project-dir ${defaultCtx.root}', to generate extracted files`,
+      );
     }
   }
   console.error(`[construct3-chef] Starting server in ${defaultCtx.root}`);

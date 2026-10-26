@@ -28,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **MCP "not found" and startup hints no longer name a script that does
+  not exist.** `read-template-scope` and `read-sid-registry` told you to
+  run `npm run generate-c3`, which `package.json` has never defined; they
+  now say `Run 'regenerate' to generate it.`, and the startup
+  auto-generation failure names the `regenerate` MCP tool and
+  `construct3-chef generate --project-dir <root>`. A new test fails when
+  any `npm run <name>` in `src/` is not a `package.json` script (#286).
 - **Recipe builders now write function params and calls the way the C3
   editor saves them.** Function parameters built by `function-block`,
   `custom-ace-block` and `patch-function-block`'s `addParam` carry
