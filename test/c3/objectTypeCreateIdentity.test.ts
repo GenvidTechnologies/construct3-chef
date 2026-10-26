@@ -4,7 +4,7 @@ import { cpSync, mkdtempSync, mkdirSync, readdirSync, realpathSync, rmSync } fro
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { applyParsed } from "../../src/c3/recipeApplier.js";
+import { applyParsed, findObjectTypeFile } from "../../src/c3/recipeApplier.js";
 import { validateRecipe } from "../../src/c3/recipeInterpreter.js";
 import type { Recipe } from "../../src/c3/recipeInterpreter.js";
 import { objectTypeEntryIssue } from "../../src/c3/recipeKeys.js";
@@ -281,6 +281,72 @@ describe("objectType create identity (#274)", () => {
     it("OT274-R5: a project without an objectTypes/ directory creates normally", () => {
       rmSync(path.join(tmp, "objectTypes"), { recursive: true, force: true });
       assert.isUndefined(run(tmp, { objectTypes: [{ name: "Fresh", plugin: "Json" }] }, true));
+    });
+  });
+
+  describe("addInstVars lookup", () => {
+    const ivs = [{ name: "r7Var", type: "number" }];
+
+    it("OT274-R7: type navbutton is refused naming objectTypes/NavButton.json, not 'not found'", () => {
+      assertRefused({ addInstVars: [{ type: "navbutton", instanceVariables: ivs }] }, [
+        "objectTypes/NavButton.json",
+        "letter case is ignored",
+      ]);
+      assert.notInclude(run(tmp, { addInstVars: [{ type: "navbutton", instanceVariables: ivs }] }, true), "not found");
+    });
+
+    it("OT274-R7: a type in two subfolders is refused with every match listed", () => {
+      mkdirSync(path.join(tmp, "objectTypes", "extra"));
+      cpSync(
+        path.join(tmp, "objectTypes", "images", "Sprite.json"),
+        path.join(tmp, "objectTypes", "extra", "Sprite.json"),
+      );
+      assertRefused({ addInstVars: [{ type: "Sprite", instanceVariables: ivs }] }, [
+        "objectTypes/images/Sprite.json",
+        "objectTypes/extra/Sprite.json",
+        "ambiguous",
+      ]);
+    });
+
+    it("OT274-R7: an exact type still resolves, and a missing type still says not found", () => {
+      assert.isUndefined(run(tmp, { addInstVars: [{ type: "NavButton", instanceVariables: ivs }] }, true));
+      assert.isUndefined(run(tmp, { addInstVars: [{ type: "NavButton", instanceVariables: ivs }] }, false));
+      assert.include(
+        run(tmp, { addInstVars: [{ type: "NoSuchType", instanceVariables: ivs }] }, true),
+        'objectType "NoSuchType" not found under objectTypes/',
+      );
+    });
+
+    it("OT274-R7: a type created earlier in the same recipe resolves in dry-run and apply", () => {
+      const ok = {
+        objectTypes: [{ name: "PendingJ", plugin: "Json" }],
+        addInstVars: [{ type: "PendingJ", instanceVariables: ivs }],
+      };
+      assert.isUndefined(run(tmp, ok, true));
+      assert.isUndefined(run(tmp, ok, false));
+    });
+
+    it("OT274-R7: a case variant of a type created earlier in the recipe is refused in both modes", () => {
+      assertRefused(
+        {
+          objectTypes: [{ name: "PendingJ", plugin: "Json" }],
+          addInstVars: [{ type: "pendingj", instanceVariables: ivs }],
+        },
+        ["objectTypes/PendingJ.json", "letter case is ignored"],
+      );
+    });
+
+    it("OT274-R7: the public findObjectTypeFile is unchanged (exact match, case variant null, first listed)", () => {
+      assert.equal(findObjectTypeFile(tmp, "NavButton"), path.join(tmp, "objectTypes", "NavButton.json"));
+      assert.isNull(findObjectTypeFile(tmp, "navbutton"));
+      mkdirSync(path.join(tmp, "objectTypes", "extra"));
+      cpSync(
+        path.join(tmp, "objectTypes", "images", "Sprite.json"),
+        path.join(tmp, "objectTypes", "extra", "Sprite.json"),
+      );
+      const first = findObjectTypeFile(tmp, "Sprite");
+      assert.isString(first);
+      assert.equal(path.basename(first!), "Sprite.json");
     });
   });
 
