@@ -40,6 +40,7 @@
 	},
 	"wiki": {
 		"wikiDir": "wiki",
-		"rawDir": "raw"
+		"rawDir": "raw",
+		"indexCommand": "npm run wiki:index"
 	}
 }
