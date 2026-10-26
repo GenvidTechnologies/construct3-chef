@@ -591,7 +591,12 @@ export function expandAction(sidGen: SidGenerator, shorthand: BuilderAction): C3
   if ("call" in shorthand) {
     return buildCallAction(sidGen, {
       callFunction: shorthand.call,
-      parameters: shorthand.params?.map((p) => (typeof p === "string" ? p : String(p))),
+      // C3 stores a boolean param as a native JSON boolean; the declared `parameters?: string[]` type
+      // under-states that, so the cast is deliberate. Widening the type is a breaking change: see
+      // wiki/decisions/0052.
+      parameters: shorthand.params?.map((p) => (typeof p === "string" || typeof p === "boolean" ? p : String(p))) as
+        | string[]
+        | undefined,
     });
   }
   if ("custom-action" in shorthand) {

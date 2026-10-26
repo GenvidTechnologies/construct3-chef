@@ -456,7 +456,7 @@ export function buildCallAction(
     callFunction: opts.callFunction,
     sid: sidGen(),
   };
-  if (opts.parameters) {
+  if (opts.parameters?.length) {
     action.parameters = opts.parameters;
   }
   return action;
@@ -678,7 +678,7 @@ export function buildCustomAction(
   if (opts.customActionObjectClass) {
     action.customActionObjectClass = opts.customActionObjectClass;
   }
-  if (opts.parameters) {
+  if (opts.parameters?.length) {
     action.parameters = opts.parameters;
   }
   return action;
