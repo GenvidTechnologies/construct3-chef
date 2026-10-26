@@ -522,8 +522,8 @@ See the [wiki index](../index.md) for the other sections.
   ([#309](https://github.com/GenvidTechnologies/construct3-chef/issues/309))
 * [0058. Recipe apply leaves absent ts-defs to the C3 editor](0058-recipe-apply-leaves-absent-ts-defs-to-the-c3-editor.md) -
   Apply-recipe `objectTypes` and `addInstVars` skip a missing
-  `scripts/ts-defs/instanceTypes.d.ts` or `objects.d.ts` with a `SKIP` line,
-  in dry run and apply alike, deciding each file independently and never
-  creating one, because ts-defs are editor-local and written by the C3 editor
-  on export; rejects creating stub files and failing with a clearer error
+  `scripts/ts-defs/instanceTypes.d.ts` or `objects.d.ts` with a `SKIP` line
+  and never create one, deciding each file independently, since ts-defs are
+  editor-local and written by the C3 editor on export; rejects creating stub
+  files and failing with a clearer error
   ([#309](https://github.com/GenvidTechnologies/construct3-chef/issues/309))

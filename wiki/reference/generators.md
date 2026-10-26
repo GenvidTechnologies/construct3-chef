@@ -262,4 +262,4 @@ When multiple generators share a single output directory (`extracted/`), each ge
 | DSL generator | `.dsl.txt`, `.dsl.idx.txt` |
 | Layout generator | `.layout.txt` (`containers.txt` is written each run but is not an owned suffix) |
 
-This replaces the earlier delete-first `cleanOwnedFiles` step, which emptied the owned files before computing and so left `extracted/` half-deleted when a run failed. `cleanOwnedFiles` remains exported from `src/c3/fsUtils.ts` but the generators no longer call it. The naive `rmSync(outDir, { recursive: true })` approach is likewise avoided, so the shared directory lets related outputs sit side-by-side.
+`cleanOwnedFiles` remains exported from `src/c3/fsUtils.ts` but the generators no longer call it. The naive `rmSync(outDir, { recursive: true })` approach is likewise avoided, so the shared directory lets related outputs sit side-by-side.

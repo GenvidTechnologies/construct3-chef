@@ -19,7 +19,7 @@ generated: { by: process:tech-writer, at: 2026-10-26T00:00:00Z }
 
 A real project (`GenvidTechnologies/c3addon-gcore-video-plugin`, `sample/`) has no `scripts/` folder. Before this change `regenerate` failed on it with ENOENT, because `extractScripts` read `scripts/importsForEvents.ts` unguarded. By then `cleanOwnedFiles` (`src/c3/fsUtils.ts`) had already deleted the extracted `.ts` files and `tsconfig.json`, so the failure also destroyed existing output.
 
-Two defects, then: a project lacking the imports file could not be extracted at all, and a failing generator left `extracted/` worse than it found it. The requirement the design carries is **R3: a failing run must not delete existing outputs.**
+Two defects, then: a project lacking the imports file could not be extracted at all, and a failing generator left `extracted/` worse than it found it. The requirement the design carries, called R3 in the option labels quoted below, is that **a failing run must not delete existing outputs.**
 
 ## Decision
 
@@ -44,6 +44,9 @@ Separately, a missing `scripts/importsForEvents.ts`, or no `scripts/` folder at 
 ## Consequences
 
 - `cleanOwnedFiles` stays barrel-exported and unchanged, but the generators no longer call it. A future generator that owns files by suffix should write through `replaceOwnedOutputs`.
-- This is not all-or-nothing atomic. A write that fails midway leaves new and old files mixed on disk and deletes no orphan; the next successful run converges. R3 is met: nothing existing is deleted by a failing run.
+- This is not all-or-nothing atomic. A write that fails midway leaves new and old files mixed on disk and deletes no orphan; the next successful run converges. The requirement is met: nothing existing is deleted by a failing run.
+- Only the ancestors of deleted orphans are pruned. An unrelated empty directory already under the output directory is left alone, where the old delete-first step pruned every empty directory. Generated output bytes are unchanged.
+- The case-only rename runs only where the filesystem folds case (`FOLD_CASE`: Windows and macOS). On Linux an output and an existing file that differ only in case are two files, and the stale one is deleted as an orphan. The rename branch is therefore exercised only on Windows and macOS.
+- Links (symlinks, junctions) under the output directory are neither followed nor deleted, even when their name ends in an owned suffix.
 - Every unchanged output is rewritten on every run, which costs I/O but keeps the mtime freshness check correct.
 - ADR 0022's statement that #181 is not fixed no longer holds; it carries an amendment note pointing here.

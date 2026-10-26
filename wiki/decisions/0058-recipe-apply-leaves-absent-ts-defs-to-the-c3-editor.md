@@ -2,7 +2,7 @@
 type: decision-record
 title: "0058. Recipe apply leaves absent ts-defs to the C3 editor"
 description: >-
-  Apply-recipe `objectTypes` and `addInstVars` skip a missing `scripts/ts-defs/instanceTypes.d.ts` or `objects.d.ts` with a `SKIP` line, in dry run and apply alike, deciding each file independently and never creating one, because ts-defs are editor-local and written by the C3 editor on export; rejects creating stub files and failing with a clearer error ([#309](https://github.com/GenvidTechnologies/construct3-chef/issues/309))
+  Apply-recipe `objectTypes` and `addInstVars` skip a missing `scripts/ts-defs/instanceTypes.d.ts` or `objects.d.ts` with a `SKIP` line and never create one, deciding each file independently, since ts-defs are editor-local and written by the C3 editor on export; rejects creating stub files and failing with a clearer error ([#309](https://github.com/GenvidTechnologies/construct3-chef/issues/309))
 tags: [decision, architecture, recipes]
 status: stable
 generated: { by: process:tech-writer, at: 2026-10-26T00:00:00Z }
@@ -21,7 +21,7 @@ Applying a recipe with `objectTypes` or `addInstVars` also updates the TypeScrip
 
 ## Decision
 
-Apply-recipe `objectTypes` and `addInstVars` skip a missing `instanceTypes.d.ts` or `objects.d.ts` with a `SKIP` line, in dry run and apply alike, and never create one. Each file is decided independently: one present and one absent updates the first and skips the second. The decision is "skip a missing ts-defs file and log a `SKIP` line; never create one."
+Apply-recipe `objectTypes` and `addInstVars` skip a missing `instanceTypes.d.ts` or `objects.d.ts` with a `SKIP` line and never create one; a dry run reports the same skips and writes nothing. (A dry run of `addInstVars` on an object type the same recipe creates reports the pending variable instead, so it prints no `instanceTypes.d.ts` line for that step.) Each file is decided independently: one present and one absent updates the first and skips the second. The decision is "skip a missing ts-defs file and log a `SKIP` line; never create one."
 
 Why skipping is right:
 
