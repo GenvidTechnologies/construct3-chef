@@ -28,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Recipe builders now write function params and calls the way the C3
+  editor saves them.** Function parameters built by `function-block`,
+  `custom-ace-block` and `patch-function-block`'s `addParam` carry
+  `comment: ""`; a `call` or `custom-action` with `params: []` writes no
+  `parameters` key (#317); and the `call` shorthand keeps a boolean param
+  a native boolean instead of writing `"true"` / `"false"` (#322). Sheets
+  already written are not rewritten; only a newly applied recipe changes.
 - **`generate` / `regenerate`: the scripts, DSL and layout-summary generators
   no longer delete their existing `extracted/` outputs when a run fails
   partway** (a malformed sheet, layout or manifest). They now compute every

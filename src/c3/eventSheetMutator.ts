@@ -340,6 +340,7 @@ export function buildFunctionBlock(
       name: p.name,
       type: p.type,
       initialValue: p.initialValue ?? defaultInitialValue(p.type),
+      comment: "",
       sid: sidGen(),
     };
   });
@@ -395,6 +396,7 @@ export function buildCustomAceBlock(
       name: p.name,
       type: p.type,
       initialValue: p.initialValue ?? defaultInitialValue(p.type),
+      comment: "",
       sid: sidGen(),
     };
   });
@@ -454,7 +456,7 @@ export function buildCallAction(
     callFunction: opts.callFunction,
     sid: sidGen(),
   };
-  if (opts.parameters) {
+  if (opts.parameters?.length) {
     action.parameters = opts.parameters;
   }
   return action;
@@ -676,7 +678,7 @@ export function buildCustomAction(
   if (opts.customActionObjectClass) {
     action.customActionObjectClass = opts.customActionObjectClass;
   }
-  if (opts.parameters) {
+  if (opts.parameters?.length) {
     action.parameters = opts.parameters;
   }
   return action;

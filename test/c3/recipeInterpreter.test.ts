@@ -96,10 +96,38 @@ describe("recipeInterpreter", () => {
       assert.notEqual(call.sid, 0);
     });
 
-    it("auto-stringifies numeric params in call shorthand", () => {
+    it("auto-stringifies numeric params in call shorthand and keeps booleans native", () => {
       const result = expandAction(sidGen, { call: "setLevel", params: [0, "hello", true] });
       const call = result as FunctionCallAction;
-      assert.deepStrictEqual(call.parameters, ["0", "hello", "true"]);
+      assert.deepStrictEqual(call.parameters, ["0", "hello", true]);
+    });
+
+    it("I322-R1: call shorthand writes a boolean param as a native boolean (true and false)", () => {
+      for (const b of [true, false]) {
+        const call = expandAction(sidGen, { call: "Fn", params: [b] }) as FunctionCallAction;
+        assert.deepStrictEqual(call.parameters, [b]);
+        assert.strictEqual(typeof call.parameters![0], "boolean");
+      }
+    });
+
+    it("I322-R2: call shorthand still stringifies numbers and keeps string expressions", () => {
+      const call = expandAction(sidGen, { call: "Fn", params: [1, '"x"'] }) as FunctionCallAction;
+      assert.deepStrictEqual(call.parameters, ["1", '"x"']);
+    });
+
+    it("I317-R2: call shorthand with empty params omits the parameters key", () => {
+      const call = expandAction(sidGen, { call: "Fn", params: [] });
+      assert.notProperty(call, "parameters");
+    });
+
+    it("I317-R2b: custom-action shorthand with empty params omits the parameters key", () => {
+      const a = expandAction(sidGen, { "custom-action": "X", object: "Y", params: [] });
+      assert.notProperty(a, "parameters");
+    });
+
+    it("I317-R2b: custom-action shorthand with non-empty params still emits them (negative control)", () => {
+      const a = expandAction(sidGen, { "custom-action": "X", object: "Y", params: ["1"] });
+      assert.deepStrictEqual((a as { parameters?: unknown[] }).parameters, ["1"]);
     });
 
     it("expands call shorthand without params", () => {
@@ -2963,6 +2991,30 @@ describe("recipeInterpreter", () => {
       assert.equal(params[0].type, "string");
       assert.equal(params[0].initialValue, "");
       assert.equal(typeof params[0].sid, "number");
+    });
+
+    it("I317-R1c patch-function-block addParam carries comment between initialValue and sid", () => {
+      const sheet = makeSheet({
+        eventType: "function-block",
+        functionName: "myFunc",
+        functionDescription: "",
+        functionCategory: "",
+        functionReturnType: "none",
+        functionCopyPicked: false,
+        functionIsAsync: false,
+        functionParameters: [],
+        conditions: [],
+        actions: [],
+        sid: 444,
+      } as FunctionBlockEvent);
+      executeOp(sidGen, sheet, {
+        op: "patch-function-block",
+        path: "events[0]",
+        addParam: { name: "p1", type: "string" },
+      } as FileOp);
+      const param = (sheet.events[0] as FunctionBlockEvent).functionParameters[0];
+      assert.deepEqual(Object.keys(param), ["name", "type", "initialValue", "comment", "sid"]);
+      assert.strictEqual(param.comment, "");
     });
 
     it("adds a parameter with explicit initialValue", () => {

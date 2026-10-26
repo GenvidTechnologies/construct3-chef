@@ -20,6 +20,7 @@ import {
   replaceCondition,
   buildBlock,
   buildFunctionBlock,
+  buildCustomAceBlock,
   buildAction,
   buildCallAction,
   buildScriptAction,
@@ -202,6 +203,24 @@ describe("eventSheetMutator", () => {
       assert.equal(fb.functionParameters[1].initialValue, "");
     });
 
+    it("I317-R1a buildFunctionBlock params carry comment between initialValue and sid", () => {
+      const fb = buildFunctionBlock(sidGen, { functionName: "f", params: [{ name: "x", type: "number" }] });
+      const param = fb.functionParameters[0];
+      assert.deepEqual(Object.keys(param), ["name", "type", "initialValue", "comment", "sid"]);
+      assert.strictEqual(param.comment, "");
+    });
+
+    it("I317-R1b buildCustomAceBlock params carry comment between initialValue and sid", () => {
+      const cab = buildCustomAceBlock(sidGen, {
+        aceName: "doIt",
+        objectClass: "Fam",
+        params: [{ name: "x", type: "number" }],
+      });
+      const param = cab.functionParameters[0];
+      assert.deepEqual(Object.keys(param), ["name", "type", "initialValue", "comment", "sid"]);
+      assert.strictEqual(param.comment, "");
+    });
+
     it("builds with returnType and isAsync", () => {
       const fb = buildFunctionBlock(sidGen, { functionName: "f", returnType: "number", isAsync: true });
       assert.equal(fb.functionReturnType, "number");
@@ -245,6 +264,16 @@ describe("eventSheetMutator", () => {
       const action = buildCallAction(sidGen, { callFunction: "doStuff" });
       assert.equal(action.callFunction, "doStuff");
       assert.notProperty(action, "parameters");
+    });
+
+    it("I317-R2: an empty parameters array is omitted, as the editor omits it for a zero-arg call", () => {
+      const action = buildCallAction(sidGen, { callFunction: "doStuff", parameters: [] });
+      assert.notProperty(action, "parameters");
+    });
+
+    it("I317-R2: a non-empty parameters array is still emitted (negative control)", () => {
+      const action = buildCallAction(sidGen, { callFunction: "doStuff", parameters: ["1"] });
+      assert.deepStrictEqual(action.parameters, ["1"]);
     });
   });
 
@@ -667,6 +696,16 @@ describe("eventSheetMutator", () => {
   });
 
   describe("buildCustomAction", () => {
+    it("I317-R2b: an empty parameters array is omitted, as the editor omits it for a zero-arg custom action", () => {
+      const a = buildCustomAction(sidGen, { name: "OnClickAction", objectClass: "Sprite", parameters: [] });
+      assert.notProperty(a, "parameters");
+    });
+
+    it("I317-R2b: a non-empty parameters array is still emitted (negative control)", () => {
+      const a = buildCustomAction(sidGen, { name: "SetValue", objectClass: "Sprite", parameters: ["1"] });
+      assert.deepStrictEqual(a.parameters, ["1"]);
+    });
+
     it("builds custom action with name and objectClass", () => {
       const a = buildCustomAction(sidGen, { name: "Initialize", objectClass: "CardScroller" });
       assert.equal(a.customAction, "Initialize");
