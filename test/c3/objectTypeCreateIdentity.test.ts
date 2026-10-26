@@ -8,6 +8,7 @@ import { applyParsed } from "../../src/c3/recipeApplier.js";
 import { validateRecipe } from "../../src/c3/recipeInterpreter.js";
 import type { Recipe } from "../../src/c3/recipeInterpreter.js";
 import { objectTypeEntryIssue } from "../../src/c3/recipeKeys.js";
+import { decideObjectTypeCreate } from "../../src/c3/objectTypeIdentity.js";
 import { snapshotTree } from "../helpers/applyFixtures.js";
 
 // A throwaway copy of the canonical fixture, one dedicated parent dir per test so "outside the copy" is listable.
@@ -202,6 +203,108 @@ describe("objectType create identity (#274)", () => {
       } as Recipe);
       assert.lengthOf(errors, 1);
       assert.match(errors[0]!, /^objectTypes\[1\]: /);
+    });
+  });
+
+  describe("identity against disk", () => {
+    function logsOf(recipe: unknown, dryRun: boolean): string[] {
+      const lines: string[] = [];
+      applyParsed(tmp, recipe as Recipe, { dryRun, regenerate: false, log: (m: string) => lines.push(m) });
+      return lines;
+    }
+
+    it("OT274-R3: navbutton is refused against objectTypes/NavButton.json, in dry-run and apply, writing nothing", () => {
+      const recipe = { objectTypes: [{ name: "navbutton", plugin: "Json" }] };
+      assertRefused(recipe, [
+        "objectTypes/navbutton.json",
+        "on disk: objectTypes/NavButton.json",
+        "Nothing was written",
+      ]);
+    });
+
+    it("OT274-R4: Sprite (no folder) is refused against objectTypes/images/Sprite.json, writing nothing", () => {
+      const recipe = { objectTypes: [{ name: "Sprite", plugin: "Json" }] };
+      assertRefused(recipe, ["objectTypes/Sprite.json", "on disk: objectTypes/images/Sprite.json"]);
+    });
+
+    it("OT274-R4: every refused entry is reported, not just the first", () => {
+      assertRefused(
+        {
+          objectTypes: [
+            { name: "navbutton", plugin: "Json" },
+            { name: "Fresh", plugin: "Json" },
+            { name: "Sprite", plugin: "Json" },
+          ],
+        },
+        ["2 entries", "objectTypes/NavButton.json", "objectTypes/images/Sprite.json"],
+      );
+    });
+
+    it("OT274-R4: a name with two matches on disk is refused and shows both", () => {
+      mkdirSync(path.join(tmp, "objectTypes", "extra"));
+      cpSync(
+        path.join(tmp, "objectTypes", "images", "Sprite.json"),
+        path.join(tmp, "objectTypes", "extra", "Sprite.json"),
+      );
+      assertRefused({ objectTypes: [{ name: "Sprite", plugin: "Json", folder: "images" }] }, [
+        "objectTypes/images/Sprite.json",
+        "objectTypes/extra/Sprite.json",
+      ]);
+    });
+
+    for (const dryRun of [true, false]) {
+      const mode = dryRun ? "dry-run" : "apply";
+      it(`OT274-R5: exact re-declarations are a SKIP and write nothing (${mode})`, () => {
+        for (const entry of [
+          { name: "NavButton", plugin: "Json" },
+          { name: "Sprite", plugin: "Json", folder: "images" },
+          { name: "Sprite", plugin: "Json", folder: "images/" },
+        ]) {
+          const before = snapshotTree(tmp);
+          const lines = logsOf({ objectTypes: [entry] }, dryRun);
+          assert.isTrue(
+            lines.some((l) => l.includes("SKIP") && l.includes("(already exists)")),
+            `${JSON.stringify(entry)}: ${lines.join(" / ")}`,
+          );
+          assert.deepEqual(changedFiles(before, snapshotTree(tmp)), []);
+        }
+      });
+    }
+
+    it("OT274-R5: a folder-case variant (Images) is refused against objectTypes/images/Sprite.json", () => {
+      assertRefused({ objectTypes: [{ name: "Sprite", plugin: "Json", folder: "Images" }] }, [
+        "objectTypes/Images/Sprite.json",
+        "on disk: objectTypes/images/Sprite.json",
+      ]);
+    });
+
+    it("OT274-R5: a project without an objectTypes/ directory creates normally", () => {
+      rmSync(path.join(tmp, "objectTypes"), { recursive: true, force: true });
+      assert.isUndefined(run(tmp, { objectTypes: [{ name: "Fresh", plugin: "Json" }] }, true));
+    });
+  });
+
+  describe("decideObjectTypeCreate", () => {
+    const listing = ["objectTypes/NavButton.json", "objectTypes/images/Sprite.json", "objectTypes/tiles/Sprite.json"];
+
+    it("OT274-R5: create, skip and refuse", () => {
+      assert.deepEqual(decideObjectTypeCreate(listing, "objectTypes/Fresh.json", "Fresh"), { kind: "create" });
+      assert.deepEqual(decideObjectTypeCreate(listing, "objectTypes/NavButton.json", "NavButton"), {
+        kind: "skip",
+        path: "objectTypes/NavButton.json",
+      });
+      assert.deepEqual(decideObjectTypeCreate(listing, "objectTypes//NavButton.json", "NavButton").kind, "skip");
+      assert.deepEqual(decideObjectTypeCreate(listing, "objectTypes/navbutton.json", "navbutton"), {
+        kind: "refuse",
+        onDisk: ["objectTypes/NavButton.json"],
+      });
+      assert.deepEqual(decideObjectTypeCreate(listing, "objectTypes/NAVBUTTON.json", "NAVBUTTON").kind, "refuse");
+      assert.deepEqual(decideObjectTypeCreate(listing, "objectTypes/Images/Sprite.json", "Sprite").kind, "refuse");
+      // two matches: refused even though one equals the target
+      assert.deepEqual(decideObjectTypeCreate(listing, "objectTypes/images/Sprite.json", "Sprite"), {
+        kind: "refuse",
+        onDisk: ["objectTypes/images/Sprite.json", "objectTypes/tiles/Sprite.json"],
+      });
     });
   });
 });
