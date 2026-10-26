@@ -143,8 +143,6 @@ describe("recipe apply behaviour pins (#255)", () => {
       "\n--- Dry run (no files written) ---\n",
       "objectTypes:",
       "  SKIP objectTypes/Text.json (already exists)",
-      "  UPDATE scripts/ts-defs/instanceTypes.d.ts",
-      "  UPDATE scripts/ts-defs/objects.d.ts",
       "",
       "\nValidation passed. Run without --dry-run to apply.",
     ]);
@@ -163,6 +161,28 @@ describe("recipe apply behaviour pins (#255)", () => {
       "",
       "\nValidation passed. Run without --dry-run to apply.",
     ]);
+  });
+
+  it("OT274-R8: dry-run logs no ts-def UPDATE for an exact re-declaration, and both for a new objectType", () => {
+    const tsDefLines = (recipe: unknown) =>
+      run(tmp, recipe, true).lines.filter(
+        (l) =>
+          l.includes("SKIP objectTypes/") || l.includes("CREATE objectTypes/") || l.includes("UPDATE scripts/ts-defs/"),
+      );
+    assert.deepEqual(
+      {
+        redeclared: tsDefLines({ objectTypes: [{ name: "Text", plugin: "Json" }] }),
+        created: tsDefLines({ objectTypes: [{ name: "FreshJ", plugin: "Json" }] }),
+      },
+      {
+        redeclared: ["  SKIP objectTypes/Text.json (already exists)"],
+        created: [
+          "  CREATE objectTypes/FreshJ.json (plugin: Json)",
+          "  UPDATE scripts/ts-defs/instanceTypes.d.ts",
+          "  UPDATE scripts/ts-defs/objects.d.ts",
+        ],
+      },
+    );
   });
 
   it("C5: apply and dry-run check a CREATEd sheet in different orders", () => {

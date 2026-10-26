@@ -787,9 +787,11 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
     if (recipe.objectTypes && recipe.objectTypes.length > 0) {
       log("objectTypes:");
       for (const ot of recipe.objectTypes) {
-        createObjectType(sidGen, rootDir, ot, true, log);
-        updateInstanceTypes(rootDir, ot, true, log);
-        updateObjects(rootDir, ot, true, log);
+        // Same as apply (Step 1): the ts-def updates run only for a type the create actually creates.
+        if (createObjectType(sidGen, rootDir, ot, true, log)) {
+          updateInstanceTypes(rootDir, ot, true, log);
+          updateObjects(rootDir, ot, true, log);
+        }
       }
       log();
     }
