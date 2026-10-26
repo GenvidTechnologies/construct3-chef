@@ -62,7 +62,7 @@ extracted/
 
 Script extraction writes **one aggregated `.ts` file per event sheet** (`extracted/eventSheets/<dir>/<SheetName>.ts`), and only for sheets that contain script actions — there is no per-script file. Each file contains:
 
-- Real imports (fully typed, not `any`)
+- The imports from `scripts/importsForEvents.ts`, when that file has any (fully typed, not `any`). A project without `scripts/importsForEvents.ts` (or with no `scripts/` folder) extracts with no imports: the generator logs `No scripts/importsForEvents.ts found; extracting without imports.`, still writes `tsconfig.json`, and gives each sheet's `.ts` an import-less header.
 - A named type per distinct local-variable scope used by the sheet's scripts
 - One `async function` per script action, named `<Sheet>_Event<N>_Act<M>` by c3source's `generateFunctionName` (the sheet name with every non-alphanumeric run collapsed to `_` and leading/trailing `_` trimmed; `<N>`/`<M>` are the positional coordinates from [§ C3 Event Numbering](#c3-event-numbering)). It takes `runtime: IRuntime`, plus a typed `localVars` parameter when scope variables are present, and its body is the original script, unchanged.
 - Above each function, a header comment: `// --- <human-readable event path> ---`, then `// C3: <SheetName>, event N, action M (lines 1-K)` where K is the script's line count, then a `// Context: …` line listing the block's conditions when it has any.
@@ -250,12 +250,16 @@ The six generators are enumerated once, as `GENERATORS: readonly GeneratorEntry[
 
 ## Selective Cleanup
 
-When multiple generators share a single output directory (`extracted/`), each generator must only clean files it owns. This prevents one generator from deleting another's output:
+When multiple generators share a single output directory (`extracted/`), each generator must only touch files it owns. `extractScripts`, `generateDSL` and `generateLayoutSummaries` each work in three steps through `replaceOwnedOutputs(outDir, ownedSuffixes, outputs)` (`src/c3/generatorOutputs.ts`, off the barrel):
 
-```typescript
-cleanOwnedFiles(outDir, ".dsl.txt");     // DSL generator
-cleanOwnedFiles(outDir, ".layout.txt");  // Layout generator
-cleanOwnedFiles(outDir, ".ts");          // Script extractor
-```
+1. **Compute** every output in memory. A malformed sheet, layout or `project.c3proj` fails here, so a failing run touches nothing in `extracted/`.
+2. **Write in place** every output, always, even when the content is unchanged, because freshness checks are mtime-based.
+3. **Delete orphans**: only files with an owned suffix that are no longer outputs, then prune directories that became empty.
 
-This avoids the naive `rmSync(outDir, { recursive: true })` approach. The shared directory structure allows related outputs to sit side-by-side.
+| Generator | Owned suffixes |
+| --------- | -------------- |
+| Script extractor | `.ts` (its `tsconfig.json` is one of its outputs) |
+| DSL generator | `.dsl.txt`, `.dsl.idx.txt` |
+| Layout generator | `.layout.txt` (`containers.txt` is written each run but is not an owned suffix) |
+
+This replaces the earlier delete-first `cleanOwnedFiles` step, which emptied the owned files before computing and so left `extracted/` half-deleted when a run failed. `cleanOwnedFiles` remains exported from `src/c3/fsUtils.ts` but the generators no longer call it. The naive `rmSync(outDir, { recursive: true })` approach is likewise avoided, so the shared directory lets related outputs sit side-by-side.

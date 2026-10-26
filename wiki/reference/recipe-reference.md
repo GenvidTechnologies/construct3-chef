@@ -82,6 +82,8 @@ Creates C3 data-plugin objectType files and updates TypeScript definitions in on
 - Appends class to `scripts/ts-defs/instanceTypes.d.ts`
 - Appends property to `scripts/ts-defs/objects.d.ts`
 
+If that `.d.ts` file is not present, the update is skipped with a `SKIP` line and nothing is created under `scripts/`.
+
 **Idempotent**: if the objectType file already exists, prints `SKIP` and does NOT re-update ts-defs.
 
 **After applying:** run `sync-project` to register new objectType files with C3.
@@ -116,6 +118,8 @@ Adds instance variables to existing objectTypes and updates all references (obje
 1. **ObjectType JSON** — finds `objectTypes/**/Type.json` recursively, appends new variables
 2. **Layout instances** — scans all layout files for instances of the type, adds default values (`0` for number, `""` for string, `false` for boolean)
 3. **TypeScript defs** — updates `scripts/ts-defs/instanceTypes.d.ts`: adds fields to existing `instVars` block, or creates one
+
+   If that `.d.ts` file is not present, the update is skipped with a `SKIP` line and nothing is created under `scripts/`.
 
 **Idempotent**: skips variables that already exist (by name) in each location.
 
