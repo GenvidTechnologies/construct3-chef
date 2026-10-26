@@ -5,7 +5,7 @@ import * as path from "node:path";
 
 import { applyParsed } from "../../src/c3/recipeApplier.js";
 import type { Recipe } from "../../src/c3/recipeInterpreter.js";
-import { copyFixture, snapshotTree } from "../helpers/applyFixtures.js";
+import { copyFixture, plantBrokenLayout, snapshotTree } from "../helpers/applyFixtures.js";
 import { runCli } from "../helpers/runCli.js";
 
 // Pins current recipe-apply behaviour (green at 703c1bf) so the later apply refactor cannot drift it silently.
@@ -275,11 +275,12 @@ describe("a refused apply writes nothing (#279)", () => {
   });
 
   // R14/R31 (#256 D2): a regeneration failure AFTER the source write names what was written. The trigger is
-  // deleting scripts/importsForEvents.ts, which extractScripts reads unguarded.
+  // an unparseable layout: no pre-write check parses layouts, but generateLayoutSummaries must (#309 made a
+  // missing scripts/importsForEvents.ts, the previous trigger, a normal zero-imports project).
   function breakRegeneration(): void {
     const g = runCli(["generate", "--project-dir", tmp]);
     assert.equal(g.exitCode, 0, g.stderr);
-    rmSync(path.join(tmp, "scripts", "importsForEvents.ts"));
+    plantBrokenLayout(tmp);
   }
 
   it("R14: apply-recipe names the written source when regeneration fails after the write", function () {
