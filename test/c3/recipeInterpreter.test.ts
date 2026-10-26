@@ -2965,6 +2965,30 @@ describe("recipeInterpreter", () => {
       assert.equal(typeof params[0].sid, "number");
     });
 
+    it("I317-R1c patch-function-block addParam carries comment between initialValue and sid", () => {
+      const sheet = makeSheet({
+        eventType: "function-block",
+        functionName: "myFunc",
+        functionDescription: "",
+        functionCategory: "",
+        functionReturnType: "none",
+        functionCopyPicked: false,
+        functionIsAsync: false,
+        functionParameters: [],
+        conditions: [],
+        actions: [],
+        sid: 444,
+      } as FunctionBlockEvent);
+      executeOp(sidGen, sheet, {
+        op: "patch-function-block",
+        path: "events[0]",
+        addParam: { name: "p1", type: "string" },
+      } as FileOp);
+      const param = (sheet.events[0] as FunctionBlockEvent).functionParameters[0];
+      assert.deepEqual(Object.keys(param), ["name", "type", "initialValue", "comment", "sid"]);
+      assert.strictEqual(param.comment, "");
+    });
+
     it("adds a parameter with explicit initialValue", () => {
       const sheet = makeSheet({
         eventType: "function-block",

@@ -1331,6 +1331,7 @@ export function executeOp(
           name: op.addParam.name,
           type: op.addParam.type,
           initialValue: op.addParam.initialValue ?? defaultInitialValue(op.addParam.type),
+          comment: "",
           sid: sidGen(),
         };
         fnNode.functionParameters.push(newParam);

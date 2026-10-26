@@ -340,6 +340,7 @@ export function buildFunctionBlock(
       name: p.name,
       type: p.type,
       initialValue: p.initialValue ?? defaultInitialValue(p.type),
+      comment: "",
       sid: sidGen(),
     };
   });
@@ -395,6 +396,7 @@ export function buildCustomAceBlock(
       name: p.name,
       type: p.type,
       initialValue: p.initialValue ?? defaultInitialValue(p.type),
+      comment: "",
       sid: sidGen(),
     };
   });

@@ -20,6 +20,7 @@ import {
   replaceCondition,
   buildBlock,
   buildFunctionBlock,
+  buildCustomAceBlock,
   buildAction,
   buildCallAction,
   buildScriptAction,
@@ -200,6 +201,24 @@ describe("eventSheetMutator", () => {
       assert.notEqual(fb.functionParameters[1].sid, 0);
       assert.notEqual(fb.functionParameters[0].sid, fb.functionParameters[1].sid);
       assert.equal(fb.functionParameters[1].initialValue, "");
+    });
+
+    it("I317-R1a buildFunctionBlock params carry comment between initialValue and sid", () => {
+      const fb = buildFunctionBlock(sidGen, { functionName: "f", params: [{ name: "x", type: "number" }] });
+      const param = fb.functionParameters[0];
+      assert.deepEqual(Object.keys(param), ["name", "type", "initialValue", "comment", "sid"]);
+      assert.strictEqual(param.comment, "");
+    });
+
+    it("I317-R1b buildCustomAceBlock params carry comment between initialValue and sid", () => {
+      const cab = buildCustomAceBlock(sidGen, {
+        aceName: "doIt",
+        objectClass: "Fam",
+        params: [{ name: "x", type: "number" }],
+      });
+      const param = cab.functionParameters[0];
+      assert.deepEqual(Object.keys(param), ["name", "type", "initialValue", "comment", "sid"]);
+      assert.strictEqual(param.comment, "");
     });
 
     it("builds with returnType and isAsync", () => {
