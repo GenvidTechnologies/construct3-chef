@@ -1,6 +1,6 @@
-import { readFileSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { cleanOwnedFiles } from "./fsUtils.js";
+import { replaceOwnedOutputs } from "./generatorOutputs.js";
 import {
   type EventSheet,
   type ExtractedScript,
@@ -249,17 +249,14 @@ export function extractScripts(rootDir: string, outDir: string, log: Logger = co
   const sheetPaths = find_all_eventsheets_path(eventSheetsDir);
   log(`Found ${sheetPaths.length} eventSheet files.`);
 
-  // Clean only owned files (.ts and tsconfig.json), then prune empty dirs
-  cleanOwnedFiles(outDir, ".ts");
-  rmSync(path.join(outDir, "tsconfig.json"), { force: true });
-
   const importStatements = parseImportStatements(
     readFileSync(path.join(project.scriptsDir, "importsForEvents.ts"), "utf-8"),
   );
   let totalScripts = 0;
   let filesWritten = 0;
 
-  mkdirSync(outDir, { recursive: true });
+  // Every output is computed in memory first; nothing is written until all succeed.
+  const outputs = new Map<string, string>();
 
   // Generate tsconfig.json so the editor resolves all C3 type definitions
   const tsconfig = {
@@ -274,7 +271,7 @@ export function extractScripts(rootDir: string, outDir: string, log: Logger = co
     },
     include: ["./**/*.ts", "../scripts/ts-defs/**/*.d.ts"],
   };
-  writeFileSync(path.join(outDir, "tsconfig.json"), JSON.stringify(tsconfig, null, 2) + "\n");
+  outputs.set(path.join(outDir, "tsconfig.json"), JSON.stringify(tsconfig, null, 2) + "\n");
 
   for (const sheetPath of sheetPaths) {
     const content = readFileSync(sheetPath, "utf-8");
@@ -288,12 +285,12 @@ export function extractScripts(rootDir: string, outDir: string, log: Logger = co
     // Mirror directory structure under eventSheets/
     const relPath = path.relative(eventSheetsDir, sheetPath);
     const outPath = path.join(outDir, "eventSheets", relPath.replace(/\.json$/, ".ts"));
-    mkdirSync(path.dirname(outPath), { recursive: true });
 
-    const fileContent = formatExtractedFile(rootDir, sheetPath, scripts, outPath, importStatements);
-    writeFileSync(outPath, fileContent);
+    outputs.set(outPath, formatExtractedFile(rootDir, sheetPath, scripts, outPath, importStatements));
     filesWritten++;
   }
+
+  replaceOwnedOutputs(outDir, [".ts"], outputs);
 
   log(`Extracted ${totalScripts} script blocks into ${filesWritten} files in ${outDir}`);
   log("Note: types in scripts/ts-defs/ may be stale — re-export from C3 editor to refresh.");
@@ -307,12 +304,7 @@ export function generateDSL(rootDir: string, outDir: string, log: Logger = conso
   const sheetPaths = find_all_eventsheets_path(eventSheetsDir);
   log(`Found ${sheetPaths.length} eventSheet files.`);
 
-  // Clean owned files (.dsl.txt and .dsl.idx.txt), then prune empty dirs
-  cleanOwnedFiles(outDir, ".dsl.txt");
-  cleanOwnedFiles(outDir, ".dsl.idx.txt");
-
-  mkdirSync(outDir, { recursive: true });
-
+  const outputs = new Map<string, string>();
   let filesWritten = 0;
 
   for (const sheetPath of sheetPaths) {
@@ -322,16 +314,17 @@ export function generateDSL(rootDir: string, outDir: string, log: Logger = conso
     // Mirror directory structure under eventSheets/
     const relPath = path.relative(eventSheetsDir, sheetPath);
     const outPath = path.join(outDir, "eventSheets", relPath.replace(/\.json$/, ".dsl.txt"));
-    mkdirSync(path.dirname(outPath), { recursive: true });
 
     const { dsl: dslContent, index } = formatEventSheet(sheet, sheetPath);
-    writeFileSync(outPath, dslContent);
+    outputs.set(outPath, dslContent);
 
     const idxPath = outPath.replace(/\.dsl\.txt$/, ".dsl.idx.txt");
-    writeFileSync(idxPath, formatIndex(sheet.name, index));
+    outputs.set(idxPath, formatIndex(sheet.name, index));
 
     filesWritten++;
   }
+
+  replaceOwnedOutputs(outDir, [".dsl.txt", ".dsl.idx.txt"], outputs);
 
   log(`Generated ${filesWritten} DSL + index file pairs in ${outDir}`);
 }
@@ -345,10 +338,7 @@ export function generateLayoutSummaries(rootDir: string, outDir: string, log: Lo
   const layoutPaths = find_all_layouts_path(layoutsDir);
   log(`Found ${layoutPaths.length} layout files.`);
 
-  // Clean only owned files (.layout.txt), then prune empty dirs
-  cleanOwnedFiles(outDir, ".layout.txt");
-
-  mkdirSync(outDir, { recursive: true });
+  const outputs = new Map<string, string>();
 
   // Pass 1: Parse all layouts and build global layer map
   const parsedLayouts: Array<{ layout: Layout; filePath: string }> = [];
@@ -373,9 +363,8 @@ export function generateLayoutSummaries(rootDir: string, outDir: string, log: Lo
   }
   log(`Found ${containerGroups.length} containers (${containerMap.size} member types).`);
 
-  // Write containers reference file
-  const containersContent = formatContainersFile(containerGroups);
-  writeFileSync(path.join(outDir, "containers.txt"), containersContent);
+  // containers.txt is not an owned suffix: it is overwritten each run, never orphaned
+  outputs.set(path.join(outDir, "containers.txt"), formatContainersFile(containerGroups));
 
   // Pass 2: Generate summaries
   let filesWritten = 0;
@@ -384,13 +373,13 @@ export function generateLayoutSummaries(rootDir: string, outDir: string, log: Lo
     // Mirror directory structure under layouts/
     const relPath = path.relative(layoutsDir, filePath);
     const outPath = path.join(outDir, "layouts", relPath.replace(/\.json$/, ".layout.txt"));
-    mkdirSync(path.dirname(outPath), { recursive: true });
 
     const isTemplateHolder = filePath.replace(/\\/g, "/").includes("TemplateHolders/");
-    const summaryContent = formatLayout(layout, filePath, globalLayerMap, isTemplateHolder, containerMap);
-    writeFileSync(outPath, summaryContent);
+    outputs.set(outPath, formatLayout(layout, filePath, globalLayerMap, isTemplateHolder, containerMap));
     filesWritten++;
   }
+
+  replaceOwnedOutputs(outDir, [".layout.txt"], outputs);
 
   log(`Generated ${filesWritten} layout summary files in ${outDir}`);
 }

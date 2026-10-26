@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`generate` / `regenerate`: the scripts, DSL and layout-summary generators
+  no longer delete their existing `extracted/` outputs when a run fails
+  partway** (a malformed sheet, layout or manifest). They now compute every
+  output before writing, then write them and delete only the orphans
+  (#309).
 - **`scaffold-sprite` (CLI and MCP) now finds its `--source` objectType in
   any `objectTypes/` subfolder.** It looked only at the flat
   `objectTypes/<source>.json`, so a source C3 had filed under a subfolder
