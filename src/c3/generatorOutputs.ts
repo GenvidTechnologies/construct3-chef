@@ -8,14 +8,17 @@ function foldKey(p: string): string {
   return FOLD_CASE ? resolved.toLowerCase() : resolved;
 }
 
-/** Every regular file under `dir`, recursively (directories are never listed). Empty when `dir` is absent. */
+/**
+ * Every regular file under `dir`, recursively. Empty when `dir` is absent. Links (symlinks,
+ * junctions) are neither followed nor listed, so the orphan pass never hands one to `rmSync`.
+ */
 function listFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
   const found: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) found.push(...listFiles(full));
-    else found.push(full);
+    else if (entry.isFile()) found.push(full);
   }
   return found;
 }

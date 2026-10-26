@@ -296,7 +296,7 @@ describe("generators leave extracted/ untouched when a run fails (#309)", () => 
     seed(path.join(out, "tsconfig.json"));
     writeFileSync(path.join(root, "eventSheets", "Broken.json"), "{ not json");
 
-    assert.throws(() => extractScripts(root, out, noop));
+    assert.throws(() => extractScripts(root, out, noop), /JSON/);
 
     assert.deepEqual(
       {
@@ -335,7 +335,7 @@ describe("generators leave extracted/ untouched when a run fails (#309)", () => 
     seed(path.join(out, "eventSheets", "Main.dsl.idx.txt"));
     writeFileSync(path.join(root, "eventSheets", "Broken.json"), "{ not json");
 
-    assert.throws(() => generateDSL(root, out, noop));
+    assert.throws(() => generateDSL(root, out, noop), /JSON/);
 
     assert.deepEqual(
       {
@@ -353,7 +353,7 @@ describe("generators leave extracted/ untouched when a run fails (#309)", () => 
     seed(path.join(out, "containers.txt"));
     writeFileSync(path.join(root, "layouts", "Broken.json"), "{ not json");
 
-    assert.throws(() => generateLayoutSummaries(root, out, noop));
+    assert.throws(() => generateLayoutSummaries(root, out, noop), /JSON/);
 
     assert.deepEqual(
       {
@@ -371,7 +371,7 @@ describe("generators leave extracted/ untouched when a run fails (#309)", () => 
     seed(path.join(out, "containers.txt"));
     writeFileSync(path.join(root, "project.c3proj"), "{ not json");
 
-    assert.throws(() => generateLayoutSummaries(root, out, noop));
+    assert.throws(() => generateLayoutSummaries(root, out, noop), /JSON/);
 
     assert.deepEqual(
       {

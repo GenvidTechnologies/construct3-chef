@@ -1,13 +1,17 @@
 import { strict as assert } from "node:assert";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
+  rmdirSync,
   rmSync,
   statSync,
+  symlinkSync,
+  unlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -70,7 +74,35 @@ describe("replaceOwnedOutputs", () => {
     const old = put("old.ts", "orphan");
     put("blocker", "i am a file");
     const outputs = new Map<string, string>([[path.join(dir, "blocker", "x.ts"), "x"]]);
-    assert.throws(() => replaceOwnedOutputs(dir, [".ts"], outputs));
+    assert.throws(() => replaceOwnedOutputs(dir, [".ts"], outputs), /EEXIST|ENOTDIR|ENOENT/);
     assert.ok(existsSync(old), "orphan pass must not run after a failed write");
+  });
+
+  it("SL21: a link named with an owned suffix is neither deleted nor followed", () => {
+    const target = mkdtempSync(path.join(realpathSync.native(os.tmpdir()), "chef-genout-target-"));
+    const link = path.join(dir, "Gone.ts");
+    try {
+      writeFileSync(path.join(target, "victim.ts"), "keep");
+      symlinkSync(target, link, "junction");
+      replaceOwnedOutputs(dir, [".ts"], new Map([[path.join(dir, "a.ts"), "a"]]));
+      assert.deepEqual(
+        {
+          a: readFileSync(path.join(dir, "a.ts"), "utf-8"),
+          link: lstatSync(link).isSymbolicLink(),
+          victim: readFileSync(path.join(target, "victim.ts"), "utf-8"),
+        },
+        { a: "a", link: true, victim: "keep" },
+      );
+    } finally {
+      // Remove the link itself (never its target) before the target dir.
+      if (lstatSync(link, { throwIfNoEntry: false })) {
+        try {
+          rmdirSync(link);
+        } catch {
+          unlinkSync(link);
+        }
+      }
+      rmSync(target, { recursive: true, force: true });
+    }
   });
 });
