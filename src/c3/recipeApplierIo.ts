@@ -89,6 +89,24 @@ export function createObjectTypeIo(
   return true;
 }
 
+/**
+ * Read through `io`, returning `null` only when the file does not exist (ENOENT).
+ * Any other failure rethrows. ts-defs are written by the C3 editor, so a project
+ * without them is skipped, never given one.
+ */
+function readTextIfPresent(io: SourceIo, abs: string): string | null {
+  try {
+    return io.readText(abs);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw e;
+  }
+}
+
+const SKIP_INSTANCE_TYPES =
+  "  SKIP scripts/ts-defs/instanceTypes.d.ts (not present; ts-defs are written by the C3 editor)";
+const SKIP_OBJECTS = "  SKIP scripts/ts-defs/objects.d.ts (not present; ts-defs are written by the C3 editor)";
+
 export function updateInstanceTypesIo(
   io: SourceIo,
   rootDir: string,
@@ -97,7 +115,11 @@ export function updateInstanceTypesIo(
   log: Logger,
 ): void {
   const filePath = path.join(openProject(rootDir).scriptsDir, "ts-defs/instanceTypes.d.ts");
-  const content = io.readText(filePath);
+  const content = readTextIfPresent(io, filePath);
+  if (content === null) {
+    log(SKIP_INSTANCE_TYPES);
+    return;
+  }
 
   const baseClass = PLUGIN_BASE_CLASS[objectType.plugin];
   const ivars = objectType.instanceVariables ?? [];
@@ -131,7 +153,11 @@ export function updateObjectsIo(
   log: Logger,
 ): void {
   const filePath = path.join(openProject(rootDir).scriptsDir, "ts-defs/objects.d.ts");
-  const content = io.readText(filePath);
+  const content = readTextIfPresent(io, filePath);
+  if (content === null) {
+    log(SKIP_OBJECTS);
+    return;
+  }
 
   const line = `\treadonly ${objectType.name}: IObjectType<InstanceType.${objectType.name}>;`;
 
@@ -238,7 +264,11 @@ export function processAddInstVarsIo(
     // 3. Update instanceTypes.d.ts
     if (added.length > 0) {
       const typesFile = path.join(openProject(rootDir).scriptsDir, "ts-defs/instanceTypes.d.ts");
-      const typesContent = io.readText(typesFile);
+      const typesContent = readTextIfPresent(io, typesFile);
+      if (typesContent === null) {
+        log(SKIP_INSTANCE_TYPES);
+        continue;
+      }
       const updatedTypes = addInstVarsToTypesDts(typesContent, entry.type, newVars);
       if (updatedTypes === null) {
         log(`  WARN: class "${entry.type}" not found in instanceTypes.d.ts — manual update needed`);

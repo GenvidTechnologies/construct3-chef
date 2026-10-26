@@ -23,16 +23,12 @@ import { GENERATORS } from "../../src/c3/generators.js";
  * failure is a real signal from `generateTemplateScope`, not a fluke of the
  * test setup.
  *
- * CAVEAT — read before treating a green `scripts` case as health evidence:
- * `seedProject` below writes `scripts/importsForEvents.ts` purely so
- * `extractScripts` can run far enough to reach its own `mkdirSync(outDir)`
- * call at all (it reads that file, unguarded, five lines earlier). Without
- * it, the `scripts` case fails on a missing *input* file, not a missing
- * *output* dir, and proves nothing about this property. `extractScripts`
- * still cannot run on a real project that lacks `importsForEvents.ts`
- * (issue #181, out of scope here) — this test seeds around that gap, it
- * does not close it. Do not read the `scripts` case passing as evidence
- * that `extractScripts` is healthy in general.
+ * NOTE — the seed has no `scripts/` folder. When this test was written
+ * (#178), `extractScripts` threw ENOENT on a project lacking
+ * `scripts/importsForEvents.ts` (#181), so the seed had to plant that file
+ * to let the `scripts` case reach its own `mkdirSync(outDir)`. #309 made a
+ * missing file mean zero imports, so the seed is now scripts-less and the
+ * `scripts` case runs through `GENERATORS` on it like every other entry.
  *
  * The loop below drives off `GENERATORS` itself rather than a hand-listed
  * set of the six generator functions, so a seventh generator added to the
@@ -57,9 +53,9 @@ describe("generator outDir self-sufficiency (#178)", () => {
   /**
    * Seed a throwaway C3 project root with the minimum every generator in
    * `GENERATORS` needs to run: `project.c3proj`, one valid layout, one valid
-   * objectType, an empty `eventSheets/` dir, and `scripts/importsForEvents.ts`
-   * (required by `extractScripts`, see the caveat above). Deliberately does
-   * NOT pre-create `extracted/` — that absence is the whole point of the test.
+   * objectType and an empty `eventSheets/` dir. No `scripts/` folder (see the
+   * note above). Deliberately does NOT pre-create `extracted/` — that absence
+   * is the whole point of the test.
    */
   function seedProject(): string {
     const root = mkdtempSync(path.join(os.tmpdir(), "c3chef-outdir-"));
@@ -78,10 +74,6 @@ describe("generator outDir self-sufficiency (#178)", () => {
     writeFileSync(path.join(objectTypesDir, "Hero.json"), JSON.stringify({ name: "Hero", "plugin-id": "Sprite" }));
 
     mkdirSync(path.join(root, "eventSheets"), { recursive: true });
-
-    const scriptsDir = path.join(root, "scripts");
-    mkdirSync(scriptsDir, { recursive: true });
-    writeFileSync(path.join(scriptsDir, "importsForEvents.ts"), "");
 
     return root;
   }
