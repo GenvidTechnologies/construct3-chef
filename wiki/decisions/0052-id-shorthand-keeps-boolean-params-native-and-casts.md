@@ -42,3 +42,5 @@ Keep native booleans, `String()` every other value, and cast the result to `Reco
 - The declared parameter type remains narrower than what is stored. Consumers reading `.parameters[k]` off a sheet may already see booleans.
 - Widening is deferred to the next major release, when it should be revisited; `Record<string, unknown>` is c3source's `Condition.parameters` precedent.
 - Out of scope: the `call` shorthand's stringify, since function-call params may legitimately be expression strings.
+
+**Amended 2026-10-26 ([#322](https://github.com/GenvidTechnologies/construct3-chef/issues/322)):** the `call` shorthand now follows the same decision. Booleans stay native, every other value is still stringified, so an expression string is unaffected, and the result is cast to the declared `string[]` of `FunctionCallAction.parameters` and `buildCallAction` rather than widening it. The "Out of scope" bullet above no longer holds.
