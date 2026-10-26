@@ -51,7 +51,7 @@ export type JournalEntry =
  * replay, where the on-disk apply SKIPped. A case-sensitive volume on those
  * platforms over-folds, which only turns that second CREATE into a SKIP.
  */
-const FOLD_CASE = process.platform === "win32" || process.platform === "darwin";
+export const FOLD_CASE = process.platform === "win32" || process.platform === "darwin";
 
 /**
  * In-memory overlay over disk. Writes are captured (text fixed at call time)
