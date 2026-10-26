@@ -18,9 +18,11 @@ import path from "node:path";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 
-// A script name is word characters, `:` and `-`, so trailing punctuation
-// (`npm run build.`, `npm run test,`) is not swallowed.
-const NPM_RUN = /npm run ([A-Za-z0-9_-]+(?::[A-Za-z0-9_-]+)*)/g;
+// A script name starts alphanumeric (so `npm run -- <args>` is not read as a
+// script named `--`) and continues with word characters, `:` and `-`, so
+// trailing punctuation (`npm run build.`, `npm run test,`) is not swallowed.
+// A dotted script name would be truncated at the dot; package.json has none.
+const NPM_RUN = /npm run ([A-Za-z0-9][A-Za-z0-9_-]*(?::[A-Za-z0-9_-]+)*)/g;
 
 interface Occurrence {
   file: string;
@@ -29,11 +31,9 @@ interface Occurrence {
 }
 
 function trackedSrcFiles(): string[] {
-  const out = execFileSync("git", ["ls-files", "src/"], { cwd: REPO_ROOT, encoding: "utf-8" });
-  return out
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
+  // -z: NUL-separated and unquoted, so an unusual path is read as-is.
+  const out = execFileSync("git", ["ls-files", "-z", "src/"], { cwd: REPO_ROOT, encoding: "utf-8" });
+  return out.split("\0").filter((l) => l.length > 0);
 }
 
 function occurrences(): Occurrence[] {
