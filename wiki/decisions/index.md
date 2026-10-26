@@ -164,7 +164,9 @@ See the [wiki index](../index.md) for the other sections.
   [#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256));
   does not fix
   [#181](https://github.com/GenvidTechnologies/construct3-chef/issues/181)
-  (`extractScripts` still requires a pre-existing `importsForEvents.ts`)
+  (`extractScripts` still requires a pre-existing `importsForEvents.ts`;
+  reversed by ADR 0057,
+  [#309](https://github.com/GenvidTechnologies/construct3-chef/issues/309))
   ([#178](https://github.com/GenvidTechnologies/construct3-chef/issues/178))
 * [0023. Stray files are a detection-only `[strays]` report, called standalone](0023-stray-files-are-a-detection-only-report.md) -
   C3source 2.0.0's `detectStrayFiles` surfaced as an informational `[strays]`
@@ -508,3 +510,20 @@ See the [wiki index](../index.md) for the other sections.
   only by letter case, or present in more than one location, is refused rather
   than guessed. Paths are still rejected and the clone stays flat
   ([#294](https://github.com/GenvidTechnologies/construct3-chef/issues/294))
+* [0057. Generators compute every output before touching `extracted/`](0057-generators-compute-every-output-before-touching-extracted.md) -
+  `extractScripts`, `generateDSL` and `generateLayoutSummaries` compute every
+  output in memory, then hand the set to the off-barrel `replaceOwnedOutputs`
+  (`src/c3/generatorOutputs.ts`), which writes in place, always, then deletes
+  only owned-suffix orphans, so a failing run touches nothing in `extracted/`;
+  a missing `scripts/importsForEvents.ts` (or `scripts/` folder) means zero
+  imports, answering
+  [#181](https://github.com/GenvidTechnologies/construct3-chef/issues/181);
+  rejects clean-then-write and a temp-dir rename-swap
+  ([#309](https://github.com/GenvidTechnologies/construct3-chef/issues/309))
+* [0058. Recipe apply leaves absent ts-defs to the C3 editor](0058-recipe-apply-leaves-absent-ts-defs-to-the-c3-editor.md) -
+  Apply-recipe `objectTypes` and `addInstVars` skip a missing
+  `scripts/ts-defs/instanceTypes.d.ts` or `objects.d.ts` with a `SKIP` line,
+  in dry run and apply alike, deciding each file independently and never
+  creating one, because ts-defs are editor-local and written by the C3 editor
+  on export; rejects creating stub files and failing with a clearer error
+  ([#309](https://github.com/GenvidTechnologies/construct3-chef/issues/309))

@@ -2,7 +2,7 @@
 type: decision-record
 title: "0022. `generators.ts` owns the generator inventory as a single exported source of truth"
 description: >-
-  `GENERATORS` in `src/c3/generators.ts` becomes the single source of truth for the six generators, replacing `cli.ts`'s private `GENERATOR_NAMES`/`generators` array and letting `server.ts`'s `GENERATOR_STEPS` derive rather than hand-list; this is what makes `test/c3/generatorOutDir.test.ts`'s structural "every generator creates its own outDir" guard self-extending; rejects hoisting a single `mkdirSync` into the caller and hand-enumerating generators inside the test; `recipeApplier.ts`'s fixed three-generator sequence stays deliberately unrouted (reversed by ADR 0049, [#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)); does not fix [#181](https://github.com/GenvidTechnologies/construct3-chef/issues/181) (`extractScripts` still requires a pre-existing `importsForEvents.ts`) ([#178](https://github.com/GenvidTechnologies/construct3-chef/issues/178))
+  `GENERATORS` in `src/c3/generators.ts` becomes the single source of truth for the six generators, replacing `cli.ts`'s private `GENERATOR_NAMES`/`generators` array and letting `server.ts`'s `GENERATOR_STEPS` derive rather than hand-list; this is what makes `test/c3/generatorOutDir.test.ts`'s structural "every generator creates its own outDir" guard self-extending; rejects hoisting a single `mkdirSync` into the caller and hand-enumerating generators inside the test; `recipeApplier.ts`'s fixed three-generator sequence stays deliberately unrouted (reversed by ADR 0049, [#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256)); does not fix [#181](https://github.com/GenvidTechnologies/construct3-chef/issues/181) (`extractScripts` still requires a pre-existing `importsForEvents.ts`; reversed by ADR 0057, [#309](https://github.com/GenvidTechnologies/construct3-chef/issues/309)) ([#178](https://github.com/GenvidTechnologies/construct3-chef/issues/178))
 tags: [decision, architecture]
 status: stable
 generated: { by: process:maintain-wiki, at: 2026-08-20T15:29:10Z }
@@ -103,6 +103,8 @@ lines before its own `mkdirSync(outDir)` call. `generatorOutDir.test.ts`'s
 its docstring says explicitly that a green `scripts` case here is not
 evidence `extractScripts` is healthy in general. The structural check this
 ADR backs proves outDir self-sufficiency and nothing else.
+
+**Amended by ADR [0057](0057-generators-compute-every-output-before-touching-extracted.md):** the paragraph above is superseded. #181's question is answered: `extractScripts` no longer requires `importsForEvents.ts`, and the `seedProject` helper no longer writes one ([#309](https://github.com/GenvidTechnologies/construct3-chef/issues/309)).
 
 ## Consequences
 
