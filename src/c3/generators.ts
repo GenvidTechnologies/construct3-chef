@@ -243,15 +243,29 @@ function formatExtractedFile(
   return lines.join("\n");
 }
 
+/**
+ * Read the import statements from `scripts/importsForEvents.ts`. A project without that file (or without a
+ * `scripts/` folder) has no imports to carry, so ENOENT yields `[]`; any other error is rethrown.
+ */
+function readImportStatements(scriptsDir: string, log: Logger): string[] {
+  let content: string;
+  try {
+    content = readFileSync(path.join(scriptsDir, "importsForEvents.ts"), "utf-8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    log("No scripts/importsForEvents.ts found; extracting without imports.");
+    return [];
+  }
+  return parseImportStatements(content);
+}
+
 export function extractScripts(rootDir: string, outDir: string, log: Logger = console.log) {
   const project = openProject(rootDir);
   const eventSheetsDir = project.eventSheetsDir;
   const sheetPaths = find_all_eventsheets_path(eventSheetsDir);
   log(`Found ${sheetPaths.length} eventSheet files.`);
 
-  const importStatements = parseImportStatements(
-    readFileSync(path.join(project.scriptsDir, "importsForEvents.ts"), "utf-8"),
-  );
+  const importStatements = readImportStatements(project.scriptsDir, log);
   let totalScripts = 0;
   let filesWritten = 0;
 

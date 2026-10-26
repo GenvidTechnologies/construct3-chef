@@ -461,6 +461,25 @@ describe("MCP server handler response shaping", () => {
     expect(count("failed after writing")).to.equal(0);
   });
 
+  describe("a project with no scripts/ (#309)", () => {
+    it("SL19: regenerate succeeds, clears extractedDirty and writes tsconfig.json", async () => {
+      fs.rmSync(path.join(tmp, "scripts"), { recursive: true, force: true });
+      // The fixture copy ships an extracted/tsconfig.json; remove it so the assertion sees this run's write.
+      fs.rmSync(path.join(tmp, "extracted", "tsconfig.json"), { force: true });
+      __setExtractedDirty(true);
+      const handler = __getHandler("regenerate")!;
+
+      const result = (await handler({}, makeExtra())) as any;
+
+      expect({
+        isError: result.isError === true,
+        dirty: __getExtractedDirty(),
+        tsconfig: fs.existsSync(path.join(tmp, "extracted", "tsconfig.json")),
+        text: result.isError === true ? result.content?.[0]?.text : undefined,
+      }).to.deep.equal({ isError: false, dirty: false, tsconfig: true, text: undefined });
+    });
+  });
+
   // ── 8. list-event-sheets pagination ──────────────────────────────────────
   // Fixture has 2 real event sheet entries under eventSheets/ (sorted):
   //   Event sheet 1.json, Event sheet 2.json

@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   partway** (a malformed sheet, layout or manifest). They now compute every
   output before writing, then write them and delete only the orphans
   (#309).
+- **A project without `scripts/importsForEvents.ts` (or with no `scripts/`
+  folder at all) now generates.** MCP `regenerate`, CLI `generate`, and the
+  apply / scaffold / rename paths that regenerate afterwards no longer fail
+  with ENOENT; the missing file means zero imports (#309).
 - **`scaffold-sprite` (CLI and MCP) now finds its `--source` objectType in
   any `objectTypes/` subfolder.** It looked only at the flat
   `objectTypes/<source>.json`, so a source C3 had filed under a subfolder
