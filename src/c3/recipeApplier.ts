@@ -342,7 +342,7 @@ function checkObjectTypeCreateTargets(rootDir: string, objectTypes: readonly Obj
   throw new Error(
     `objectTypes refused: ${lines.length} entr${lines.length === 1 ? "y names" : "ies name"} an objectType that already exists on disk under another spelling or folder. An objectType's identity is its name in any objectTypes/ folder, letter case ignored (ADR 0046). Nothing was written.\n` +
       lines.join("\n") +
-      `\nRe-declare it with the exact on-disk name and folder (that is a SKIP), or choose a different name.`,
+      `\nRe-declare it with the exact on-disk name and folder (a SKIP when only one objectType file has that name), or choose a different name. When several files share the name, rename or remove the extras first.`,
   );
 }
 

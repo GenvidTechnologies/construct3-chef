@@ -49,7 +49,8 @@ ADR 0046 §4 refuses a case-only match rather than resolving it, and ADR 0056 de
 
 ## Consequences
 
-- **Inputs that were accepted are now refused:** case-variant or other-folder re-declarations, escaping names and folders, in-recipe duplicate names (letter case ignored, any folder), and case-variant or ambiguous `addInstVars` types. Each fails before any write. The CHANGELOG records the change.
+- **Inputs that were accepted are now refused:** case-variant or other-folder re-declarations, escaping names and folders, an empty or non-string `folder` (an empty string or `null` used to mean the `objectTypes/` root), in-recipe duplicate names (letter case ignored, any folder), and case-variant or ambiguous `addInstVars` types. Each fails before any write. The CHANGELOG records the change.
 - A case-sensitive project with an intentional `Foo`/`foo` objectType pair can no longer create or re-declare either by recipe.
-- A folder with a `.` segment is tolerated by validation but compared literally, so it reads as a different folder and is refused rather than skipped.
+- A folder with a `.` segment, a trailing `/` or an interior `//` is tolerated by validation and POSIX-normalized before the comparison, so `folder: "images/."` re-declares `objectTypes/images/Sprite.json` as a `SKIP`. The `SKIP` line still prints the path as the recipe spelled it.
+- A name present in two or more `objectTypes/` files is refused for every entry naming it, including one at an exact path, until the extras are renamed or removed.
 - Whether C3 itself forbids same-named objectTypes in different subfolders is unverified (as ADR 0056 notes). The refusal does not depend on it.

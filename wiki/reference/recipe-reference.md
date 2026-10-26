@@ -84,7 +84,7 @@ Creates C3 data-plugin objectType files and updates TypeScript definitions in on
 
 If that `.d.ts` file is not present, the update is skipped with a `SKIP` line and nothing is created under `scripts/`.
 
-**Idempotent for an exact re-declaration only**: if the objectType already exists at the entry's own target path (same folder, same letter case), prints `SKIP` and does NOT re-update ts-defs. Dry-run behaves the same and prints no ts-def `UPDATE` lines for a skipped type.
+**Idempotent for an exact re-declaration only**: if the objectType already exists at the entry's own target path (same folder, same letter case) and no other objectType file has that name, prints `SKIP` and does NOT re-update ts-defs. Dry-run behaves the same and prints no ts-def `UPDATE` lines for a skipped type.
 
 **Refused, before anything is written** (in dry-run, `--preview` and `validate-recipe` as well as apply): a `name` that matches an existing objectType in another subfolder, or only by letter case, or in more than one place. The error lists the on-disk paths. A `name` that is not one path segment (empty, containing `/`, `\` or `:`, `.`, `..`, or only dots and spaces) is refused, as is a `folder` that is empty, not a string, absolute or drive-lettered, has a `..` segment, or has a `:` or dots-and-spaces segment (a trailing `/` or interior `//` in a folder is tolerated). Two entries in one recipe whose names are equal ignoring letter case, in any folder, are refused with one error per group ([#274](https://github.com/GenvidTechnologies/construct3-chef/issues/274), [ADR 0059](../decisions/0059-recipe-objecttypes-create-uses-the-objecttype-identity.md)).
 

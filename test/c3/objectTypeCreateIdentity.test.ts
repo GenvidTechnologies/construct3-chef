@@ -65,6 +65,8 @@ describe("objectType create identity (#274)", () => {
       assert.isUndefined(objectTypeEntryIssue("Widget", "sub/"), "a trailing slash is tolerated");
       assert.isUndefined(objectTypeEntryIssue("Widget", "a//b"), "an interior // is tolerated");
       assert.isUndefined(objectTypeEntryIssue("My.Widget v2", "a.b"));
+      // An interior ".." inside one name is a filename, not a path segment, so it cannot escape (#274 R1 amendment).
+      assert.isUndefined(objectTypeEntryIssue("Foo..Bar", undefined));
     });
 
     it("OT274-R1: refuses bad names", () => {
@@ -259,6 +261,9 @@ describe("objectType create identity (#274)", () => {
           { name: "NavButton", plugin: "Json" },
           { name: "Sprite", plugin: "Json", folder: "images" },
           { name: "Sprite", plugin: "Json", folder: "images/" },
+          { name: "Sprite", plugin: "Json", folder: "images/." },
+          { name: "Sprite", plugin: "Json", folder: "./images" },
+          { name: "NavButton", plugin: "Json", folder: "." },
         ]) {
           const before = snapshotTree(tmp);
           const lines = logsOf({ objectTypes: [entry] }, dryRun);
