@@ -21,6 +21,7 @@ import { listAddons, formatAddonInventory } from "../../src/c3/addonInventory.js
 import { syncAddonMetadata, formatAddonMetadataSync, type AddonSyncResult } from "../../src/c3/addonMetadataSync.js";
 import { SID_SOURCE_DIRS } from "../../src/c3/generators.js";
 import { reportStrayFiles, runSync } from "../../src/c3/projectSync.js";
+import { buildScenario, cleanupScenarios } from "../helpers/syncScenarios.js";
 import { seedManifestDrift } from "../helpers/seedManifestDrift.js";
 import { runCli } from "../helpers/runCli.js";
 import {
@@ -2400,5 +2401,80 @@ describe("MCP server project-scoped tool registration (#95)", () => {
     expect(config, "list-projects: no registered tool config").to.exist;
     const inputSchema = config!.inputSchema as Record<string, z.ZodTypeAny> | undefined;
     expect(inputSchema?.project, "list-projects unexpectedly gained a 'project' param").to.be.undefined;
+  });
+});
+
+// ── #310: sync-project bumps txId only when it wrote ─────────────────────────
+
+describe("sync-project txId bump (#310)", function () {
+  this.timeout(30_000);
+  let tmp: string | undefined;
+  let watcher: FakeWatcher;
+
+  beforeEach(() => {
+    watcher = makeFakeWatcher(5);
+  });
+
+  afterEach(() => {
+    if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+    tmp = undefined;
+    cleanupScenarios();
+    __resetTestState();
+  });
+
+  function pointAt(root: string): void {
+    __setProjectRoot(root);
+    __setTestWatcher(watcher as any);
+    __setExtractedDirty(false);
+  }
+
+  const tokenOf = (text: string): string | undefined => /txId: (\S+)/.exec(text)?.[1];
+
+  it("I310-M1: sync-project on a pristine fixture copy does not bump txId", async () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "c3chef-i310-"));
+    fs.cpSync(FIXTURE_DIR, tmp, { recursive: true });
+    pointAt(tmp);
+    const result = (await __getHandler("sync-project")!({ txId: "default:5" }, makeExtra())) as any;
+    expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+    expect({ bumped: watcher.bumped, token: tokenOf(result.content[0].text) }).to.deep.equal({
+      bumped: 0,
+      token: "default:5",
+    });
+  });
+
+  it("I310-M2: sync-project with drift bumps txId and changes the manifest", async () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "c3chef-i310-"));
+    fs.cpSync(FIXTURE_DIR, tmp, { recursive: true });
+    fs.copyFileSync(path.join(tmp, "layouts", "Templates Layout.json"), path.join(tmp, "layouts", "Extra277.json"));
+    const before = fs.readFileSync(path.join(tmp, "project.c3proj"));
+    pointAt(tmp);
+    const result = (await __getHandler("sync-project")!({ txId: "default:5" }, makeExtra())) as any;
+    expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+    expect({
+      bumped: watcher.bumped,
+      manifestChanged: !fs.readFileSync(path.join(tmp, "project.c3proj")).equals(before),
+    }).to.deep.equal({ bumped: 1, manifestChanged: true });
+  });
+
+  it("I310-M3: F0 through MCP is in sync for validate-project and sync-project", async () => {
+    const { root } = buildScenario("F0");
+    pointAt(root);
+    const validated = (await __getHandler("validate-project")!({}, makeExtra())) as any;
+    const vText: string = validated.content[0].text;
+    const synced = (await __getHandler("sync-project")!({ txId: "default:5" }, makeExtra())) as any;
+    const sText: string = synced.content[0].text;
+    expect({
+      validateIsError: validated.isError === true,
+      validateTimelinesNoChanges: /\[timelines\][^\n]*\(no changes\)/.test(vText),
+      syncIsError: synced.isError === true,
+      syncHasUpdated: sText.includes("Updated"),
+      bumped: watcher.bumped,
+    }).to.deep.equal({
+      validateIsError: false,
+      validateTimelinesNoChanges: true,
+      syncIsError: false,
+      syncHasUpdated: false,
+      bumped: 0,
+    });
   });
 });
