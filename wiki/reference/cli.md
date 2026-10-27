@@ -223,7 +223,7 @@ Replacements are sorted longest-first to prevent substring corruption.
 
 ## validate-project
 
-Dry-run check that `project.c3proj` matches files on disk. Exits with code 1 if drift is detected, or if `--fail-on-strays` is passed and any stray file is reported.
+Dry-run check that `project.c3proj` matches files on disk. Exits with code 1 if drift is detected, or if `--fail-on-strays` is passed and any stray file is reported. Drift excludes the nameless timelines `transitions` container, which C3 always saves, so a missing directory for that container is never reported as drift ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310)).
 
 If `project.c3proj` is missing or fails to parse, `validate-project` no longer crashes with a raw stack trace: it prints a one-line error message to stderr and still emits the `[images]` and `[strays]` reports on stdout below, exiting 1. Those two reports never read `project.c3proj`, so they still run and are still worth reading on a project you're trying to fix.
 
@@ -262,7 +262,7 @@ npx construct3-chef sync-project [--section <section>] [--project-dir <path>]
 | ------ | ----------- |
 | `--section <section>` | Only sync one section |
 
-Run this after adding or removing files in tracked C3 directories (event sheets, layouts, object types, scripts, etc.).
+Run this after adding or removing files in tracked C3 directories (event sheets, layouts, object types, scripts, etc.). It writes `project.c3proj` only when the synced manifest differs from the one it read. A run with nothing to change leaves the file's bytes alone and logs no `Updated` line, and the MCP `sync-project` tool bumps the project's `txId` only when it wrote ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310), ADR [`0061`](../decisions/0061-sync-treats-the-timelines-transitions-container-as-always-present.md)). Drift in the timelines section is resolved the way the manifest is laid out: the nameless direct child of the timelines root is the `transitions` container, and other nameless subfolders are transparent. A drift entry sync cannot resolve is an error, not a silent skip.
 
 Like `validate-project`, it emits the detection-only `[images]` drift report after syncing — so a direct sync (without a prior validate) still surfaces image drift. Sync never *acts* on image drift; images aren't a manifest section.
 
