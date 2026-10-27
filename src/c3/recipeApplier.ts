@@ -16,7 +16,14 @@ import type { Logger } from "@genvidtech/mcp-utils";
 import { escapeRegExp } from "@genvidtech/mcp-utils";
 import type { ApplyOptions } from "./types.js";
 import type { EventSheet, EventSheetEvent, SidSlot } from "@genvidtech/c3source";
-import { find_all_eventsheets_path, findSid, validateForEditor, openProject } from "@genvidtech/c3source";
+import {
+  find_all_eventsheets_path,
+  find_all_objectTypes_path,
+  findSid,
+  validateForEditor,
+  openProject,
+} from "@genvidtech/c3source";
+import { decideObjectTypeCreate } from "./objectTypeIdentity.js";
 import {
   type Recipe,
   type ObjectTypeCreate,
@@ -312,6 +319,30 @@ function checkCreateTargets(rootDir: string, files: NonNullable<Recipe["files"]>
     `files CREATE refused: ${lines.length} target(s) already exist on disk, and { "create": true } never overwrites an existing event sheet. Nothing was written.\n` +
       lines.join("\n") +
       `\nTo edit an existing sheet, give its files entry an ops array instead, e.g. [{ "op": "insert-event", ... }].`,
+  );
+}
+
+/**
+ * Refuse a recipe objectType whose name already exists on disk under a different spelling or folder (#274, ADR 0046).
+ * An exact re-declaration (same folder, same letter case) is left for createObjectTypeIo to SKIP. Runs before any
+ * dry-run output or write, so validate-recipe / --preview refuse exactly like apply.
+ */
+function checkObjectTypeCreateTargets(rootDir: string, objectTypes: readonly ObjectTypeCreate[]): void {
+  const objectTypesDir = openProject(rootDir).objectTypesDir;
+  const listing = existsSync(objectTypesDir)
+    ? find_all_objectTypes_path(objectTypesDir).map((p) => path.relative(rootDir, p).split(path.sep).join("/"))
+    : [];
+  const lines: string[] = [];
+  for (const entry of objectTypes) {
+    const target = path.posix.normalize(getObjectTypePath(entry));
+    const decision = decideObjectTypeCreate(listing, target, entry.name);
+    if (decision.kind === "refuse") lines.push(`  - ${target} (on disk: ${decision.onDisk.join(" | ")})`);
+  }
+  if (lines.length === 0) return;
+  throw new Error(
+    `objectTypes refused: ${lines.length} entr${lines.length === 1 ? "y names" : "ies name"} an objectType that already exists on disk under another spelling or folder. An objectType's identity is its name in any objectTypes/ folder, letter case ignored (ADR 0046). Nothing was written.\n` +
+      lines.join("\n") +
+      `\nRe-declare it with the exact on-disk name and folder (a SKIP when only one objectType file has that name), or choose a different name. When several files share the name, rename or remove the extras first.`,
   );
 }
 
@@ -735,6 +766,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
   // Steps 1–2 write anything. (a) a files CREATE must not target an existing
   // sheet (#249); (b) a move-variable global → local demotion is only valid when
   // the global is not referenced from other event sheets.
+  if (recipe.objectTypes && recipe.objectTypes.length > 0) checkObjectTypeCreateTargets(rootDir, recipe.objectTypes);
   if (recipe.files && Object.keys(recipe.files).length > 0) {
     checkCreateTargets(rootDir, recipe.files, getSpellingListing);
     checkMoveVariableDemotions(rootDir, recipe.files, log);
@@ -755,9 +787,11 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
     if (recipe.objectTypes && recipe.objectTypes.length > 0) {
       log("objectTypes:");
       for (const ot of recipe.objectTypes) {
-        createObjectType(sidGen, rootDir, ot, true, log);
-        updateInstanceTypes(rootDir, ot, true, log);
-        updateObjects(rootDir, ot, true, log);
+        // Same as apply (Step 1): the ts-def updates run only for a type the create actually creates.
+        if (createObjectType(sidGen, rootDir, ot, true, log)) {
+          updateInstanceTypes(rootDir, ot, true, log);
+          updateObjects(rootDir, ot, true, log);
+        }
       }
       log();
     }

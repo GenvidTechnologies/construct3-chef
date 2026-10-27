@@ -28,6 +28,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A recipe `objectTypes` CREATE and an `addInstVars` `type` now use one
+  objectType identity (basename, any subfolder, letter case ignored).**
+  A `name` matching an existing objectType in another subfolder or only by
+  letter case is refused with the on-disk paths before anything is written,
+  in dry-run, `--preview` and `validate-recipe` as well as apply; only an
+  exact re-declaration (same folder, same case) is still a `SKIP`. Before,
+  a case variant `SKIP`ped or created a duplicate depending on the host's
+  filesystem, and the same name in another folder created a duplicate on
+  every host. **Previously accepted inputs are now refused:** case-variant
+  or other-folder re-declarations; a `name` that is not one path segment or
+  a `folder` that escapes `objectTypes/` (apply used to write above the
+  project root); an empty or `null` `folder`, which used to mean the root;
+  two entries with the same name, letter case ignored, in
+  any folder; and an
+  `addInstVars` `type` that matches only by case or names more than one
+  file. The dry-run log no longer prints ts-def `UPDATE` lines for a
+  skipped type, which apply never wrote (#274).
 - **MCP "not found" and startup hints no longer name a script that does
   not exist.** `read-template-scope` and `read-sid-registry` told you to
   run `npm run generate-c3`, which `package.json` has never defined; they

@@ -527,3 +527,11 @@ See the [wiki index](../index.md) for the other sections.
   editor-local and written by the C3 editor on export; rejects creating stub
   files and failing with a clearer error
   ([#309](https://github.com/GenvidTechnologies/construct3-chef/issues/309))
+* [0059. Recipe objectTypes CREATE uses the objectType identity](0059-recipe-objecttypes-create-uses-the-objecttype-identity.md) -
+  A recipe `objectTypes` entry and an `addInstVars` `type` now resolve through
+  the one objectType identity (basename, any subfolder, letter case ignored).
+  Only an exact re-declaration at the entry's own path is a `SKIP`; a
+  near-match is refused before anything is written, in dry-run and apply
+  alike. Names and folders that escape `objectTypes/`, and in-recipe duplicate
+  names, are refused by `validateRecipe`
+  ([#274](https://github.com/GenvidTechnologies/construct3-chef/issues/274))

@@ -15,6 +15,29 @@ export function objectTypeNameMatches(listing: readonly string[], name: string):
   return listing.filter((p) => path.basename(p).toLowerCase() === want);
 }
 
+export type ObjectTypeCreateDecision =
+  | { kind: "create" } // zero matches on disk
+  | { kind: "skip"; path: string } // exactly one match, and it is the entry's own target, letter case included
+  | { kind: "refuse"; onDisk: string[] }; // a case variant, another folder, a folder-case variant, or 2+ matches
+
+/**
+ * Decide what a recipe objectType entry may do against the existing listing (#274, ADR 0046 §4: refuse rather than
+ * resolve). `listing` and `targetPath` must be spelled the same way, both root-relative with "/" separators
+ * (e.g. `objectTypes/images/Sprite.json`); both are POSIX-normalized here, so a doubled or trailing "/" in a folder
+ * does not matter. Letter case is compared exactly. Pure: no I/O.
+ */
+export function decideObjectTypeCreate(
+  listing: readonly string[],
+  targetPath: string,
+  name: string,
+): ObjectTypeCreateDecision {
+  const matches = objectTypeNameMatches(listing, name);
+  if (matches.length === 0) return { kind: "create" };
+  const want = path.posix.normalize(targetPath);
+  if (matches.length === 1 && path.posix.normalize(matches[0]!) === want) return { kind: "skip", path: matches[0]! };
+  return { kind: "refuse", onDisk: matches };
+}
+
 export type ObjectTypeLookup =
   | { kind: "found"; path: string } // exactly one match, exact spelling
   | { kind: "not-found" } // zero matches

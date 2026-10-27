@@ -143,8 +143,6 @@ describe("recipe apply behaviour pins (#255)", () => {
       "\n--- Dry run (no files written) ---\n",
       "objectTypes:",
       "  SKIP objectTypes/Text.json (already exists)",
-      "  UPDATE scripts/ts-defs/instanceTypes.d.ts",
-      "  UPDATE scripts/ts-defs/objects.d.ts",
       "",
       "\nValidation passed. Run without --dry-run to apply.",
     ]);
@@ -163,6 +161,28 @@ describe("recipe apply behaviour pins (#255)", () => {
       "",
       "\nValidation passed. Run without --dry-run to apply.",
     ]);
+  });
+
+  it("OT274-R8: dry-run logs no ts-def UPDATE for an exact re-declaration, and both for a new objectType", () => {
+    const tsDefLines = (recipe: unknown) =>
+      run(tmp, recipe, true).lines.filter(
+        (l) =>
+          l.includes("SKIP objectTypes/") || l.includes("CREATE objectTypes/") || l.includes("UPDATE scripts/ts-defs/"),
+      );
+    assert.deepEqual(
+      {
+        redeclared: tsDefLines({ objectTypes: [{ name: "Text", plugin: "Json" }] }),
+        created: tsDefLines({ objectTypes: [{ name: "FreshJ", plugin: "Json" }] }),
+      },
+      {
+        redeclared: ["  SKIP objectTypes/Text.json (already exists)"],
+        created: [
+          "  CREATE objectTypes/FreshJ.json (plugin: Json)",
+          "  UPDATE scripts/ts-defs/instanceTypes.d.ts",
+          "  UPDATE scripts/ts-defs/objects.d.ts",
+        ],
+      },
+    );
   });
 
   it("C5: apply and dry-run check a CREATEd sheet in different orders", () => {
@@ -343,29 +363,26 @@ describe("a refused apply writes nothing (#279)", () => {
     assert.deepEqual(changedFiles(before, snapshotTree(tmp)), []);
   });
 
-  it("a second objectType differing only in letter case does what the filesystem does (review of #279)", () => {
-    // The overlay must match paths the way the disk it stands in front of does. Before the overlay, the
-    // second CREATE saw the first one's file on disk: SKIP on a case-insensitive filesystem, a second file
-    // on a case-sensitive one. Matching case-sensitively on Windows let it CREATE and then overwrite.
-    const caseInsensitive = process.platform === "win32" || process.platform === "darwin";
-    const r = run(tmp, {
+  it("a second objectType differing only in letter case is refused on every host, writing nothing (review of #279, #274)", () => {
+    // Was host-dependent (#279): SKIP on a case-insensitive filesystem, a second file on a case-sensitive one.
+    // #274 makes validateRecipe refuse the pair up front, so there is no per-host behaviour left to pin.
+    const recipe = {
       objectTypes: [
         { name: "ProbeCase", plugin: "Json" },
         { name: "probecase", plugin: "Json" },
       ],
-    });
-    assert.isUndefined(r.err);
-    const first = JSON.parse(readFileSync(path.join(tmp, "objectTypes", "ProbeCase.json"), "utf-8")) as {
-      name: string;
     };
-    if (caseInsensitive) {
-      assert.include(r.lines, "  SKIP objectTypes/probecase.json (already exists)");
-      assert.equal(first.name, "ProbeCase", "the first objectType must not be overwritten");
-    } else {
-      assert.notInclude(r.lines, "  SKIP objectTypes/probecase.json (already exists)");
-      assert.equal(first.name, "ProbeCase");
-      assert.isTrue(existsSync(path.join(tmp, "objectTypes", "probecase.json")));
+    const before = snapshotTree(tmp);
+    const applied = run(tmp, recipe);
+    const dry = run(tmp, recipe, true);
+    for (const r of [applied, dry]) {
+      assert.isDefined(r.err);
+      assert.include(r.err!.message, '"ProbeCase", "probecase"');
     }
+    assert.equal(applied.err!.message, dry.err!.message);
+    assert.isFalse(existsSync(path.join(tmp, "objectTypes", "ProbeCase.json")));
+    assert.isFalse(existsSync(path.join(tmp, "objectTypes", "probecase.json")));
+    assert.deepEqual(changedFiles(before, snapshotTree(tmp)), []);
   });
 
   it("C6: an addInstVars failure after a new objectType leaves the objectType and ts-defs unwritten", () => {

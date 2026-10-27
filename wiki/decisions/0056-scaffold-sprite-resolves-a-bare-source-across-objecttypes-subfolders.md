@@ -60,6 +60,6 @@ Considered and dropped:
 
 - **Inputs that were accepted are now refused.** A source that matches only by letter case (previously host-dependent; Windows accepted it), a name present in more than one location (previously a silent flat or first hit), and `*.uistate` or `tsconfig` names (previously cloned). Each exits 1 with nothing written. The CHANGELOG records the change.
 - **A bare name now reaches objectTypes in subfolders**, so every object type on the canonical fixture can be cloned, including those with images.
-- **`findObjectTypeFileIo` is unchanged.** The `addInstVars` lookup (`recipeApplierIo.ts`, reachable from the barrel as `findObjectTypeFile`) keeps its exact-match, first-hit behaviour. Aligning it is #274, which can adopt the helper through `io.listObjectTypeFiles`.
+- **`findObjectTypeFileIo` is unchanged.** The `addInstVars` lookup (`recipeApplierIo.ts`, reachable from the barrel as `findObjectTypeFile`) keeps its exact-match, first-hit behaviour. Aligning it is #274, which can adopt the helper through `io.listObjectTypeFiles`. *(Resolved by ADR [0059](0059-recipe-objecttypes-create-uses-the-objecttype-identity.md): the `addInstVars` lookup is now aligned, while `findObjectTypeFile` itself remains unchanged.)*
 - The test copy-ups that planted a flat source are removed; left in place, each would now read as ambiguous.
 - Whether C3 itself forbids same-named objectTypes in different subfolders is unverified. The refusal does not depend on it: an ambiguous name is refused either way.

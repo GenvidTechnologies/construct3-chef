@@ -54,7 +54,14 @@ import {
 } from "./eventSheetMutator.js";
 
 import type { SidGenerator } from "./sidUtils.js";
-import { canonicalizeRecipeKey, collisionMessage, identity, keyIssue, type RecipeKeySection } from "./recipeKeys.js";
+import {
+  canonicalizeRecipeKey,
+  collisionMessage,
+  identity,
+  keyIssue,
+  objectTypeEntryIssue,
+  type RecipeKeySection,
+} from "./recipeKeys.js";
 
 // ─── Part 1: Recipe Format Types ───
 
@@ -2669,17 +2676,43 @@ export function validateRecipe(recipe: Recipe): string[] {
     if (!Array.isArray(recipe.objectTypes)) {
       errors.push('recipe.objectTypes must be an array. Expected: [{ "name": "FooJSON", "plugin": "Json" }]');
     } else {
+      const identityGroups = new Map<string, Array<{ name: string; folder: string | undefined }>>();
       for (let i = 0; i < recipe.objectTypes.length; i++) {
         const entry = recipe.objectTypes[i] as unknown as Record<string, unknown>;
         if (!entry.name || typeof entry.name !== "string") {
           errors.push(
             `objectTypes[${i}]: missing or invalid "name" field. Expected: { "name": "FooJSON", "plugin": "Json" }`,
           );
+        } else if (entry.folder !== undefined && typeof entry.folder !== "string") {
+          errors.push(`objectTypes[${i}]: "folder" must be a string`);
+        } else {
+          const issue = objectTypeEntryIssue(entry.name, entry.folder as string | undefined);
+          if (issue !== undefined) {
+            errors.push(`objectTypes[${i}]: ${issue}`);
+          } else {
+            const key = entry.name.toLowerCase();
+            const group = identityGroups.get(key) ?? [];
+            group.push({ name: entry.name, folder: entry.folder as string | undefined });
+            identityGroups.set(key, group);
+          }
         }
         const validPlugins = ["Json", "Dictionary", "Arr"];
         if (!entry.plugin || !validPlugins.includes(entry.plugin as string)) {
           errors.push(`objectTypes[${i}]: "plugin" must be one of: Json, Dictionary, Arr`);
         }
+      }
+      // #274: an objectType's identity is its name alone, in any folder, ignoring letter case.
+      for (const group of identityGroups.values()) {
+        if (group.length < 2) continue;
+        const caseOnly = new Set(group.map((g) => g.name)).size > 1;
+        const note = caseOnly ? " (letter case is ignored)" : "";
+        const quoted = group
+          .map((g) => JSON.stringify(g.folder === undefined ? g.name : `${g.folder}/${g.name}`))
+          .join(", ");
+        errors.push(
+          `objectTypes: ${group.length} entries name the same objectType ${JSON.stringify(group[0]!.name)}${note} — ${quoted}. ` +
+            "Merge them into one entry.",
+        );
       }
     }
   }

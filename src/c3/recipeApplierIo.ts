@@ -5,6 +5,7 @@ import type { ObjectTypeCreate, AddInstVarsEntry } from "./recipeInterpreter.js"
 import type { SidGenerator } from "./sidUtils.js";
 import { serializeSourceJson } from "./sourceJson.js";
 import type { SourceIo } from "./sourceIo.js";
+import { lookupObjectTypeByName } from "./objectTypeIdentity.js";
 import {
   addInstVarsToObjectType,
   addInstVarsToLayout,
@@ -184,6 +185,13 @@ export function findObjectTypeFileIo(io: SourceIo, rootDir: string, typeName: st
   return null;
 }
 
+function caseMismatchMessage(type: string, relPath: string): string {
+  return (
+    `addInstVars: objectType "${type}" matches ${relPath} only when letter case is ignored; ` +
+    `a type must use the on-disk spelling, since letter case is ignored for identity (ADR 0046)`
+  );
+}
+
 export function processAddInstVarsIo(
   io: SourceIo,
   sidGen: SidGenerator,
@@ -206,6 +214,16 @@ export function processAddInstVarsIo(
     // logged the would-be create, so we just merge addInstVars into the
     // pending entry's variable list (no layout instances exist for a
     // brand-new type, and updateInstanceTypes will declare the class).
+    if (dryRun) {
+      // Apply sees the created file in the overlay and refuses a case-only match; dry-run must refuse it too.
+      // The message is byte-identical to apply's case-mismatch refusal below.
+      const variant = [...pending.values()].find(
+        (o) => o.name !== entry.type && o.name.toLowerCase() === entry.type.toLowerCase(),
+      );
+      if (variant !== undefined && !pending.has(entry.type)) {
+        throw new Error(caseMismatchMessage(entry.type, getObjectTypePath(variant)));
+      }
+    }
     if (dryRun && pending.has(entry.type)) {
       const ot = pending.get(entry.type)!;
       const existing = new Set((ot.instanceVariables ?? []).map((v) => v.name));
@@ -219,10 +237,21 @@ export function processAddInstVarsIo(
     }
 
     // 1. Update objectType JSON
-    const objectTypeFile = findObjectTypeFileIo(io, rootDir, entry.type);
-    if (!objectTypeFile) {
+    const rel = (p: string) => path.relative(rootDir, p).replace(/\\/g, "/");
+    const lookup = lookupObjectTypeByName(io.listObjectTypeFiles(openProject(rootDir).objectTypesDir), entry.type);
+    if (lookup.kind === "not-found") {
       throw new Error(`addInstVars: objectType "${entry.type}" not found under objectTypes/`);
     }
+    if (lookup.kind === "case-mismatch") {
+      throw new Error(caseMismatchMessage(entry.type, rel(lookup.onDisk)));
+    }
+    if (lookup.kind === "ambiguous") {
+      throw new Error(
+        `addInstVars: objectType "${entry.type}" is ambiguous, ${lookup.matches.length} files match: ` +
+          `${lookup.matches.map(rel).join(", ")}`,
+      );
+    }
+    const objectTypeFile = lookup.path;
     const relOtPath = path.relative(rootDir, objectTypeFile).replace(/\\/g, "/");
 
     const objectType = JSON.parse(io.readText(objectTypeFile));
