@@ -4,6 +4,7 @@ import tmp from "tmp";
 import { mkdirSync, writeFileSync, readFileSync, cpSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildScenario, cleanupScenarios } from "./helpers/syncScenarios.js";
 import {
   detectManifestDrift,
   detectImageDrift,
@@ -820,5 +821,30 @@ describe("syncC3Proj", () => {
       assert.equal(result.clean, false, "seeding bug: no drift");
       assert.equal(calls, 0);
     });
+  });
+});
+
+describe("timelines transitions container (#310)", () => {
+  afterEach(cleanupScenarios);
+
+  it("I310-T1: upstream detectManifestDrift still reports the nameless container as folder-missing only when its dir is absent", () => {
+    const timelinesEntries = (root: string) =>
+      detectManifestDrift(root).sections.find((s) => s.section === "timelines")?.entries ?? [];
+    const f0 = timelinesEntries(buildScenario("F0").root);
+    const f1 = timelinesEntries(buildScenario("F1").root);
+    assert.deepEqual(
+      {
+        f0Timelines: f0.map((e) => ({ kind: e.kind, name: e.name, manifestPath: e.manifestPath })),
+        f1HasTimelines: f1.length > 0,
+      },
+      {
+        f0Timelines: [{ kind: "folder-missing", name: "transitions", manifestPath: ["transitions"] }],
+        f1HasTimelines: false,
+      },
+      "TRIPWIRE: upstream detectManifestDrift changed its answer on the nameless timelines container. " +
+        "When this goes red, upstream (GenvidTechnologies/c3source#97) has shipped: delete the local bridge " +
+        "isTransitionsContainerFolderMissing in src/c3/projectSync.ts plus this test, and revert-confirm " +
+        "the I310 convergence tests.",
+    );
   });
 });
