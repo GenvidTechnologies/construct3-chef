@@ -558,9 +558,9 @@ export function applyNameDrift(
 // timelines container on every save even when there is no transitions/ dir, so its
 // absence on disk is not drift, yet upstream detectManifestDrift reports it as
 // folder-missing. Fires whatever the container holds.
-// Retire it: delete this function, its call in runSync, and the `I310-T1:` tripwire,
-// then revert-confirm the I310 convergence tests -- when I310-T1 goes red after a
-// c3source bump.
+// Retire it when I310-T1 goes red after a c3source bump: delete this function, its call
+// in runSync, and the `I310-T1:` tripwire, then confirm the I310 convergence tests
+// (I310-R1, I310-R2, I310-C1) stay green on upstream's rule alone.
 function isTransitionsContainerFolderMissing(folder: NameFolder, entry: DriftEntry, sectionKey: string): boolean {
   if (sectionKey !== "timelines" || entry.kind !== "folder-missing") return false;
   const manifestPath = entry.manifestPath ?? [];

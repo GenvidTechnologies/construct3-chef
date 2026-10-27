@@ -20,7 +20,7 @@ generated: { by: process:tech-writer, at: 2026-10-27T00:00:00Z }
 - **Status:** Accepted
 - **Date:** 2026-10-27
 - **Issues:** [#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310). Upstream request: [c3source#97](https://github.com/GenvidTechnologies/c3source/issues/97).
-- **Supersedes:** the description of `sync-project`'s MCP bump as unconditional in ADR [0017](0017-sync-addon-metadata-separate-mutation-command.md).
+- **Supersedes:** the description of `sync-project`'s MCP bump as unconditional in ADR [0017](0017-sync-addon-metadata-separate-mutation-command.md), and ADR [0048](0048-a-failed-mcp-mutation-reports-what-it-may-have-written.md)'s statement that `sync-project` bumps the txId after the write (it now bumps only when it reports `wrote`).
 - **Relates to:** ADR [0006](0006-upstream-ownership-boundary-and-adoption-posture.md), ADR [0023](0023-stray-files-are-a-detection-only-report.md), ADR [0030](0030-c3-source-json-written-without-a-trailing-newline.md), ADR [0048](0048-a-failed-mcp-mutation-reports-what-it-may-have-written.md).
 
 ## Context
@@ -62,5 +62,6 @@ Separately, `runSync` wrote `project.c3proj` and logged `Updated` on every succe
 - **Public-API changes.** `SyncResult.wrote` is additive. `applyNameDrift` throwing on an unresolvable entry is a behaviour change for callers of the barrel-exported function that passed such an entry.
 - **A no-op sync is now a no-op.** It leaves the file's bytes alone, logs no `Updated` line, and leaves the MCP `txId` unchanged. A client that relied on `sync-project` always advancing the token no longer gets that.
 - **Nameless subfolders outside timelines are covered too,** by the same transparent-segment rule.
+- **A duplicated container is collapsed to one.** Upstream emits one `folder-missing ["transitions"]` entry per nameless timelines root child, and the bridge drops only one. A manifest with two such containers and no directory therefore loses the second on sync, leaving the single container C3 itself saves, after which validate is clean. This is not the rejected "converge by deletion": the container C3 writes survives.
 - **Out of scope: an already-corrupted manifest is not repaired.** A manifest an earlier sync corrupted (an empty nameless container plus a `{name:"transitions",items:[…]}` sibling, with the directory present) shows no drift upstream, so nothing detects or repairs it. That is tracked as a follow-up, not handled here.
 - **Failure bookkeeping is unchanged.** `sync-project` writes only `project.c3proj`, as its last step, so ADR 0048's ledger is still not needed for it.
