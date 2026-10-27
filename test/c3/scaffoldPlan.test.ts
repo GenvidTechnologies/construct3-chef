@@ -17,6 +17,9 @@ import * as path from "node:path";
 
 import { collectAllObjectTypeSids, collectMaxImageSpriteId } from "../../src/c3/spriteScaffold.js";
 import {
+  formatScaffoldEmptyInput,
+  formatScaffoldOutputNotJson,
+  formatScaffoldSourceNotFile,
   formatScaffoldNameRejection,
   formatScaffoldPathRejection,
   formatScaffoldSourceAmbiguous,
@@ -155,6 +158,50 @@ describe("scaffoldPlan (T26, #259)", function () {
       expect(r.ok).to.equal(true);
       if (r.ok) expect(r.outPath).to.equal(path.join(layoutsDir(), "..cache.json"));
     });
+  });
+
+  describe("input guards (#267)", () => {
+    for (const pathBase of ["layouts", "project-root"] as const) {
+      const prefix = pathBase === "layouts" ? "" : "layouts/";
+      const before = (): Map<string, string> => snapshotTree(tmp);
+
+      it(`SI267-R4: ${pathBase} base: empty name is rejected with the shared message`, () => {
+        const snap = before();
+        const r = planLayoutScaffold(layoutOpts(pathBase, { name: "" })) as ScaffoldRejection;
+        expect(r.ok).to.equal(false);
+        expect(r.message).to.equal(formatScaffoldEmptyInput("name"));
+        expect(snapshotTree(tmp)).to.deep.equal(snap);
+      });
+
+      it(`SI267-R5: ${pathBase} base: empty eventSheet is rejected with the shared message`, () => {
+        const snap = before();
+        const r = planLayoutScaffold(layoutOpts(pathBase, { eventSheet: "" })) as ScaffoldRejection;
+        expect(r.ok).to.equal(false);
+        expect(r.message).to.equal(formatScaffoldEmptyInput("event sheet"));
+        expect(snapshotTree(tmp)).to.deep.equal(snap);
+      });
+
+      for (const bad of ["Foo/", "Foo", "Foo.JSON"]) {
+        it(`SI267-R6: ${pathBase} base: output '${prefix}${bad}' is rejected as not a .json file`, () => {
+          const out = prefix + bad;
+          const r = planLayoutScaffold(layoutOpts(pathBase, { out })) as ScaffoldRejection;
+          expect(r.ok).to.equal(false);
+          expect(r.message).to.equal(formatScaffoldOutputNotJson(out));
+        });
+      }
+
+      it(`SI267-R6: ${pathBase} base: accept control: output '${prefix}Foo.json' plans`, () => {
+        const r = planLayoutScaffold(layoutOpts(pathBase, { out: prefix + "Foo.json" }));
+        expect(r.ok, JSON.stringify(r)).to.equal(true);
+      });
+
+      it(`SI267-R7: ${pathBase} base: a directory source is rejected naming the path, never EISDIR`, () => {
+        const r = planLayoutScaffold(layoutOpts(pathBase, { source: prefix + "Gameplay" })) as ScaffoldRejection;
+        expect(r.ok).to.equal(false);
+        expect(r.message).to.equal(formatScaffoldSourceNotFile("layouts/Gameplay"));
+        expect(r.message).to.not.include("EISDIR");
+      });
+    }
   });
 
   describe("check order", () => {

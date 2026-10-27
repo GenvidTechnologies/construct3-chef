@@ -12,9 +12,9 @@
  * `src/index.ts`, since a barrel export is a permanent public-API commitment.
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import * as path from "node:path";
-import { find_all_objectTypes_path } from "@genvidtech/c3source";
+import { find_all_objectTypes_path, isSectionItemName } from "@genvidtech/c3source";
 import { resolveWithin } from "@genvidtech/mcp-utils";
 import { cloneLayout, collectAllUids } from "./layoutScaffold.js";
 import { lookupObjectTypeByName } from "./objectTypeIdentity.js";
@@ -58,6 +58,18 @@ export function formatScaffoldNameRejection(label: "source" | "name", raw: strin
 
 export function formatScaffoldSourceNotFound(kind: "layout" | "objectType", relPosix: string): string {
   return `Source ${kind} not found: ${relPosix}`;
+}
+
+export function formatScaffoldEmptyInput(label: "name" | "event sheet"): string {
+  return `Invalid ${label} '' — must not be empty`;
+}
+
+export function formatScaffoldOutputNotJson(raw: string): string {
+  return `Invalid output path '${raw}' — the output must be a .json file`;
+}
+
+export function formatScaffoldSourceNotFile(relPosix: string): string {
+  return `Source layout is not a file: ${relPosix}`;
 }
 
 export function formatScaffoldSourceCaseMismatch(source: string, onDiskRel: string): string {
@@ -124,11 +136,29 @@ export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaff
   if (sourcePath === null) {
     return { ok: false, kind: "invalid-path", message: formatScaffoldPathRejection("source", source) };
   }
+  // Order: containment (out, source), then input shape (name, eventSheet, out extension),
+  // then the source on disk (exists, is a file), then conflicts.
+  if (name === "") {
+    return { ok: false, kind: "invalid-name", message: formatScaffoldEmptyInput("name") };
+  }
+  if (eventSheet === "") {
+    return { ok: false, kind: "invalid-name", message: formatScaffoldEmptyInput("event sheet") };
+  }
+  if (!isSectionItemName(outPath)) {
+    return { ok: false, kind: "invalid-path", message: formatScaffoldOutputNotJson(out) };
+  }
   if (!existsSync(sourcePath)) {
     return {
       ok: false,
       kind: "source-not-found",
       message: formatScaffoldSourceNotFound("layout", relPosix(rootDir, sourcePath)),
+    };
+  }
+  if (!statSync(sourcePath).isFile()) {
+    return {
+      ok: false,
+      kind: "invalid-path",
+      message: formatScaffoldSourceNotFile(relPosix(rootDir, sourcePath)),
     };
   }
 
