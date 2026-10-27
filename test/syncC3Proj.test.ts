@@ -1,10 +1,12 @@
 import { describe, it, beforeEach, afterEach } from "mocha";
 import { assert } from "chai";
 import tmp from "tmp";
-import { mkdirSync, writeFileSync, readFileSync, cpSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, cpSync, utimesSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildScenario, cleanupScenarios } from "./helpers/syncScenarios.js";
+import { runCli } from "./helpers/runCli.js";
 import {
   detectManifestDrift,
   detectImageDrift,
@@ -896,6 +898,84 @@ describe("timelines transitions container (#310)", function () {
       timelines: { items: ["Timeline 1"], subfolders: [{ items: ["Ease"], subfolders: [] }] },
       revalidate: [],
     });
+  });
+
+  it("I310-R5e: MV_out moves the item from the container to the root", () => {
+    assert.deepEqual(converge("MV_out"), {
+      changes: ["- transitions/Ease", "+ Ease"],
+      timelines: { items: ["Timeline 1", "Ease"], subfolders: [{ items: [], subfolders: [] }] },
+      revalidate: [],
+    });
+  });
+
+  it("I310-R5c: MI keeps the container and removes only the ghost item", () => {
+    assert.deepEqual(converge("MI"), {
+      changes: ["- transitions/Ghost"],
+      timelines: { items: ["Timeline 1"], subfolders: [{ items: [], subfolders: [] }] },
+      revalidate: [],
+    });
+  });
+
+  it("I310-R5g: NFN keeps the container and removes only the empty Others folder", () => {
+    assert.deepEqual(converge("NFN"), {
+      changes: ["- transitions/Others/"],
+      timelines: { items: ["Timeline 1"], subfolders: [{ items: [], subfolders: [] }] },
+      revalidate: [],
+    });
+  });
+
+  it("I310-R1: F0 dry-run sync reports no timelines changes and is clean", () => {
+    const { root } = buildScenario("F0");
+    const result = runSync(root, true, () => {});
+    assert.deepEqual(
+      { timelinesChanges: render(result.changes.filter((c) => c.section === "timelines")), clean: result.clean },
+      { timelinesChanges: [], clean: true },
+    );
+  });
+
+  it("I310-R3: dry-run and write-mode sync report the same change list for every #310 scenario", () => {
+    const names = ["F0", "F1", "S1", "S2", "MI", "MV_in", "MV_out", "NF", "NFN", "NU", "NOC"] as const;
+    const dry: Record<string, string[]> = {};
+    const write: Record<string, string[]> = {};
+    for (const n of names) {
+      dry[n] = render(runSync(buildScenario(n).root, true, () => {}, "timelines").changes);
+      write[n] = render(runSync(buildScenario(n).root, false, () => {}, "timelines").changes);
+    }
+    assert.deepEqual(dry, write);
+  });
+
+  it("I310-C1: validate, sync, validate on F0 exits 0 each time and never rewrites the manifest", () => {
+    const { root, manifestPath } = buildScenario("F0");
+    const past = new Date(Date.now() - 3_600_000);
+    utimesSync(manifestPath, past, past);
+    const fingerprint = () => ({
+      sha: createHash("sha256").update(readFileSync(manifestPath)).digest("hex"),
+      mtimeMs: statSync(manifestPath).mtimeMs,
+    });
+    const before = fingerprint();
+    const v1 = runCli(["validate-project", "--project-dir", root]);
+    const s = runCli(["sync-project", "--project-dir", root]);
+    const v2 = runCli(["validate-project", "--project-dir", root]);
+    const after = fingerprint();
+    const noChanges = /^\[timelines\]\s+\(no changes\)$/m;
+    assert.deepEqual(
+      {
+        codes: [v1.exitCode, s.exitCode, v2.exitCode],
+        validate1Timelines: noChanges.test(v1.stdout),
+        validate2Timelines: noChanges.test(v2.stdout),
+        syncHasUpdated: /^Updated/m.test(s.stdout),
+        sha256Same: after.sha === before.sha,
+        mtimeSame: after.mtimeMs === before.mtimeMs,
+      },
+      {
+        codes: [0, 0, 0],
+        validate1Timelines: true,
+        validate2Timelines: true,
+        syncHasUpdated: false,
+        sha256Same: true,
+        mtimeSame: true,
+      },
+    );
   });
 
   it("I310-R5f: NF removes the empty Others folder from the container", () => {
