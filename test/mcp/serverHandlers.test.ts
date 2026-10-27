@@ -2069,8 +2069,7 @@ describe("MCP server handler response shaping", () => {
       const layoutCase = async (
         label: string,
         over: { name?: string; eventSheet?: string; out?: string; source?: string },
-        expectedMcp: string,
-        expectedCli: string,
+        expected: string,
       ): Promise<void> => {
         const o = { name: "SI267", eventSheet: "Event sheet 1", out: "Gameplay/SI267.json", source: SRC, ...over };
         const mcp = mcpMessage(
@@ -2093,32 +2092,23 @@ describe("MCP server handler response shaping", () => {
           o.eventSheet,
           "--no-regenerate",
         ]);
-        expect(mcp, `${label} MCP`).to.equal(expectedMcp);
+        expect(mcp, `${label} MCP`).to.equal(expected);
         expect(cli.exitCode, `${label} CLI exit: ${cli.stderr}`).to.equal(1);
-        expect(cli.stderr.trimEnd(), `${label} CLI`).to.equal(expectedCli);
+        expect(cli.stderr.trimEnd(), `${label} CLI`).to.equal(expected);
       };
 
-      await layoutCase("empty name", { name: "" }, formatScaffoldEmptyInput("name"), formatScaffoldEmptyInput("name"));
-      await layoutCase(
-        "empty eventSheet",
-        { eventSheet: "" },
-        formatScaffoldEmptyInput("event sheet"),
-        formatScaffoldEmptyInput("event sheet"),
-      );
-      for (const bad of ["Foo/", "Foo", "Foo.JSON"]) {
-        await layoutCase(
-          `out ${bad}`,
-          { out: bad },
-          formatScaffoldOutputNotJson(bad),
-          formatScaffoldOutputNotJson("layouts/" + bad),
-        );
+      await layoutCase("empty name", { name: "" }, formatScaffoldEmptyInput("name"));
+      await layoutCase("empty eventSheet", { eventSheet: "" }, formatScaffoldEmptyInput("event sheet"));
+      // The rejection renders the resolved project-relative path, so a trailing separator drops out.
+      for (const [bad, rel] of [
+        ["Foo/", "layouts/Foo"],
+        ["Foo", "layouts/Foo"],
+        ["Foo.JSON", "layouts/Foo.JSON"],
+        [".json", "layouts/.json"],
+      ]) {
+        await layoutCase(`out ${bad}`, { out: bad }, formatScaffoldOutputNotJson(rel));
       }
-      await layoutCase(
-        "directory source",
-        { source: "Gameplay" },
-        formatScaffoldSourceNotFile("layouts/Gameplay"),
-        formatScaffoldSourceNotFile("layouts/Gameplay"),
-      );
+      await layoutCase("directory source", { source: "Gameplay" }, formatScaffoldSourceNotFile("layouts/Gameplay"));
 
       const spriteCase = async (
         label: string,

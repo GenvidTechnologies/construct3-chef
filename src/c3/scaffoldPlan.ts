@@ -64,8 +64,9 @@ export function formatScaffoldEmptyInput(label: "name" | "event sheet"): string 
   return `Invalid ${label} '' — must not be empty`;
 }
 
-export function formatScaffoldOutputNotJson(raw: string): string {
-  return `Invalid output path '${raw}' — the output must be a .json file`;
+/** `relPosix` is the resolved output, project-relative with `/` separators, so CLI and MCP render the same text. */
+export function formatScaffoldOutputNotJson(relPosix: string): string {
+  return `Invalid output path '${relPosix}' — the output must be a .json file with a non-empty name`;
 }
 
 export function formatScaffoldSourceNotFile(relPosix: string): string {
@@ -144,8 +145,9 @@ export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaff
   if (eventSheet === "") {
     return { ok: false, kind: "invalid-name", message: formatScaffoldEmptyInput("event sheet") };
   }
-  if (!isSectionItemName(outPath)) {
-    return { ok: false, kind: "invalid-path", message: formatScaffoldOutputNotJson(out) };
+  // `isSectionItemName(".json")` is true, so an empty file stem needs its own check.
+  if (!isSectionItemName(outPath) || path.basename(outPath) === ".json") {
+    return { ok: false, kind: "invalid-path", message: formatScaffoldOutputNotJson(relPosix(rootDir, outPath)) };
   }
   if (!existsSync(sourcePath)) {
     return {

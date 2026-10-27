@@ -30,7 +30,7 @@ Two rules guarded the same `objectTypes/<name>.json` file, and each was strict w
 
 **Share #329's rule.** One label-agnostic predicate, `objectTypeNameIssue` in `src/c3/recipeKeys.ts`, returns why a single name is unusable: empty, a `/` or `\`, `.` or `..`, a `:`, or only dots and spaces. `objectTypeEntryIssue` (recipe CREATE) and `scaffoldPlan.ts` (`scaffold-sprite`) both call it and render their own wording, so the rule is one definition and the messages differ only in label. A scaffold rejection reads `Invalid name '<raw>' — <reason>`.
 
-`scaffold-layout` refuses, before any write and with one message on the CLI and MCP, an empty `name`, an empty event sheet, an output path that is not a `.json` file, and a `--source` that is a directory. The `.json` test reuses c3source's `isSectionItemName`.
+`scaffold-layout` refuses, before any write and with one message on the CLI and MCP, an empty `name`, an empty event sheet, an output path that is not a `.json` file, and a `--source` that is a directory. The `.json` test reuses c3source's `isSectionItemName`, plus a check for an empty file stem (`isSectionItemName(".json")` is true). The rejection renders the resolved project-relative path, so both surfaces print the same text for the same target.
 
 ## Alternatives considered
 

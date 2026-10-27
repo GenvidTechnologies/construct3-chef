@@ -256,7 +256,7 @@ guardAllHandlers(yargs(hideBin(process.argv)))
           type: "string",
           demandOption: true,
           describe:
-            "Output path for the new layout JSON, relative to the project root (must be within layouts/); missing folders are created",
+            "Output path for the new layout JSON, relative to the project root (a .json file within layouts/); missing folders are created",
         })
         .option("name", { type: "string", demandOption: true, describe: "Name for the new layout" })
         .option("event-sheet", { type: "string", demandOption: true, describe: "Event sheet name for the new layout" })
@@ -299,12 +299,12 @@ guardAllHandlers(yargs(hideBin(process.argv)))
           type: "string",
           demandOption: true,
           describe:
-            "Source objectType name (one name: no '/', '\\' or ':', not '.' or '..'), looked up in every objectTypes/ subfolder",
+            "Source objectType name (one name: not empty, no '/', '\\' or ':', not '.' or '..'), looked up in every objectTypes/ subfolder",
         })
         .option("name", {
           type: "string",
           demandOption: true,
-          describe: "Target objectType name (one name: no '/', '\\' or ':', not '.' or '..')",
+          describe: "Target objectType name (one name: not empty, no '/', '\\' or ':', not '.' or '..')",
         })
         .option("regenerate", {
           type: "boolean",

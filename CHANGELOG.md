@@ -42,8 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wrote `objectTypes/.json`) and a name containing `:` (which wrote into an
   NTFS alternate data stream), with `Invalid name '<raw>' — <reason>`.
   `scaffold-layout` refuses an empty name or event sheet, an output path that
-  is not a `.json` file (`layouts/Foo/` and `layouts/Foo` used to write an
-  extensionless file; the check is case-sensitive, so `Foo.JSON` is refused),
+  is not a `.json` file with a name (`layouts/Foo/` and `layouts/Foo` used to
+  write an extensionless file, `layouts/.json` an empty-named one; the check
+  is case-sensitive, so `Foo.JSON` is refused),
   and a `--source` that is a directory (a raw `EISDIR` before)
   ([#267](https://github.com/GenvidTechnologies/construct3-chef/issues/267),
   ADR [`0060`](wiki/decisions/0060-scaffold-sprite-shares-the-objecttype-name-rule.md)).

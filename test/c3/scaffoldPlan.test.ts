@@ -181,12 +181,17 @@ describe("scaffoldPlan (T26, #259)", function () {
         expect(snapshotTree(tmp)).to.deep.equal(snap);
       });
 
-      for (const bad of ["Foo/", "Foo", "Foo.JSON"]) {
-        it(`SI267-R6: ${pathBase} base: output '${prefix}${bad}' is rejected as not a .json file`, () => {
+      for (const [bad, rel] of [
+        ["Foo/", "layouts/Foo"],
+        ["Foo", "layouts/Foo"],
+        ["Foo.JSON", "layouts/Foo.JSON"],
+        [".json", "layouts/.json"],
+      ]) {
+        it(`SI267-R6: ${pathBase} base: output '${prefix}${bad}' is rejected as not a .json file with a name`, () => {
           const out = prefix + bad;
           const r = planLayoutScaffold(layoutOpts(pathBase, { out })) as ScaffoldRejection;
           expect(r.ok).to.equal(false);
-          expect(r.message).to.equal(formatScaffoldOutputNotJson(out));
+          expect(r.message).to.equal(formatScaffoldOutputNotJson(rel));
         });
       }
 
@@ -483,6 +488,7 @@ describe("scaffoldPlan (T26, #259)", function () {
         { out: "Foo/" },
         { out: "Foo" },
         { out: "Foo.JSON" },
+        { out: ".json" },
         { source: "Gameplay" },
       ];
       for (const base of ["layouts", "project-root"] as const) {
@@ -500,7 +506,7 @@ describe("scaffoldPlan (T26, #259)", function () {
 
     it("SI267-R8: sprite rejection inputs (empty name/source, ':' name) leave the tree byte-identical", () => {
       const before = snapshotTree(tmp);
-      for (const over of [{ name: "" }, { source: "" }, { name: "a:b" }]) {
+      for (const over of [{ name: "" }, { source: "" }, { name: "a:b" }, { source: "a:b" }]) {
         const r = planSpriteScaffold(spriteOpts(over));
         expect(r.ok, `${JSON.stringify(over)} must be rejected`).to.equal(false);
         expect(snapshotTree(tmp)).to.deep.equal(before);
