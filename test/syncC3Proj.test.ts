@@ -1023,4 +1023,44 @@ describe("timelines transitions container (#310)", function () {
       { dry: changes, changes: ["- GhostSheet", "- DegSub/GhostSheet2", "- DegSub/"], revalidate: [] },
     );
   });
+
+  /** Backdate the manifest, write-mode sync it, and report whether anything was written. */
+  function writeSyncOutcome(root: string, manifestPath: string) {
+    const past = new Date(Date.now() - 3_600_000);
+    utimesSync(manifestPath, past, past);
+    const bytesBefore = readFileSync(manifestPath);
+    const mtimeBefore = statSync(manifestPath).mtimeMs;
+    let beforeWrite = 0;
+    const lines: string[] = [];
+    const result = runSync(root, false, (l) => lines.push(l), undefined, { beforeWrite: () => beforeWrite++ });
+    const bytesAfter = readFileSync(manifestPath);
+    return {
+      beforeWrite,
+      updatedLogged: lines.some((l) => l.startsWith("Updated ")),
+      bytesSame: bytesAfter.equals(bytesBefore),
+      mtimeSame: statSync(manifestPath).mtimeMs === mtimeBefore,
+      wrote: result.wrote,
+    };
+  }
+
+  const NO_WRITE = { beforeWrite: 0, updatedLogged: false, bytesSame: true, mtimeSame: true, wrote: false };
+
+  it("I310-R2: F0 write-mode sync never calls beforeWrite, logs Updated, or touches the manifest", () => {
+    const { root, manifestPath } = buildScenario("F0");
+    assert.deepEqual(writeSyncOutcome(root, manifestPath), NO_WRITE);
+  });
+
+  it("I310-R2b: F0 saved with CRLF gives the R2 outcome and keeps its CRLF bytes", () => {
+    const { root, manifestPath } = buildScenario("F0");
+    writeFileSync(manifestPath, readFileSync(manifestPath, "utf8").replace(/\n/g, "\r\n"));
+    const outcome = writeSyncOutcome(root, manifestPath);
+    const hasCRLF = readFileSync(manifestPath, "utf8").includes("\r\n");
+    assert.deepEqual({ ...outcome, hasCRLF }, { ...NO_WRITE, hasCRLF: true });
+  });
+
+  it("I310-R2c: S1 write-mode sync reports wrote true; a dry run of the same input reports false", () => {
+    const dryWrote = runSync(buildScenario("S1").root, true, () => {}).wrote;
+    const writeWrote = runSync(buildScenario("S1").root, false, () => {}).wrote;
+    assert.deepEqual({ dryWrote, writeWrote }, { dryWrote: false, writeWrote: true });
+  });
 });

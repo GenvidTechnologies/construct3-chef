@@ -3,6 +3,7 @@ import path from "node:path";
 import type { Logger } from "@genvidtech/mcp-utils";
 import {
   readProjectManifest,
+  serializeProjectManifest,
   writeProjectManifest,
   detectImageDrift,
   detectManifestDrift,
@@ -80,6 +81,8 @@ export interface SyncResult {
   changes: Change[];
   clean: boolean;
   sections: Record<string, SectionSummary>;
+  /** true iff this call wrote project.c3proj. */
+  wrote: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -592,6 +595,9 @@ export function runSync(
     throw new Error(`Could not parse ${projectPath} as JSON`);
   }
 
+  // Snapshot before any section mutates `project`: the write below happens only if the
+  // serialized bytes actually moved (reported changes are not necessarily mutations).
+  const serializedBefore = serializeProjectManifest(project);
   const existingSids = collectAllSids(project);
   const allChanges: Change[] = [];
 
@@ -654,10 +660,12 @@ export function runSync(
   // identity (readProjectManifest, above) and every drift fix mutates it in place. Never
   // rebuild it via spread, or this write and that one will silently clobber each other's
   // unmodeled fields.
-  if (!dryRun && totalChanges > 0) {
+  let wrote = false;
+  if (!dryRun && totalChanges > 0 && serializeProjectManifest(project) !== serializedBefore) {
     opts?.beforeWrite?.(path.resolve(projectPath));
     writeProjectManifest(projectPath, project);
     log(`Updated ${projectPath}`);
+    wrote = true;
   }
 
   const sections: Record<string, SectionSummary> = {};
@@ -669,7 +677,7 @@ export function runSync(
     };
   }
 
-  return { changes: allChanges, clean: allChanges.length === 0, sections };
+  return { changes: allChanges, clean: allChanges.length === 0, sections, wrote };
 }
 
 // ---------------------------------------------------------------------------
