@@ -26,7 +26,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`scaffold-sprite` now accepts a name containing `..` that is not `..`
+  itself (for example `a..b`).** It shares the objectType name rule of a
+  recipe `objectTypes` CREATE, which never refused such a name; only `..`,
+  `.`, and names made only of dots and spaces are refused
+  ([#267](https://github.com/GenvidTechnologies/construct3-chef/issues/267),
+  ADR [`0060`](wiki/decisions/0060-scaffold-sprite-shares-the-objecttype-name-rule.md)).
+
 ### Fixed
+
+- **`scaffold-sprite` and `scaffold-layout` (CLI and MCP) refuse bad inputs
+  before writing anything.** `scaffold-sprite` refuses an empty name (which
+  wrote `objectTypes/.json`) and a name containing `:` (which wrote into an
+  NTFS alternate data stream), with `Invalid name '<raw>' — <reason>`.
+  `scaffold-layout` refuses an empty name or event sheet, an output path that
+  is not a `.json` file (`layouts/Foo/` and `layouts/Foo` used to write an
+  extensionless file; the check is case-sensitive, so `Foo.JSON` is refused),
+  and a `--source` that is a directory (a raw `EISDIR` before)
+  ([#267](https://github.com/GenvidTechnologies/construct3-chef/issues/267),
+  ADR [`0060`](wiki/decisions/0060-scaffold-sprite-shares-the-objecttype-name-rule.md)).
 
 - **A recipe `objectTypes` CREATE and an `addInstVars` `type` now use one
   objectType identity (basename, any subfolder, letter case ignored).**
