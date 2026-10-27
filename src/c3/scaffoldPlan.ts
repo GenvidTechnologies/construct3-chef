@@ -19,6 +19,7 @@ import { resolveWithin } from "@genvidtech/mcp-utils";
 import { cloneLayout, collectAllUids } from "./layoutScaffold.js";
 import { lookupObjectTypeByName } from "./objectTypeIdentity.js";
 import { findLayoutScaffoldConflicts, findSpriteScaffoldConflicts, formatScaffoldRefusal } from "./scaffoldGuard.js";
+import { objectTypeNameIssue, type ObjectTypeNameIssue } from "./recipeKeys.js";
 import { readRegistryFile } from "./sidUtils.js";
 import { writeSourceJson } from "./sourceJson.js";
 import {
@@ -33,8 +34,26 @@ export function formatScaffoldPathRejection(which: "output" | "source", raw: str
   return `Invalid ${which} path '${raw}' — must stay within layouts/`;
 }
 
+function scaffoldNameReason(issue: ObjectTypeNameIssue | undefined): string {
+  switch (issue?.kind) {
+    case "empty":
+      return "must not be empty";
+    case "separator":
+      return "must not contain '/' or '\\'";
+    case "dot":
+      return `must not be '${issue.name}'`;
+    case "colon":
+      return "must not contain ':' (host-dependent on Windows)";
+    case "dots-and-spaces":
+      return "must not be only dots and spaces";
+    default:
+      return "must be a plain objectType name";
+  }
+}
+
+/** The reason is derived from `raw` by the shared rule, so every caller renders the same text. */
 export function formatScaffoldNameRejection(label: "source" | "name", raw: string): string {
-  return `Invalid ${label} '${raw}' — must be a plain objectType name without path separators`;
+  return `Invalid ${label} '${raw}' — ${scaffoldNameReason(objectTypeNameIssue(raw))}`;
 }
 
 export function formatScaffoldSourceNotFound(kind: "layout" | "objectType", relPosix: string): string {
@@ -146,7 +165,7 @@ export function planSpriteScaffold(opts: SpriteScaffoldPlanOptions): SpriteScaff
     ["source", source],
     ["name", name],
   ] as const) {
-    if (val.includes("/") || val.includes("\\") || val.includes("..")) {
+    if (objectTypeNameIssue(val) !== undefined) {
       return { ok: false, kind: "invalid-name", message: formatScaffoldNameRejection(label, val) };
     }
   }

@@ -299,12 +299,12 @@ guardAllHandlers(yargs(hideBin(process.argv)))
           type: "string",
           demandOption: true,
           describe:
-            "Source objectType name (a plain name, no path separators), looked up in every objectTypes/ subfolder",
+            "Source objectType name (one name: no '/', '\\' or ':', not '.' or '..'), looked up in every objectTypes/ subfolder",
         })
         .option("name", {
           type: "string",
           demandOption: true,
-          describe: "Target objectType name (a plain name, no path separators)",
+          describe: "Target objectType name (one name: no '/', '\\' or ':', not '.' or '..')",
         })
         .option("regenerate", {
           type: "boolean",

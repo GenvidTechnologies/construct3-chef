@@ -342,7 +342,7 @@ describe("scaffoldPlan (T26, #259)", function () {
   });
 
   describe("sprite name validation", () => {
-    for (const bad of ["a..b", "a/b", "a\\b"]) {
+    for (const bad of ["a/b", "a\\b", ".", "..", "../X", " . ."]) {
       it(`rejects name ${JSON.stringify(bad)} as invalid-name`, () => {
         const r = planSpriteScaffold(spriteOpts({ name: bad })) as ScaffoldRejection;
         expect(r.ok).to.equal(false);
@@ -355,6 +355,31 @@ describe("scaffoldPlan (T26, #259)", function () {
         expect(r.message).to.equal(formatScaffoldNameRejection("source", bad));
       });
     }
+
+    it("SI267-R1: an empty name and an empty source are invalid-name with the shared message", () => {
+      const n = planSpriteScaffold(spriteOpts({ name: "" })) as ScaffoldRejection;
+      expect(n.ok).to.equal(false);
+      expect(n.kind).to.equal("invalid-name");
+      expect(n.message).to.equal(formatScaffoldNameRejection("name", ""));
+      expect(n.message).to.equal("Invalid name '' — must not be empty");
+      const s = planSpriteScaffold(spriteOpts({ source: "" })) as ScaffoldRejection;
+      expect(s.kind).to.equal("invalid-name");
+      expect(s.message).to.equal("Invalid source '' — must not be empty");
+    });
+
+    it("SI267-R2: a name or source containing ':' is invalid-name", () => {
+      const n = planSpriteScaffold(spriteOpts({ name: "a:b" })) as ScaffoldRejection;
+      expect(n.kind).to.equal("invalid-name");
+      expect(n.message).to.equal("Invalid name 'a:b' — must not contain ':' (host-dependent on Windows)");
+      const s = planSpriteScaffold(spriteOpts({ source: "a:b" })) as ScaffoldRejection;
+      expect(s.kind).to.equal("invalid-name");
+      expect(s.message).to.equal("Invalid source 'a:b' — must not contain ':' (host-dependent on Windows)");
+    });
+
+    it("SI267-R3: accept control — name 'a..b' plans successfully", () => {
+      const r = planSpriteScaffold(spriteOpts({ name: "a..b" }));
+      expect(r.ok).to.equal(true);
+    });
 
     it("when both source and name are bad, the message is about source", () => {
       const r = planSpriteScaffold(spriteOpts({ source: "s/x", name: "n/y" })) as ScaffoldRejection;
