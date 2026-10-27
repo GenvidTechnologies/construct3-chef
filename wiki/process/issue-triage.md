@@ -232,10 +232,20 @@ read the published `dist`, not the issue title.
 
 The exact commands the triage skill runs to apply **approved** changes. `{id}`,
 `{type}`, `{p}`, `{a}`, `{text}`, `{canonical}`, `{other}`, `{title}`, `{body}`,
-`{tmpfile}`, `{triagedLabel}`, and `{needsInfoLabel}` are substituted by the skill.
+`{tmpfile}`, `{triagedLabel}`, `{needsInfoLabel}`, `{otherTypes}`, and
+`{otherPriorities}` are substituted by the skill.
 
-- Set type: `gh issue edit {id} --remove-label "enhancement,bug,documentation" --add-label "{type}"`
-- Set priority: `gh issue edit {id} --remove-label "priority/P0,priority/P1,priority/P2,priority/P3" --add-label "priority/{p}"`
+- Set type: `gh issue edit {id} --add-label "{type}" --remove-label "{otherTypes}"` — `{otherTypes}` is the other two of `enhancement,bug,documentation`
+- Set priority: `gh issue edit {id} --add-label "priority/{p}" --remove-label "{otherPriorities}"` — `{otherPriorities}` is the other three of `priority/P0,priority/P1,priority/P2,priority/P3`
+
+Never list the label being added in the same call's `--remove-label`: the add
+and the remove then name the same label, and the outcome is left to the
+tracker. [#289](https://github.com/GenvidTechnologies/construct3-chef/issues/289)
+ran the overlapping form of the priority recipe and ended up without
+`priority/P2` while every call reported success. The cause was not verified
+(#290 ran the identical sequence and kept its label), but the others-only form
+removes the overlap as a candidate. Fold an issue's label changes into one
+`gh issue edit` and read the labels back after every write.
 - Add area: `gh issue edit {id} --add-label "area:{a}"`
 - Remove area: `gh issue edit {id} --remove-label "area:{a}"`
 - Edit body (language fix / fill missing info): `gh issue edit {id} --body-file {tmpfile}` — the skill writes the approved new body to `{tmpfile}` first
