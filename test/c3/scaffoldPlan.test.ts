@@ -475,6 +475,38 @@ describe("scaffoldPlan (T26, #259)", function () {
       expect(snapshotTree(tmp)).to.deep.equal(before);
     });
 
+    it("SI267-R8: layout rejection inputs (empty name/eventSheet, non-.json out, directory source) leave the tree byte-identical", () => {
+      const before = snapshotTree(tmp);
+      const inputs: Array<Partial<LayoutScaffoldPlanOptions>> = [
+        { name: "" },
+        { eventSheet: "" },
+        { out: "Foo/" },
+        { out: "Foo" },
+        { out: "Foo.JSON" },
+        { source: "Gameplay" },
+      ];
+      for (const base of ["layouts", "project-root"] as const) {
+        const prefix = base === "layouts" ? "" : "layouts/";
+        for (const over of inputs) {
+          const o = { ...over };
+          if (o.out !== undefined) o.out = prefix + o.out;
+          if (o.source !== undefined) o.source = prefix + o.source;
+          const r = planLayoutScaffold(layoutOpts(base, o));
+          expect(r.ok, `${base} ${JSON.stringify(o)} must be rejected`).to.equal(false);
+          expect(snapshotTree(tmp)).to.deep.equal(before);
+        }
+      }
+    });
+
+    it("SI267-R8: sprite rejection inputs (empty name/source, ':' name) leave the tree byte-identical", () => {
+      const before = snapshotTree(tmp);
+      for (const over of [{ name: "" }, { source: "" }, { name: "a:b" }]) {
+        const r = planSpriteScaffold(spriteOpts(over));
+        expect(r.ok, `${JSON.stringify(over)} must be rejected`).to.equal(false);
+        expect(snapshotTree(tmp)).to.deep.equal(before);
+      }
+    });
+
     it("planLayoutScaffold into a not-yet-existing directory creates no directory", () => {
       const r = planLayoutScaffold(layoutOpts("layouts", { out: "NewDir/PlanY.json" }));
       expect(r.ok).to.equal(true);
