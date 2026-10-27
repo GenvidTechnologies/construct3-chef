@@ -17,6 +17,9 @@ import * as path from "node:path";
 
 import { collectAllObjectTypeSids, collectMaxImageSpriteId } from "../../src/c3/spriteScaffold.js";
 import {
+  formatScaffoldEmptyInput,
+  formatScaffoldOutputNotJson,
+  formatScaffoldSourceNotFile,
   formatScaffoldNameRejection,
   formatScaffoldPathRejection,
   formatScaffoldSourceAmbiguous,
@@ -155,6 +158,55 @@ describe("scaffoldPlan (T26, #259)", function () {
       expect(r.ok).to.equal(true);
       if (r.ok) expect(r.outPath).to.equal(path.join(layoutsDir(), "..cache.json"));
     });
+  });
+
+  describe("input guards (#267)", () => {
+    for (const pathBase of ["layouts", "project-root"] as const) {
+      const prefix = pathBase === "layouts" ? "" : "layouts/";
+      const before = (): Map<string, string> => snapshotTree(tmp);
+
+      it(`SI267-R4: ${pathBase} base: empty name is rejected with the shared message`, () => {
+        const snap = before();
+        const r = planLayoutScaffold(layoutOpts(pathBase, { name: "" })) as ScaffoldRejection;
+        expect(r.ok).to.equal(false);
+        expect(r.message).to.equal(formatScaffoldEmptyInput("name"));
+        expect(snapshotTree(tmp)).to.deep.equal(snap);
+      });
+
+      it(`SI267-R5: ${pathBase} base: empty eventSheet is rejected with the shared message`, () => {
+        const snap = before();
+        const r = planLayoutScaffold(layoutOpts(pathBase, { eventSheet: "" })) as ScaffoldRejection;
+        expect(r.ok).to.equal(false);
+        expect(r.message).to.equal(formatScaffoldEmptyInput("event sheet"));
+        expect(snapshotTree(tmp)).to.deep.equal(snap);
+      });
+
+      for (const [bad, rel] of [
+        ["Foo/", "layouts/Foo"],
+        ["Foo", "layouts/Foo"],
+        ["Foo.JSON", "layouts/Foo.JSON"],
+        [".json", "layouts/.json"],
+      ]) {
+        it(`SI267-R6: ${pathBase} base: output '${prefix}${bad}' is rejected as not a .json file with a name`, () => {
+          const out = prefix + bad;
+          const r = planLayoutScaffold(layoutOpts(pathBase, { out })) as ScaffoldRejection;
+          expect(r.ok).to.equal(false);
+          expect(r.message).to.equal(formatScaffoldOutputNotJson(rel));
+        });
+      }
+
+      it(`SI267-R6: ${pathBase} base: accept control: output '${prefix}Foo.json' plans`, () => {
+        const r = planLayoutScaffold(layoutOpts(pathBase, { out: prefix + "Foo.json" }));
+        expect(r.ok, JSON.stringify(r)).to.equal(true);
+      });
+
+      it(`SI267-R7: ${pathBase} base: a directory source is rejected naming the path, never EISDIR`, () => {
+        const r = planLayoutScaffold(layoutOpts(pathBase, { source: prefix + "Gameplay" })) as ScaffoldRejection;
+        expect(r.ok).to.equal(false);
+        expect(r.message).to.equal(formatScaffoldSourceNotFile("layouts/Gameplay"));
+        expect(r.message).to.not.include("EISDIR");
+      });
+    }
   });
 
   describe("check order", () => {
@@ -342,7 +394,7 @@ describe("scaffoldPlan (T26, #259)", function () {
   });
 
   describe("sprite name validation", () => {
-    for (const bad of ["a..b", "a/b", "a\\b"]) {
+    for (const bad of ["a/b", "a\\b", ".", "..", "../X", " . ."]) {
       it(`rejects name ${JSON.stringify(bad)} as invalid-name`, () => {
         const r = planSpriteScaffold(spriteOpts({ name: bad })) as ScaffoldRejection;
         expect(r.ok).to.equal(false);
@@ -355,6 +407,31 @@ describe("scaffoldPlan (T26, #259)", function () {
         expect(r.message).to.equal(formatScaffoldNameRejection("source", bad));
       });
     }
+
+    it("SI267-R1: an empty name and an empty source are invalid-name with the shared message", () => {
+      const n = planSpriteScaffold(spriteOpts({ name: "" })) as ScaffoldRejection;
+      expect(n.ok).to.equal(false);
+      expect(n.kind).to.equal("invalid-name");
+      expect(n.message).to.equal(formatScaffoldNameRejection("name", ""));
+      expect(n.message).to.equal("Invalid name '' — must not be empty");
+      const s = planSpriteScaffold(spriteOpts({ source: "" })) as ScaffoldRejection;
+      expect(s.kind).to.equal("invalid-name");
+      expect(s.message).to.equal("Invalid source '' — must not be empty");
+    });
+
+    it("SI267-R2: a name or source containing ':' is invalid-name", () => {
+      const n = planSpriteScaffold(spriteOpts({ name: "a:b" })) as ScaffoldRejection;
+      expect(n.kind).to.equal("invalid-name");
+      expect(n.message).to.equal("Invalid name 'a:b' — must not contain ':' (host-dependent on Windows)");
+      const s = planSpriteScaffold(spriteOpts({ source: "a:b" })) as ScaffoldRejection;
+      expect(s.kind).to.equal("invalid-name");
+      expect(s.message).to.equal("Invalid source 'a:b' — must not contain ':' (host-dependent on Windows)");
+    });
+
+    it("SI267-R3: accept control — name 'a..b' plans successfully", () => {
+      const r = planSpriteScaffold(spriteOpts({ name: "a..b" }));
+      expect(r.ok).to.equal(true);
+    });
 
     it("when both source and name are bad, the message is about source", () => {
       const r = planSpriteScaffold(spriteOpts({ source: "s/x", name: "n/y" })) as ScaffoldRejection;
@@ -401,6 +478,39 @@ describe("scaffoldPlan (T26, #259)", function () {
       expect(planLayoutScaffold(layoutOpts("layouts", { source: "Gameplay/NoSuch.json" })).ok).to.equal(false);
       expect(planLayoutScaffold(layoutOpts("layouts", { out: SOURCE_REL })).ok).to.equal(false);
       expect(snapshotTree(tmp)).to.deep.equal(before);
+    });
+
+    it("SI267-R8: layout rejection inputs (empty name/eventSheet, non-.json out, directory source) leave the tree byte-identical", () => {
+      const before = snapshotTree(tmp);
+      const inputs: Array<Partial<LayoutScaffoldPlanOptions>> = [
+        { name: "" },
+        { eventSheet: "" },
+        { out: "Foo/" },
+        { out: "Foo" },
+        { out: "Foo.JSON" },
+        { out: ".json" },
+        { source: "Gameplay" },
+      ];
+      for (const base of ["layouts", "project-root"] as const) {
+        const prefix = base === "layouts" ? "" : "layouts/";
+        for (const over of inputs) {
+          const o = { ...over };
+          if (o.out !== undefined) o.out = prefix + o.out;
+          if (o.source !== undefined) o.source = prefix + o.source;
+          const r = planLayoutScaffold(layoutOpts(base, o));
+          expect(r.ok, `${base} ${JSON.stringify(o)} must be rejected`).to.equal(false);
+          expect(snapshotTree(tmp)).to.deep.equal(before);
+        }
+      }
+    });
+
+    it("SI267-R8: sprite rejection inputs (empty name/source, ':' name) leave the tree byte-identical", () => {
+      const before = snapshotTree(tmp);
+      for (const over of [{ name: "" }, { source: "" }, { name: "a:b" }, { source: "a:b" }]) {
+        const r = planSpriteScaffold(spriteOpts(over));
+        expect(r.ok, `${JSON.stringify(over)} must be rejected`).to.equal(false);
+        expect(snapshotTree(tmp)).to.deep.equal(before);
+      }
     });
 
     it("planLayoutScaffold into a not-yet-existing directory creates no directory", () => {

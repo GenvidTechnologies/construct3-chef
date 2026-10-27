@@ -81,6 +81,28 @@ function isDotsAndSpaces(segment: string): boolean {
   return segment !== "." && segment !== "" && segment.replace(/[ .]+$/, "") === "";
 }
 
+/** Why a single objectType name is unusable; each caller renders its own wording (recipe CREATE vs scaffold-sprite). */
+export type ObjectTypeNameIssue =
+  | { kind: "empty" }
+  | { kind: "separator" }
+  | { kind: "dot"; name: "." | ".." }
+  | { kind: "colon" }
+  | { kind: "dots-and-spaces" };
+
+/**
+ * The label-agnostic name-only rule shared by recipe `objectTypes` CREATE and scaffold-sprite (`--source`/`--name`):
+ * ONE path segment that is not empty, has no `/` or `\`, is not `.` or `..`, has no `:`, and is not only dots and
+ * spaces. `a..b` is acceptable. `undefined` when the name is usable.
+ */
+export function objectTypeNameIssue(name: string): ObjectTypeNameIssue | undefined {
+  if (name === "") return { kind: "empty" };
+  if (name.includes("/") || name.includes("\\")) return { kind: "separator" };
+  if (name === "." || name === "..") return { kind: "dot", name };
+  if (name.includes(":")) return { kind: "colon" };
+  if (isDotsAndSpaces(name)) return { kind: "dots-and-spaces" };
+  return undefined;
+}
+
 /**
  * Why an `objectTypes` entry's `name` / `folder` is unusable (#274), as a neutral message fragment the caller
  * prefixes with `objectTypes[i]:`; `undefined` when both are acceptable. `name` must be ONE path segment: not empty,
@@ -90,11 +112,21 @@ function isDotsAndSpaces(segment: string): boolean {
  * `//` are tolerated (they name the same folder).
  */
 export function objectTypeEntryIssue(name: string, folder: string | undefined): string | undefined {
-  if (name === "") return 'has an empty "name"';
-  if (name.includes("/") || name.includes("\\")) return "\"name\" must be a single name, not contain '/' or '\\'";
-  if (name === "." || name === "..") return `"name" must not be '${name}'`;
-  if (name.includes(":")) return "\"name\" must not contain ':' (host-dependent on Windows)";
-  if (isDotsAndSpaces(name)) return '"name" must not be only dots and spaces';
+  const nameIssue = objectTypeNameIssue(name);
+  if (nameIssue !== undefined) {
+    switch (nameIssue.kind) {
+      case "empty":
+        return 'has an empty "name"';
+      case "separator":
+        return "\"name\" must be a single name, not contain '/' or '\\'";
+      case "dot":
+        return `"name" must not be '${nameIssue.name}'`;
+      case "colon":
+        return "\"name\" must not contain ':' (host-dependent on Windows)";
+      case "dots-and-spaces":
+        return '"name" must not be only dots and spaces';
+    }
+  }
   if (folder === undefined) return undefined;
   if (folder === "") return '"folder" must not be empty (omit it for the objectTypes root)';
   const slashed = toSlashes(folder);

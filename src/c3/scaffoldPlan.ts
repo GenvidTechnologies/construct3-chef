@@ -12,13 +12,14 @@
  * `src/index.ts`, since a barrel export is a permanent public-API commitment.
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import * as path from "node:path";
-import { find_all_objectTypes_path } from "@genvidtech/c3source";
+import { find_all_objectTypes_path, isSectionItemName } from "@genvidtech/c3source";
 import { resolveWithin } from "@genvidtech/mcp-utils";
 import { cloneLayout, collectAllUids } from "./layoutScaffold.js";
 import { lookupObjectTypeByName } from "./objectTypeIdentity.js";
 import { findLayoutScaffoldConflicts, findSpriteScaffoldConflicts, formatScaffoldRefusal } from "./scaffoldGuard.js";
+import { objectTypeNameIssue, type ObjectTypeNameIssue } from "./recipeKeys.js";
 import { readRegistryFile } from "./sidUtils.js";
 import { writeSourceJson } from "./sourceJson.js";
 import {
@@ -33,12 +34,43 @@ export function formatScaffoldPathRejection(which: "output" | "source", raw: str
   return `Invalid ${which} path '${raw}' — must stay within layouts/`;
 }
 
+function scaffoldNameReason(issue: ObjectTypeNameIssue | undefined): string {
+  switch (issue?.kind) {
+    case "empty":
+      return "must not be empty";
+    case "separator":
+      return "must not contain '/' or '\\'";
+    case "dot":
+      return `must not be '${issue.name}'`;
+    case "colon":
+      return "must not contain ':' (host-dependent on Windows)";
+    case "dots-and-spaces":
+      return "must not be only dots and spaces";
+    default:
+      return "must be a plain objectType name";
+  }
+}
+
+/** The reason is derived from `raw` by the shared rule, so every caller renders the same text. */
 export function formatScaffoldNameRejection(label: "source" | "name", raw: string): string {
-  return `Invalid ${label} '${raw}' — must be a plain objectType name without path separators`;
+  return `Invalid ${label} '${raw}' — ${scaffoldNameReason(objectTypeNameIssue(raw))}`;
 }
 
 export function formatScaffoldSourceNotFound(kind: "layout" | "objectType", relPosix: string): string {
   return `Source ${kind} not found: ${relPosix}`;
+}
+
+export function formatScaffoldEmptyInput(label: "name" | "event sheet"): string {
+  return `Invalid ${label} '' — must not be empty`;
+}
+
+/** `relPosix` is the resolved output, project-relative with `/` separators, so CLI and MCP render the same text. */
+export function formatScaffoldOutputNotJson(relPosix: string): string {
+  return `Invalid output path '${relPosix}' — the output must be a .json file with a non-empty name`;
+}
+
+export function formatScaffoldSourceNotFile(relPosix: string): string {
+  return `Source layout is not a file: ${relPosix}`;
 }
 
 export function formatScaffoldSourceCaseMismatch(source: string, onDiskRel: string): string {
@@ -105,11 +137,30 @@ export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaff
   if (sourcePath === null) {
     return { ok: false, kind: "invalid-path", message: formatScaffoldPathRejection("source", source) };
   }
+  // Order: containment (out, source), then input shape (name, eventSheet, out extension),
+  // then the source on disk (exists, is a file), then conflicts.
+  if (name === "") {
+    return { ok: false, kind: "invalid-name", message: formatScaffoldEmptyInput("name") };
+  }
+  if (eventSheet === "") {
+    return { ok: false, kind: "invalid-name", message: formatScaffoldEmptyInput("event sheet") };
+  }
+  // `isSectionItemName(".json")` is true, so an empty file stem needs its own check.
+  if (!isSectionItemName(outPath) || path.basename(outPath) === ".json") {
+    return { ok: false, kind: "invalid-path", message: formatScaffoldOutputNotJson(relPosix(rootDir, outPath)) };
+  }
   if (!existsSync(sourcePath)) {
     return {
       ok: false,
       kind: "source-not-found",
       message: formatScaffoldSourceNotFound("layout", relPosix(rootDir, sourcePath)),
+    };
+  }
+  if (!statSync(sourcePath).isFile()) {
+    return {
+      ok: false,
+      kind: "invalid-path",
+      message: formatScaffoldSourceNotFile(relPosix(rootDir, sourcePath)),
     };
   }
 
@@ -146,7 +197,7 @@ export function planSpriteScaffold(opts: SpriteScaffoldPlanOptions): SpriteScaff
     ["source", source],
     ["name", name],
   ] as const) {
-    if (val.includes("/") || val.includes("\\") || val.includes("..")) {
+    if (objectTypeNameIssue(val) !== undefined) {
       return { ok: false, kind: "invalid-name", message: formatScaffoldNameRejection(label, val) };
     }
   }

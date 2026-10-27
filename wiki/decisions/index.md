@@ -535,3 +535,10 @@ See the [wiki index](../index.md) for the other sections.
   alike. Names and folders that escape `objectTypes/`, and in-recipe duplicate
   names, are refused by `validateRecipe`
   ([#274](https://github.com/GenvidTechnologies/construct3-chef/issues/274))
+* [0060. scaffold-sprite shares the objectType name rule](0060-scaffold-sprite-shares-the-objecttype-name-rule.md) -
+  `scaffold-sprite --source/--name` now use the same label-agnostic name rule
+  as a recipe `objectTypes` CREATE (`objectTypeNameIssue`): empty, `/`, `\`,
+  `:`, `.`/`..` and only-dots-and-spaces are refused, and `a..b` is accepted.
+  `scaffold-layout` also refuses empty inputs, a non-`.json` output and a
+  directory source before any write
+  ([#267](https://github.com/GenvidTechnologies/construct3-chef/issues/267))

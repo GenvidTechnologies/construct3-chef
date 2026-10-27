@@ -35,6 +35,9 @@ import { applyParsed } from "../../src/c3/recipeApplier.js";
 import { formatScaffoldRefusal } from "../../src/c3/scaffoldGuard.js";
 import {
   formatScaffoldPathRejection,
+  formatScaffoldEmptyInput,
+  formatScaffoldOutputNotJson,
+  formatScaffoldSourceNotFile,
   formatScaffoldNameRejection,
   formatScaffoldSourceNotFound,
   formatScaffoldSourceCaseMismatch,
@@ -2048,6 +2051,89 @@ describe("MCP server handler response shaping", () => {
       expect(cliC.exitCode).to.equal(1);
       expect(cliC.stderr.trimEnd()).to.equal(mcpC);
       expect(mcpC).to.equal(formatScaffoldNameRejection("name", "../X"));
+    });
+
+    it("SI267-R9: CLI (exit 1, stderr) and MCP (isError) scaffold input rejections are byte-identical to the shared formatters", async function () {
+      this.timeout(180_000);
+      // Same fixed-counter txId line as T19: the harness fixes the counter at 5.
+      const mcpMessage = (result: any): string => {
+        expect(result.isError).to.be.true;
+        const lines = textOf(result).split("\n");
+        expect(lines.pop()).to.equal("txId: default:5");
+        return lines.join("\n");
+      };
+      const layoutHandler = __getHandler("scaffold-layout")!;
+      const spriteHandler = __getHandler("scaffold-sprite")!;
+      const SRC = "Gameplay/Main Layout.json";
+      // MCP layout paths are layouts-relative; CLI paths are project-relative (layouts/...).
+      const layoutCase = async (
+        label: string,
+        over: { name?: string; eventSheet?: string; out?: string; source?: string },
+        expected: string,
+      ): Promise<void> => {
+        const o = { name: "SI267", eventSheet: "Event sheet 1", out: "Gameplay/SI267.json", source: SRC, ...over };
+        const mcp = mcpMessage(
+          await layoutHandler(
+            { source: o.source, name: o.name, path: o.out, eventSheet: o.eventSheet, regenerate: false },
+            makeExtra(),
+          ),
+        );
+        const cli = runCli([
+          "scaffold-layout",
+          "--project-dir",
+          tmp,
+          "--source",
+          "layouts/" + o.source,
+          "--out",
+          "layouts/" + o.out,
+          "--name",
+          o.name,
+          "--event-sheet",
+          o.eventSheet,
+          "--no-regenerate",
+        ]);
+        expect(mcp, `${label} MCP`).to.equal(expected);
+        expect(cli.exitCode, `${label} CLI exit: ${cli.stderr}`).to.equal(1);
+        expect(cli.stderr.trimEnd(), `${label} CLI`).to.equal(expected);
+      };
+
+      await layoutCase("empty name", { name: "" }, formatScaffoldEmptyInput("name"));
+      await layoutCase("empty eventSheet", { eventSheet: "" }, formatScaffoldEmptyInput("event sheet"));
+      // The rejection renders the resolved project-relative path, so a trailing separator drops out.
+      for (const [bad, rel] of [
+        ["Foo/", "layouts/Foo"],
+        ["Foo", "layouts/Foo"],
+        ["Foo.JSON", "layouts/Foo.JSON"],
+        [".json", "layouts/.json"],
+      ]) {
+        await layoutCase(`out ${bad}`, { out: bad }, formatScaffoldOutputNotJson(rel));
+      }
+      await layoutCase("directory source", { source: "Gameplay" }, formatScaffoldSourceNotFile("layouts/Gameplay"));
+
+      const spriteCase = async (
+        label: string,
+        over: { source?: string; name?: string },
+        expected: string,
+      ): Promise<void> => {
+        const o = { source: "Text", name: "SI267Clone", ...over };
+        const mcp = mcpMessage(await spriteHandler({ source: o.source, name: o.name, regenerate: false }, makeExtra()));
+        const cli = runCli([
+          "scaffold-sprite",
+          "--project-dir",
+          tmp,
+          "--source",
+          o.source,
+          "--name",
+          o.name,
+          "--no-regenerate",
+        ]);
+        expect(mcp, `${label} MCP`).to.equal(expected);
+        expect(cli.exitCode, `${label} CLI exit: ${cli.stderr}`).to.equal(1);
+        expect(cli.stderr.trimEnd(), `${label} CLI`).to.equal(expected);
+      };
+      await spriteCase("empty name", { name: "" }, formatScaffoldNameRejection("name", ""));
+      await spriteCase("empty source", { source: "" }, formatScaffoldNameRejection("source", ""));
+      await spriteCase("colon name", { name: "a:b" }, formatScaffoldNameRejection("name", "a:b"));
     });
   });
 

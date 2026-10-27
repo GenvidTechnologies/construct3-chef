@@ -1597,7 +1597,9 @@ regP(
       name: z.string().describe("Name for the new layout"),
       path: z
         .string()
-        .describe("Relative output path within layouts/ for the new layout JSON (e.g. 'NewFeature/NewLayout.json')"),
+        .describe(
+          "Relative output path within layouts/ for the new layout JSON; must be a .json file (e.g. 'NewFeature/NewLayout.json')",
+        ),
       eventSheet: z.string().describe("Event sheet name for the new layout"),
       txId: z.string().optional().describe("Expected txId — if stale, scaffold is rejected"),
       regenerate: z.boolean().optional().describe("Regenerate extracted/ files after scaffolding (default: true)"),
