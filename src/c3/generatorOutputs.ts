@@ -24,8 +24,8 @@ export function replaceOwnedOutputs(
   ownedSuffixes: readonly string[],
   outputs: ReadonlyMap<string, string>,
 ): void {
-  // walkFiles lists regular files only: junctions and directory symlinks are never listed. A symlink
-  // to a regular file is listed, so one that is not an output is removed as an orphan (the link, never its target).
+  // walkFiles lists regular files and symlinks that resolve to one; junctions and directory symlinks are never
+  // listed. So a file symlink that is not an output is removed as an orphan (the link, never its target).
   const owned = walkFiles(outDir, (p) => ownedSuffixes.some((s) => p.endsWith(s)));
 
   mkdirSync(outDir, { recursive: true });

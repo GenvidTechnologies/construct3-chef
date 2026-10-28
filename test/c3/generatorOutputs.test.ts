@@ -114,8 +114,11 @@ describe("replaceOwnedOutputs", () => {
       writeFileSync(targetFile, "keep");
       try {
         symlinkSync(targetFile, link, "file");
-      } catch {
-        this.skip();
+      } catch (err) {
+        // Skip only when this environment cannot create a file symlink (no privilege or no support).
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "EPERM" || code === "EACCES" || code === "ENOSYS") this.skip();
+        throw err;
       }
       replaceOwnedOutputs(dir, [".ts"], new Map([[path.join(dir, "a.ts"), "a"]]));
       assert.deepEqual(
