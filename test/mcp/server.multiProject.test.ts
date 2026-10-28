@@ -425,11 +425,10 @@ describe("MCP server multi-project behavior (#95, Seam C)", () => {
       "search-docs": { query: "NoMatchWhatsoeverXyz123" },
       // MUTATE tools: same not-found placeholders as T-C5 EXCEPT apply-recipe
       // and sync-project, which have no way to force a deterministic no-op —
-      // apply-recipe's "{}" recipe and sync-project's unconditional sync both
-      // genuinely do nothing (an empty recipe touches no files; a project
-      // already in sync writes nothing new) and both unconditionally bump
-      // the watcher once — symmetric on both mirrored roots, so still
-      // byte-identical.
+      // apply-recipe's "{}" recipe and sync-project's sync of an in-sync project
+      // both genuinely do nothing (an empty recipe touches no files; a project
+      // already in sync writes nothing) — symmetric on both mirrored roots, so
+      // still byte-identical (sync-project bumps only when it wrote, #310).
       "apply-recipe": { recipe: "{}", regenerate: false },
       "sync-project": {},
       "sync-addon-metadata": { direction: "package-from-manifest" },

@@ -3,6 +3,7 @@ import path from "node:path";
 import type { Logger } from "@genvidtech/mcp-utils";
 import {
   readProjectManifest,
+  serializeProjectManifest,
   writeProjectManifest,
   detectImageDrift,
   detectManifestDrift,
@@ -11,6 +12,7 @@ import {
   fileTypeForName,
   type DriftEntry,
   type StrayFile,
+  TIMELINE_TRANSITIONS_FOLDER,
 } from "@genvidtech/c3source";
 import { mintUniqueSid } from "./sidUtils.js";
 
@@ -79,6 +81,8 @@ export interface SyncResult {
   changes: Change[];
   clean: boolean;
   sections: Record<string, SectionSummary>;
+  /** true iff this call wrote project.c3proj. */
+  wrote: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -393,34 +397,72 @@ export function syncFileFolder(
 // ---------------------------------------------------------------------------
 
 /**
- * Navigate from the section root to the subfolder described by `segments`.
- * Returns the target NameFolder, or undefined if a segment is missing.
+ * The segment a subfolder contributes to a drift path, mirroring c3source's manifest walk:
+ * a named folder contributes its name; the nameless direct child of the timelines root
+ * contributes `TIMELINE_TRANSITIONS_FOLDER`; any other nameless folder contributes nothing
+ * (it is transparent) and returns undefined.
  */
-function navigateFolder(folder: NameFolder, segments: string[]): NameFolder | undefined {
-  let cur: NameFolder = folder;
+function segmentOf(sub: NameFolder, parentIsRoot: boolean, sectionKey: string): string | undefined {
+  if (sub.name !== undefined) return sub.name;
+  return parentIsRoot && sectionKey === "timelines" ? TIMELINE_TRANSITIONS_FOLDER : undefined;
+}
+
+/** `f` plus every folder reachable from it through transparent (segment-less) nameless links. */
+function withTransparent(f: NameFolder, isRoot: boolean, sectionKey: string): NameFolder[] {
+  const out: NameFolder[] = [f];
+  for (const s of f.subfolders) {
+    if (segmentOf(s, isRoot, sectionKey) === undefined) out.push(...withTransparent(s, false, sectionKey));
+  }
+  return out;
+}
+
+/**
+ * Every folder whose upstream drift path equals `segments` (the inverse of c3source's
+ * manifest walk). Several folders can share a path because transparent folders merge into
+ * their parent's path.
+ */
+function foldersAt(sectionFolder: NameFolder, segments: string[], sectionKey: string): NameFolder[] {
+  let level = withTransparent(sectionFolder, true, sectionKey).map((f) => ({ f, isRoot: f === sectionFolder }));
   for (const seg of segments) {
-    const found = cur.subfolders.find((s) => s.name === seg);
-    if (!found) return undefined;
-    cur = found;
+    const next: typeof level = [];
+    for (const { f, isRoot } of level) {
+      for (const s of f.subfolders) {
+        if (segmentOf(s, isRoot, sectionKey) !== seg) continue;
+        for (const e of withTransparent(s, false, sectionKey)) next.push({ f: e, isRoot: false });
+      }
+    }
+    level = next;
+  }
+  return level.map((x) => x.f);
+}
+
+/**
+ * Resolve `segments` to a folder, creating missing segments. At the timelines root the
+ * `transitions` segment resolves to the existing nameless container; when none exists a
+ * nameless one is created at index 0 (never a folder named "transitions").
+ */
+function ensureFolder(sectionFolder: NameFolder, segments: string[], sectionKey: string): NameFolder {
+  let cur = sectionFolder;
+  for (let i = 0; i < segments.length; i++) {
+    const found = foldersAt(sectionFolder, segments.slice(0, i + 1), sectionKey)[0];
+    if (found) {
+      cur = found;
+      continue;
+    }
+    const seg = segments[i];
+    if (i === 0 && sectionKey === "timelines" && seg === TIMELINE_TRANSITIONS_FOLDER) {
+      cur = { items: [], subfolders: [] };
+      sectionFolder.subfolders.unshift(cur);
+    } else {
+      cur = { items: [], subfolders: [], name: seg };
+      foldersAt(sectionFolder, segments.slice(0, i), sectionKey)[0].subfolders.push(cur);
+    }
   }
   return cur;
 }
 
-/**
- * Navigate from the section root to the subfolder described by `segments`,
- * creating any missing segments along the way.
- */
-function ensureFolder(folder: NameFolder, segments: string[]): NameFolder {
-  let cur: NameFolder = folder;
-  for (const seg of segments) {
-    let found = cur.subfolders.find((s) => s.name === seg);
-    if (!found) {
-      found = { items: [], subfolders: [], name: seg };
-      cur.subfolders.push(found);
-    }
-    cur = found;
-  }
-  return cur;
+function unresolvable(sectionKey: string, entry: DriftEntry): Error {
+  return new Error(`sync: cannot apply ${entry.kind} drift for ${sectionKey} "${entry.name}"`);
 }
 
 function itemDisplay(pathSegs: string[], name: string): string {
@@ -448,44 +490,29 @@ export function applyNameDrift(
     switch (entry.kind) {
       case "untracked": {
         // On disk, not in manifest → ADD
-        const target = dryRun ? null : ensureFolder(folder, entry.diskPath ?? []);
-        if (!dryRun && target) {
-          target.items.push(entry.name);
-        }
+        if (!dryRun) ensureFolder(folder, entry.diskPath ?? [], sectionKey).items.push(entry.name);
         changes.push({ section: sectionKey, action: "+", detail: itemDisplay(entry.diskPath ?? [], entry.name) });
         break;
       }
-      case "missing": {
-        // In manifest, not on disk → REMOVE
-        const target = navigateFolder(folder, entry.manifestPath ?? []);
-        if (!target) break; // shouldn't happen; skip gracefully
-        if (!dryRun) {
-          target.items = target.items.filter((n) => n !== entry.name);
-        }
-        changes.push({ section: sectionKey, action: "-", detail: itemDisplay(entry.manifestPath ?? [], entry.name) });
-        break;
-      }
+      case "missing":
       case "moved": {
-        // Same name, different path → decompose as remove@manifestPath + add@diskPath
-        const removeTarget = navigateFolder(folder, entry.manifestPath ?? []);
-        if (!dryRun && removeTarget) {
-          removeTarget.items = removeTarget.items.filter((n) => n !== entry.name);
-        }
+        // In manifest, not on disk → REMOVE (a move is remove@manifestPath + add@diskPath)
+        const target = foldersAt(folder, entry.manifestPath ?? [], sectionKey).find((f) =>
+          f.items.includes(entry.name),
+        );
+        if (!target) throw unresolvable(sectionKey, entry);
+        if (!dryRun) target.items = target.items.filter((n) => n !== entry.name);
         changes.push({ section: sectionKey, action: "-", detail: itemDisplay(entry.manifestPath ?? [], entry.name) });
-
-        const addTarget = dryRun ? null : ensureFolder(folder, entry.diskPath ?? []);
-        if (!dryRun && addTarget) {
-          addTarget.items.push(entry.name);
+        if (entry.kind === "moved") {
+          if (!dryRun) ensureFolder(folder, entry.diskPath ?? [], sectionKey).items.push(entry.name);
+          changes.push({ section: sectionKey, action: "+", detail: itemDisplay(entry.diskPath ?? [], entry.name) });
         }
-        changes.push({ section: sectionKey, action: "+", detail: itemDisplay(entry.diskPath ?? [], entry.name) });
         break;
       }
       case "folder-untracked": {
         // Disk subdir with no manifest subfolder → ADD
         // diskPath includes the new folder name as last segment; ensureFolder creates it
-        if (!dryRun) {
-          ensureFolder(folder, entry.diskPath ?? []);
-        }
+        if (!dryRun) ensureFolder(folder, entry.diskPath ?? [], sectionKey);
         changes.push({
           section: sectionKey,
           action: "+",
@@ -496,13 +523,22 @@ export function applyNameDrift(
       case "folder-missing": {
         // Manifest subfolder with no disk dir → REMOVE
         const pathSegs = entry.manifestPath ?? [];
-        const parentSegs = pathSegs.slice(0, -1);
-        const folderName = pathSegs.at(-1);
-        if (!folderName) break; // shouldn't happen
-        const parent = navigateFolder(folder, parentSegs);
-        if (!dryRun && parent) {
-          parent.subfolders = parent.subfolders.filter((s) => s.name !== folderName);
+        const leaf = pathSegs.at(-1);
+        if (!leaf) throw unresolvable(sectionKey, entry);
+        let hit: { parent: NameFolder; child: NameFolder } | undefined;
+        for (const parent of foldersAt(folder, pathSegs.slice(0, -1), sectionKey)) {
+          const isRoot = parent === folder;
+          const matches = parent.subfolders.filter((s) => segmentOf(s, isRoot, sectionKey) === leaf);
+          // Prefer a named folder over the nameless timelines container.
+          const child = matches.find((s) => s.name !== undefined) ?? matches[0];
+          if (child) {
+            hit = { parent, child };
+            break;
+          }
         }
+        if (!hit) throw unresolvable(sectionKey, entry);
+        const { parent, child } = hit;
+        if (!dryRun) parent.subfolders = parent.subfolders.filter((s) => s !== child);
         changes.push({ section: sectionKey, action: "-", detail: folderDisplay(pathSegs) });
         break;
       }
@@ -516,6 +552,21 @@ export function applyNameDrift(
 // ---------------------------------------------------------------------------
 // Main sync entry point
 // ---------------------------------------------------------------------------
+
+// Temporary bridge for construct3-chef#310, pending
+// https://github.com/GenvidTechnologies/c3source/issues/97: C3 saves the nameless
+// timelines container on every save even when there is no transitions/ dir, so its
+// absence on disk is not drift, yet upstream detectManifestDrift reports it as
+// folder-missing. Fires whatever the container holds.
+// Retire it when I310-T1 goes red after a c3source bump: delete this function, its call
+// in runSync, and the `I310-T1:` tripwire, then confirm the I310 convergence tests
+// (I310-R1, I310-R2, I310-C1) stay green on upstream's rule alone.
+function isTransitionsContainerFolderMissing(folder: NameFolder, entry: DriftEntry, sectionKey: string): boolean {
+  if (sectionKey !== "timelines" || entry.kind !== "folder-missing") return false;
+  const manifestPath = entry.manifestPath ?? [];
+  if (manifestPath.length !== 1 || manifestPath[0] !== TIMELINE_TRANSITIONS_FOLDER) return false;
+  return folder.subfolders.some((s) => s.name === undefined);
+}
 
 export function runSync(
   rootDir: string,
@@ -544,6 +595,9 @@ export function runSync(
     throw new Error(`Could not parse ${projectPath} as JSON`);
   }
 
+  // Snapshot before any section mutates `project`: the write below happens only if the
+  // serialized bytes actually moved (reported changes are not necessarily mutations).
+  const serializedBefore = serializeProjectManifest(project);
   const existingSids = collectAllSids(project);
   const allChanges: Change[] = [];
 
@@ -572,7 +626,10 @@ export function runSync(
       log(`Warning: ${s.section} not found in project.c3proj`);
       continue;
     }
-    applyNameDrift(folder, s.entries, s.section, allChanges, dryRun);
+    // Drop at most one container-absence entry (see isTransitionsContainerFolderMissing).
+    const bridgeIdx = s.entries.findIndex((e) => isTransitionsContainerFolderMissing(folder, e, s.section));
+    const entries = bridgeIdx < 0 ? s.entries : s.entries.filter((_, i) => i !== bridgeIdx);
+    applyNameDrift(folder, entries, s.section, allChanges, dryRun);
   }
 
   // Print results
@@ -603,10 +660,12 @@ export function runSync(
   // identity (readProjectManifest, above) and every drift fix mutates it in place. Never
   // rebuild it via spread, or this write and that one will silently clobber each other's
   // unmodeled fields.
-  if (!dryRun && totalChanges > 0) {
+  let wrote = false;
+  if (!dryRun && totalChanges > 0 && serializeProjectManifest(project) !== serializedBefore) {
     opts?.beforeWrite?.(path.resolve(projectPath));
     writeProjectManifest(projectPath, project);
     log(`Updated ${projectPath}`);
+    wrote = true;
   }
 
   const sections: Record<string, SectionSummary> = {};
@@ -618,7 +677,7 @@ export function runSync(
     };
   }
 
-  return { changes: allChanges, clean: allChanges.length === 0, sections };
+  return { changes: allChanges, clean: allChanges.length === 0, sections, wrote };
 }
 
 // ---------------------------------------------------------------------------

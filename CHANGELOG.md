@@ -35,7 +35,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([#267](https://github.com/GenvidTechnologies/construct3-chef/issues/267),
   ADR [`0060`](wiki/decisions/0060-scaffold-sprite-shares-the-objecttype-name-rule.md)).
 
+- **MCP `sync-project` bumps the project's `txId` only when it wrote
+  `project.c3proj`.** It used to bump on every successful call. A no-op sync
+  now leaves the token unchanged, as `sync-addon-metadata` already did
+  ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310),
+  ADR [`0061`](wiki/decisions/0061-sync-treats-the-timelines-transitions-container-as-always-present.md)).
+
+- **`applyNameDrift` now throws on a drift entry it cannot resolve**
+  (`sync: cannot apply <kind> drift for <section> "<name>"`). It used to record
+  a phantom change or drop the entry silently
+  ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310)).
+
+### Added
+
+- **`SyncResult.wrote: boolean`** is true iff the sync call wrote
+  `project.c3proj` ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310)).
+
 ### Fixed
+
+- **`validate-project` and `sync-project` converge on C3's nameless timelines
+  container.** C3 saves that `transitions` container on every save, even with
+  no transitions and no `timelines/transitions/` directory, so an
+  editor-saved project no longer reports permanent `- transitions/` drift.
+  Sync also no longer writes a second `{"name":"transitions"}` subfolder, no
+  longer drops a missing ease inside the container, and handles moves into and
+  out of the container, nested folders under it, and nameless subfolders in
+  other sections. Sync no longer rewrites unchanged bytes or logs `Updated`
+  for a no-op
+  ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310),
+  ADR [`0061`](wiki/decisions/0061-sync-treats-the-timelines-transitions-container-as-always-present.md)).
 
 - **`scaffold-sprite` and `scaffold-layout` (CLI and MCP) refuse bad inputs
   before writing anything.** `scaffold-sprite` refuses an empty name (which

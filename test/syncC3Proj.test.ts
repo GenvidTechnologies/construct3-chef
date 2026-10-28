@@ -1,9 +1,12 @@
 import { describe, it, beforeEach, afterEach } from "mocha";
 import { assert } from "chai";
 import tmp from "tmp";
-import { mkdirSync, writeFileSync, readFileSync, cpSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, cpSync, utimesSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildScenario, cleanupScenarios } from "./helpers/syncScenarios.js";
+import { runCli } from "./helpers/runCli.js";
 import {
   detectManifestDrift,
   detectImageDrift,
@@ -664,21 +667,6 @@ describe("syncC3Proj", () => {
       assert.equal(changes.length, 1);
       assert.isTrue(changes.some((c) => c.action === "-" && c.detail === "Sub/Nested/"));
     });
-
-    it("folder-missing with a missing parent: records the change but skips gracefully", () => {
-      const folder: NameFolder = { items: [], subfolders: [] };
-      const entries: DriftEntry[] = [
-        { kind: "folder-missing", name: "Nested", manifestPath: ["NonExistent", "Nested"] },
-      ];
-      const changes: Change[] = [];
-
-      // navigateFolder returns undefined for the missing parent → no crash, no mutation.
-      applyNameDrift(folder, entries, "eventSheets", changes, false);
-
-      assert.deepEqual(folder.subfolders, []);
-      assert.equal(changes.length, 1);
-      assert.equal(changes[0].action, "-");
-    });
   });
 
   describe("runSync name-section integration", () => {
@@ -820,5 +808,259 @@ describe("syncC3Proj", () => {
       assert.equal(result.clean, false, "seeding bug: no drift");
       assert.equal(calls, 0);
     });
+  });
+});
+
+describe("timelines transitions container (#310)", function () {
+  // Each test copies the canonical fixture one or more times.
+  this.timeout(30_000);
+  afterEach(cleanupScenarios);
+
+  it("I310-T1: upstream detectManifestDrift still reports the nameless container as folder-missing only when its dir is absent", () => {
+    const timelinesEntries = (root: string) =>
+      detectManifestDrift(root).sections.find((s) => s.section === "timelines")?.entries ?? [];
+    const f0 = timelinesEntries(buildScenario("F0").root);
+    const f1 = timelinesEntries(buildScenario("F1").root);
+    assert.deepEqual(
+      {
+        f0Timelines: f0.map((e) => ({ kind: e.kind, name: e.name, manifestPath: e.manifestPath })),
+        f1HasTimelines: f1.length > 0,
+      },
+      {
+        f0Timelines: [{ kind: "folder-missing", name: "transitions", manifestPath: ["transitions"] }],
+        f1HasTimelines: false,
+      },
+      "TRIPWIRE: upstream detectManifestDrift changed its answer on the nameless timelines container. " +
+        "When this goes red, upstream (GenvidTechnologies/c3source#97) has shipped: delete the local bridge " +
+        "isTransitionsContainerFolderMissing in src/c3/projectSync.ts plus this test, and revert-confirm " +
+        "the I310 convergence tests.",
+    );
+  });
+
+  const render = (changes: Change[]): string[] => changes.map((c) => `${c.action} ${c.detail}`);
+
+  /** Write-mode sync of one scenario's timelines, then re-read the tree and re-validate with a dry run. */
+  function converge(name: Parameters<typeof buildScenario>[0]) {
+    const { root, manifestPath } = buildScenario(name);
+    const changes = render(runSync(root, false, () => {}, "timelines").changes);
+    const timelines = JSON.parse(readFileSync(manifestPath, "utf8")).timelines as NameFolder;
+    const revalidate = render(runSync(root, true, () => {}, "timelines").changes);
+    return { changes, timelines, revalidate };
+  }
+
+  it("I310-R3b: applyNameDrift throws on an unresolvable folder-missing parent, leaving the folder unmutated", () => {
+    const folder: NameFolder = { items: [], subfolders: [] };
+    const entries: DriftEntry[] = [{ kind: "folder-missing", name: "Nested", manifestPath: ["NonExistent", "Nested"] }];
+    const changes: Change[] = [];
+    let message = "";
+    try {
+      applyNameDrift(folder, entries, "eventSheets", changes, false);
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    assert.deepEqual(
+      { threw: /cannot apply/.test(message), folder, changes },
+      { threw: true, folder: { items: [], subfolders: [] }, changes: [] },
+    );
+  });
+
+  it("I310-R4: write-mode sync of S1, MV_in, NU and NOC leaves 0 named transitions and exactly 1 nameless subfolder", () => {
+    const shape = (t: NameFolder) => ({
+      named: t.subfolders.filter((s) => s.name === "transitions").length,
+      nameless: t.subfolders.filter((s) => s.name === undefined).length,
+    });
+    const actual = Object.fromEntries(
+      (["S1", "MV_in", "NU", "NOC"] as const).map((n) => [n, shape(converge(n).timelines)]),
+    );
+    const want = { named: 0, nameless: 1 };
+    assert.deepEqual(actual, { S1: want, MV_in: want, NU: want, NOC: want });
+  });
+
+  it("I310-R5a: S1 adds the file into the empty container", () => {
+    assert.deepEqual(converge("S1"), {
+      changes: ["+ transitions/Ease"],
+      timelines: { items: ["Timeline 1"], subfolders: [{ items: ["Ease"], subfolders: [] }] },
+      revalidate: [],
+    });
+  });
+
+  it("I310-R5b: S2 removes the ghost item from the container", () => {
+    assert.deepEqual(converge("S2"), {
+      changes: ["- transitions/Ghost"],
+      timelines: { items: ["Timeline 1"], subfolders: [{ items: [], subfolders: [] }] },
+      revalidate: [],
+    });
+  });
+
+  it("I310-R5d: MV_in moves the item from the root into the container", () => {
+    assert.deepEqual(converge("MV_in"), {
+      changes: ["- Ease", "+ transitions/Ease"],
+      timelines: { items: ["Timeline 1"], subfolders: [{ items: ["Ease"], subfolders: [] }] },
+      revalidate: [],
+    });
+  });
+
+  it("I310-R5e: MV_out moves the item from the container to the root", () => {
+    assert.deepEqual(converge("MV_out"), {
+      changes: ["- transitions/Ease", "+ Ease"],
+      timelines: { items: ["Timeline 1", "Ease"], subfolders: [{ items: [], subfolders: [] }] },
+      revalidate: [],
+    });
+  });
+
+  it("I310-R5c: MI keeps the container and removes only the ghost item", () => {
+    assert.deepEqual(converge("MI"), {
+      changes: ["- transitions/Ghost"],
+      timelines: { items: ["Timeline 1"], subfolders: [{ items: [], subfolders: [] }] },
+      revalidate: [],
+    });
+  });
+
+  it("I310-R5g: NFN keeps the container and removes only the empty Others folder", () => {
+    assert.deepEqual(converge("NFN"), {
+      changes: ["- transitions/Others/"],
+      timelines: { items: ["Timeline 1"], subfolders: [{ items: [], subfolders: [] }] },
+      revalidate: [],
+    });
+  });
+
+  it("I310-R1: F0 dry-run sync reports no timelines changes and is clean", () => {
+    const { root } = buildScenario("F0");
+    const result = runSync(root, true, () => {});
+    assert.deepEqual(
+      { timelinesChanges: render(result.changes.filter((c) => c.section === "timelines")), clean: result.clean },
+      { timelinesChanges: [], clean: true },
+    );
+  });
+
+  it("I310-R3: dry-run and write-mode sync report the same change list for every #310 scenario", () => {
+    const names = ["F0", "F1", "S1", "S2", "MI", "MV_in", "MV_out", "NF", "NFN", "NU", "NOC"] as const;
+    const dry: Record<string, string[]> = {};
+    const write: Record<string, string[]> = {};
+    for (const n of names) {
+      dry[n] = render(runSync(buildScenario(n).root, true, () => {}, "timelines").changes);
+      write[n] = render(runSync(buildScenario(n).root, false, () => {}, "timelines").changes);
+    }
+    assert.deepEqual(dry, write);
+  });
+
+  it("I310-C1: validate, sync, validate on F0 exits 0 each time and never rewrites the manifest", () => {
+    const { root, manifestPath } = buildScenario("F0");
+    const past = new Date(Date.now() - 3_600_000);
+    utimesSync(manifestPath, past, past);
+    const fingerprint = () => ({
+      sha: createHash("sha256").update(readFileSync(manifestPath)).digest("hex"),
+      mtimeMs: statSync(manifestPath).mtimeMs,
+    });
+    const before = fingerprint();
+    const v1 = runCli(["validate-project", "--project-dir", root]);
+    const s = runCli(["sync-project", "--project-dir", root]);
+    const v2 = runCli(["validate-project", "--project-dir", root]);
+    const after = fingerprint();
+    const noChanges = /^\[timelines\]\s+\(no changes\)$/m;
+    assert.deepEqual(
+      {
+        codes: [v1.exitCode, s.exitCode, v2.exitCode],
+        validate1Timelines: noChanges.test(v1.stdout),
+        validate2Timelines: noChanges.test(v2.stdout),
+        syncHasUpdated: /^Updated/m.test(s.stdout),
+        sha256Same: after.sha === before.sha,
+        mtimeSame: after.mtimeMs === before.mtimeMs,
+      },
+      {
+        codes: [0, 0, 0],
+        validate1Timelines: true,
+        validate2Timelines: true,
+        syncHasUpdated: false,
+        sha256Same: true,
+        mtimeSame: true,
+      },
+    );
+  });
+
+  it("I310-R5f: NF removes the empty Others folder from the container", () => {
+    assert.deepEqual(converge("NF"), {
+      changes: ["- transitions/Others/"],
+      timelines: { items: ["Timeline 1"], subfolders: [{ items: [], subfolders: [] }] },
+      revalidate: [],
+    });
+  });
+
+  it("I310-R5h: NU adds Others inside the nameless container", () => {
+    assert.deepEqual(converge("NU"), {
+      changes: ["+ transitions/Others/ (new folder)"],
+      timelines: {
+        items: ["Timeline 1"],
+        subfolders: [{ items: [], subfolders: [{ items: [], subfolders: [], name: "Others" }] }],
+      },
+      revalidate: [],
+    });
+  });
+
+  it("I310-R5i: NOC creates a nameless container at index 0", () => {
+    assert.deepEqual(converge("NOC"), {
+      changes: ["+ transitions/Ease", "+ transitions/ (new folder)"],
+      timelines: { items: ["Timeline 1"], subfolders: [{ items: ["Ease"], subfolders: [] }] },
+      revalidate: [],
+    });
+  });
+
+  it("I310-R5j: items under a nameless eventSheets subfolder are removed and converge", () => {
+    const root = createTmpDir();
+    cpSync(sampleProjectDir, root, { recursive: true });
+    const manifestPath = path.join(root, "project.c3proj");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    manifest.eventSheets.subfolders.push({
+      items: ["GhostSheet"],
+      subfolders: [{ items: ["GhostSheet2"], subfolders: [], name: "DegSub" }],
+    });
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, "\t"));
+    const dry = render(runSync(root, true, () => {}, "eventSheets").changes);
+    const changes = render(runSync(root, false, () => {}, "eventSheets").changes);
+    const revalidate = render(runSync(root, true, () => {}, "eventSheets").changes);
+    assert.deepEqual(
+      { dry, changes, revalidate },
+      { dry: changes, changes: ["- GhostSheet", "- DegSub/GhostSheet2", "- DegSub/"], revalidate: [] },
+    );
+  });
+
+  /** Backdate the manifest, write-mode sync it, and report whether anything was written. */
+  function writeSyncOutcome(root: string, manifestPath: string) {
+    const past = new Date(Date.now() - 3_600_000);
+    utimesSync(manifestPath, past, past);
+    const bytesBefore = readFileSync(manifestPath);
+    const mtimeBefore = statSync(manifestPath).mtimeMs;
+    let beforeWrite = 0;
+    const lines: string[] = [];
+    const result = runSync(root, false, (l) => lines.push(l), undefined, { beforeWrite: () => beforeWrite++ });
+    const bytesAfter = readFileSync(manifestPath);
+    return {
+      beforeWrite,
+      updatedLogged: lines.some((l) => l.startsWith("Updated ")),
+      bytesSame: bytesAfter.equals(bytesBefore),
+      mtimeSame: statSync(manifestPath).mtimeMs === mtimeBefore,
+      wrote: result.wrote,
+    };
+  }
+
+  const NO_WRITE = { beforeWrite: 0, updatedLogged: false, bytesSame: true, mtimeSame: true, wrote: false };
+
+  it("I310-R2: F0 write-mode sync never calls beforeWrite, logs Updated, or touches the manifest", () => {
+    const { root, manifestPath } = buildScenario("F0");
+    assert.deepEqual(writeSyncOutcome(root, manifestPath), NO_WRITE);
+  });
+
+  it("I310-R2b: F0 saved with CRLF gives the R2 outcome and keeps its CRLF bytes", () => {
+    const { root, manifestPath } = buildScenario("F0");
+    writeFileSync(manifestPath, readFileSync(manifestPath, "utf8").replace(/\n/g, "\r\n"));
+    const outcome = writeSyncOutcome(root, manifestPath);
+    const hasCRLF = readFileSync(manifestPath, "utf8").includes("\r\n");
+    assert.deepEqual({ ...outcome, hasCRLF }, { ...NO_WRITE, hasCRLF: true });
+  });
+
+  it("I310-R2c: S1 write-mode sync reports wrote true; a dry run of the same input reports false", () => {
+    const dryWrote = runSync(buildScenario("S1").root, true, () => {}).wrote;
+    const writeWrote = runSync(buildScenario("S1").root, false, () => {}).wrote;
+    assert.deepEqual({ dryWrote, writeWrote }, { dryWrote: false, writeWrote: true });
   });
 });

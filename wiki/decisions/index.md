@@ -542,3 +542,12 @@ See the [wiki index](../index.md) for the other sections.
   `scaffold-layout` also refuses empty inputs, a non-`.json` output and a
   directory source before any write
   ([#267](https://github.com/GenvidTechnologies/construct3-chef/issues/267))
+* [0061. sync treats the timelines transitions container as always present](0061-sync-treats-the-timelines-transitions-container-as-always-present.md) -
+  `sync-project`'s apply step resolves drift paths the way c3source's manifest
+  walk produces them (the nameless direct child of the timelines root is the
+  `transitions` segment), throws on a drift entry it cannot resolve, and
+  writes `project.c3proj` only when the synced bytes change, reporting that as
+  `SyncResult.wrote`. A temporary local bridge drops upstream's
+  `folder-missing ["transitions"]` entry because C3 saves that container on
+  every save, pending c3source#97
+  ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310))

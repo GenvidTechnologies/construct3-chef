@@ -1226,11 +1226,13 @@ regP(
           const { log, text } = bufferingLogger();
           const txCheck = compareTxToken(ctx, expectedTxId, "syncing");
           if (txCheck) return txCheck;
-          // project.c3proj is registered before the write via sw.before; txId is bumped below.
+          // project.c3proj is registered before the write via sw.before; txId is bumped
+          // below only when runSync actually wrote (#310), like sync-addon-metadata.
+          let wrote = false;
           await suppressSelfWrites(ctx.watcher, async (sw) => {
-            runSync(ctx.root, false, log, undefined, { beforeWrite: sw.before });
+            wrote = runSync(ctx.root, false, log, undefined, { beforeWrite: sw.before }).wrote;
           });
-          ctx.watcher.bump();
+          if (wrote) ctx.watcher.bump();
           // Detection-only: images aren't a manifest section so sync can't act on
           // image drift, but surface it (read-only) so a direct sync still shows it,
           // mirroring validate-project (#52).
@@ -1505,9 +1507,9 @@ regP(
             return mcpError(message, { prefix: "sync-addon-metadata:", extraLines: [txIdLine(ctx)] });
           }
 
-          // Bump ONLY if a write actually happened — a deliberate departure from
-          // sync-project (which bumps unconditionally because it's always in write
-          // mode). This tool has genuine no-write paths (a preview-shaped
+          // Bump ONLY if a write actually happened — as sync-project does too
+          // (it bumps only when runSync reports it wrote). This tool has
+          // genuine no-write paths (a preview-shaped
           // package-from-manifest report, or a manifest-from-package apply with no
           // would-change rows); bumping on those would falsely invalidate every
           // client's txId. ctx.extractedDirty is untouched either way — project.c3proj
