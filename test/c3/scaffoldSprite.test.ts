@@ -403,8 +403,11 @@ describe("scaffoldSprite", () => {
       // fail when the test environment can't create one.
       try {
         symlinkSync(realPath, path.join(dir, linkBasename), "file");
-      } catch {
-        this.skip();
+      } catch (err) {
+        // Skip only when this environment cannot create the link (no privilege or no support).
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "EPERM" || code === "EACCES" || code === "ENOSYS") this.skip();
+        throw err;
       }
 
       const copies = discoverAndPlanImageCopies(dir, "StoryBookIcon", "VideosIcon");
@@ -419,8 +422,11 @@ describe("scaffoldSprite", () => {
       const linkBasename = "storybookicon-link.png";
       try {
         symlinkSync(realDir, path.join(dir, linkBasename), "junction");
-      } catch {
-        this.skip();
+      } catch (err) {
+        // Skip only when this environment cannot create the link (no privilege or no support).
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "EPERM" || code === "EACCES" || code === "ENOSYS") this.skip();
+        throw err;
       }
       rmSync(realDir, { recursive: true, force: true }); // dangle the link
       // Positive control, co-located.
@@ -558,8 +564,11 @@ describe("scaffoldSprite", () => {
       mkdirSync(realDir);
       try {
         symlinkSync(realDir, path.join(dir, "src-animation 1-000.png"), "junction");
-      } catch {
-        this.skip();
+      } catch (err) {
+        // Skip only when this environment cannot create the link (no privilege or no support).
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "EPERM" || code === "EACCES" || code === "ENOSYS") this.skip();
+        throw err;
       }
       rmSync(realDir, { recursive: true, force: true });
       writeFileSync(path.join(dir, "src-animation 2-000.png"), "data", "utf-8");
