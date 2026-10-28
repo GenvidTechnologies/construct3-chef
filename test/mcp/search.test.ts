@@ -425,8 +425,11 @@ describe("search — editor-local filtering and dangling entries (#159)", () => 
     const brokenLink = path.join(layoutsDir, "Broken.json");
     try {
       fs.symlinkSync(realTargetDir, brokenLink, "junction");
-    } catch {
-      this.skip();
+    } catch (err) {
+      // Skip only when this environment cannot create the link (no privilege or no support).
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "EPERM" || code === "EACCES" || code === "ENOSYS") this.skip();
+      throw err;
     }
     fs.rmSync(realTargetDir, { recursive: true, force: true }); // dangle the link
 
@@ -450,8 +453,11 @@ describe("search — editor-local filtering and dangling entries (#159)", () => 
     // rather than fail when the test environment can't create one.
     try {
       fs.symlinkSync(realPath, linkPath, "file");
-    } catch {
-      this.skip();
+    } catch (err) {
+      // Skip only when this environment cannot create the link (no privilege or no support).
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "EPERM" || code === "EACCES" || code === "ENOSYS") this.skip();
+      throw err;
     }
 
     const result = search(config, { pattern: "needle", type: "json", path: "layouts/" });
