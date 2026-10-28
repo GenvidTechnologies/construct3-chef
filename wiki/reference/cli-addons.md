@@ -121,7 +121,7 @@ Checked 2 bundled addon(s), 4 issue(s):
   LangDefects [lang/en-US.json]: item 'slow' of property 'mode' has no lang string
 ```
 
-The clean case prints `Checked N bundled addon(s): all consistent.` Output uses the same `formatAddonValidation` formatter as the MCP `validate-addons` tool, so results are byte-identical between surfaces — with one exception, introduced by `--skip-gate`: the `Gating on …` line is emitted only when that flag is passed, and the flag has no MCP equivalent, so only the CLI can ever produce it. Every other line, the per-family breakdown included, remains byte-identical on both surfaces.
+The clean case prints `Checked N bundled addon(s): all consistent.` When no package was checked and nothing was found (for example an addon repo whose sample project uses its addon unbundled), it prints `Checked 0 bundled addon(s): nothing to validate (N unbundled usedAddons entries skipped).` instead, so an empty run never reads as a pass; the exit code is still 0 ([#311](https://github.com/GenvidTechnologies/construct3-chef/issues/311)). Output uses the same `formatAddonValidation` formatter as the MCP `validate-addons` tool, so results are byte-identical between surfaces — with one exception, introduced by `--skip-gate`: the `Gating on …` line is emitted only when that flag is passed, and the flag has no MCP equivalent, so only the CLI can ever produce it. Every other line, the per-family breakdown included, remains byte-identical on both surfaces.
 
 ---
 

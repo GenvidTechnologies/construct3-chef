@@ -1,5 +1,7 @@
 import { describe, it, afterEach } from "mocha";
 import { expect } from "chai";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { runCli } from "../helpers/runCli.js";
 import {
@@ -97,6 +99,31 @@ describe("validate-addons MCP/CLI parity (#220 R6)", function () {
       );
     });
   }
+
+  it("I311-R3: zero packages checked: MCP text equals CLI stdout, and the CLI exits 0", async () => {
+    const root = mkdtempSync(path.join(realpathSync.native(os.tmpdir()), "c3chef-i311-"));
+    try {
+      writeFileSync(
+        path.join(root, "project.c3proj"),
+        JSON.stringify({ usedAddons: [{ id: "Genvid_YouTube", type: "plugin", bundled: false }] }),
+      );
+      const cliResult = runCli(["validate-addons", "--project-dir", root]);
+
+      __setProjectRoot(root);
+      __setTestWatcher(makeFakeWatcher(0));
+      const mcpResult = (await __getHandler("validate-addons")!({}, makeExtra())) as any;
+      const mcpText = (mcpResult.content[0].text as string).replace(/\ntxId: [^\n]+$/, "");
+
+      const expected = "Checked 0 bundled addon(s): nothing to validate (1 unbundled usedAddons entry skipped).";
+      expect({ exitCode: cliResult.exitCode, cli: cliResult.stdout, mcp: mcpText }).to.deep.equal({
+        exitCode: 0,
+        cli: `${expected}\n`,
+        mcp: expected,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 
   it("inputSchema carries no --skip-gate counterpart (ADR 0038: exit-code gating stays CLI-only)", () => {
     const config = __getToolConfig("validate-addons");

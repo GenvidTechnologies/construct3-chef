@@ -57,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`validate-addons` (CLI and MCP) no longer reports "all consistent" after
+  checking nothing.** A run that found no bundled package to check now prints
+  `Checked 0 bundled addon(s): nothing to validate (N unbundled usedAddons
+  entries skipped).` The CLI still exits 0
+  ([#311](https://github.com/GenvidTechnologies/construct3-chef/issues/311)).
+
 - **An `addInstVars` recipe dry-run (`validate-recipe`, `apply-recipe
   --dry-run`) on a project without `objectTypes/` reports `addInstVars:
   objectType "X" not found under objectTypes/`, as apply does.** It used to

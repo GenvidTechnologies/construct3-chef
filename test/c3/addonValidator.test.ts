@@ -1,6 +1,6 @@
 import { describe, it } from "mocha";
 import { expect } from "chai";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
@@ -153,16 +153,62 @@ describe("addonValidator", () => {
     );
   });
 
-  it("formatAddonValidation: empty case on a project with no addons", () => {
+  it("I311-R1: a project with no addons and no manifest says nothing was validated", () => {
     const tmpDir = mkdtempSync(path.join(os.tmpdir(), "addon-validate-empty-"));
     try {
       const result = validateAddons(tmpDir);
       expect(result.checked).to.equal(0);
       expect(result.findings).to.have.lengthOf(0);
-      expect(formatAddonValidation(result)).to.equal("Checked 0 bundled addon(s): all consistent.");
+      expect(formatAddonValidation(result)).to.equal(
+        "Checked 0 bundled addon(s): nothing to validate (0 unbundled usedAddons entries skipped).",
+      );
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+
+  describe("zero packages checked (#311)", () => {
+    /** A project with no addons/ dir whose manifest lists `entries` as usedAddons. */
+    function withManifest(entries: unknown[], fn: (root: string) => void): void {
+      const root = mkdtempSync(path.join(os.tmpdir(), "addon-validate-unbundled-"));
+      try {
+        writeFileSync(path.join(root, "project.c3proj"), JSON.stringify({ usedAddons: entries }));
+        fn(root);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
+
+    it("I311-R1: two unbundled usedAddons entries are counted as skipped, not reported consistent", () => {
+      withManifest(
+        [
+          { id: "Genvid_YouTube", type: "plugin", bundled: false },
+          { id: "Sprite", type: "plugin" },
+        ],
+        (root) => {
+          expect(formatAddonValidation(validateAddons(root))).to.equal(
+            "Checked 0 bundled addon(s): nothing to validate (2 unbundled usedAddons entries skipped).",
+          );
+        },
+      );
+    });
+
+    it("I311-R1: one unbundled entry reads 'entry'", () => {
+      withManifest([{ id: "Genvid_YouTube", type: "plugin", bundled: false }], (root) => {
+        expect(formatAddonValidation(validateAddons(root))).to.equal(
+          "Checked 0 bundled addon(s): nothing to validate (1 unbundled usedAddons entry skipped).",
+        );
+      });
+    });
+
+    it("I311-R2: a run that checked packages with no findings still says all consistent", () => {
+      expect(formatAddonValidation({ checked: 1, findings: [], unbundled: 2 })).to.equal(
+        "Checked 1 bundled addon(s): all consistent.",
+      );
+      expect(formatAddonValidation({ checked: 3, findings: [] })).to.equal(
+        "Checked 3 bundled addon(s): all consistent.",
+      );
+    });
   });
 
   it("formatAddonValidation: non-empty header + version-mismatch line format", () => {
