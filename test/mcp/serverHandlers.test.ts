@@ -1345,6 +1345,10 @@ describe("MCP server handler response shaping", () => {
       const scaffold = __getHandler("scaffold-layout")!;
       expect(scaffold).to.exist;
 
+      // scaffold-layout needs the SID registry (#316).
+      fs.mkdirSync(path.join(strayRoot, "extracted"), { recursive: true });
+      fs.writeFileSync(path.join(strayRoot, "extracted", "sid-registry.txt"), "");
+
       const scaffolded = (await scaffold(
         {
           source: "MainLayout.json",

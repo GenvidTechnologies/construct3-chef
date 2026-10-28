@@ -536,6 +536,38 @@ describe("scaffoldPlan (T26, #259)", function () {
     });
   });
 
+  describe("registry SIDs (#316)", () => {
+    it("I316-R7: the registry's SIDs are never minted for the clone", () => {
+      const MIN_SID = 1e14;
+      const MAX_SID = 1e15;
+      const planted = 555555555555555;
+      const sourceText = readFileSync(path.join(layoutsDir(), SOURCE_REL), "utf-8");
+      expect(sourceText.includes(String(planted)), "planted SID must not be in the source layout").to.equal(false);
+
+      const genDir = path.join(tmp, "gen");
+      mkdirSync(genDir, { recursive: true });
+      writeFileSync(path.join(genDir, "sid-registry.txt"), `${planted}\tplanted\tI316\n`);
+
+      const realRandom = Math.random;
+      let calls = 0;
+      // Every other draw proposes `planted`; the rest propose distinct fresh values.
+      Math.random = () =>
+        calls++ % 2 === 0
+          ? (planted - MIN_SID + 0.5) / (MAX_SID - MIN_SID)
+          : (200 + calls / 10) / (MAX_SID - MIN_SID) + 0.1;
+      let r: ReturnType<typeof planLayoutScaffold>;
+      try {
+        r = planLayoutScaffold(layoutOpts("layouts", { extractedDirAbs: genDir }));
+      } finally {
+        Math.random = realRandom;
+      }
+      expect(calls, "the Math.random rig fired").to.be.greaterThan(0);
+      expect(r.ok, JSON.stringify(r)).to.equal(true);
+      if (!r.ok) return;
+      expect(JSON.stringify(r.cloned).split(String(planted)).length - 1).to.equal(0);
+    });
+  });
+
   describe("writeLayoutScaffold", () => {
     it("creates missing parent directories, writes the file, and logs the success line once", () => {
       const r = planLayoutScaffold(layoutOpts("layouts", { out: "NewDir/PlanZ.json", name: "PlanZ" }));
