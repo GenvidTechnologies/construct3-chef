@@ -86,3 +86,39 @@ describe("CLI commands seed SIDs from the configured extractedDir", () => {
     expectSeededFromConfiguredDir(["apply-op", "make-sheet"]);
   });
 });
+
+describe("scaffold-layout seeds SIDs from the configured extractedDir (#316)", () => {
+  it("I316-R2: scaffold-layout seeds from the configured directory", function () {
+    this.timeout(60000);
+    // Its own root: scaffold-layout writes, so the shared read-only XD5 root is not used.
+    const own = buildConfiguredProject();
+    try {
+      expect(existsSync(path.join(own, "extracted")), "no default extracted/ precondition").to.equal(false);
+      const r = runCli([
+        "scaffold-layout",
+        "--project-dir",
+        own,
+        "--source",
+        "layouts/Gameplay/Main Layout.json",
+        "--out",
+        "layouts/I316/I316R2Layout.json",
+        "--name",
+        "I316R2Layout",
+        "--event-sheet",
+        "Event sheet 1",
+        "--no-regenerate",
+      ]);
+      expect(
+        {
+          exitCode: r.exitCode,
+          registryMissing: /SID registry not found/.test(r.stderr + r.stdout),
+          layoutWritten: existsSync(path.join(own, "layouts", "I316", "I316R2Layout.json")),
+          extractedCreated: existsSync(path.join(own, "extracted")),
+        },
+        r.stderr,
+      ).to.deep.equal({ exitCode: 0, registryMissing: false, layoutWritten: true, extractedCreated: false });
+    } finally {
+      rmSync(own, { recursive: true, force: true });
+    }
+  });
+});

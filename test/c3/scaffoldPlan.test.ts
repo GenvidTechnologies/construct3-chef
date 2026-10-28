@@ -25,6 +25,7 @@ import {
   formatScaffoldSourceAmbiguous,
   formatScaffoldSourceCaseMismatch,
   formatScaffoldSourceNotFound,
+  formatScaffoldRegistryMissing,
   planLayoutScaffold,
   planSpriteScaffold,
   writeLayoutScaffold,
@@ -565,6 +566,27 @@ describe("scaffoldPlan (T26, #259)", function () {
       expect(r.ok, JSON.stringify(r)).to.equal(true);
       if (!r.ok) return;
       expect(JSON.stringify(r.cloned).split(String(planted)).length - 1).to.equal(0);
+    });
+  });
+
+  describe("missing registry (#316)", () => {
+    it("I316-R6: the refusal names the resolved configured registry path", () => {
+      mkdirSync(path.join(tmp, "gen"), { recursive: true });
+      let err: Error | undefined;
+      try {
+        planLayoutScaffold(layoutOpts("layouts", { extractedDirAbs: path.join(tmp, "gen") }));
+      } catch (e) {
+        err = e as Error;
+      }
+      expect(err, "planLayoutScaffold must throw").to.be.instanceOf(Error);
+      expect(err!.message).to.equal(formatScaffoldRegistryMissing("gen/sid-registry.txt"));
+    });
+
+    it("I316-R8: input and conflict rejections still return, ahead of the registry check", () => {
+      rmSync(path.join(tmp, "extracted", "sid-registry.txt"));
+      const r = planLayoutScaffold(layoutOpts("layouts", { out: SOURCE_REL }));
+      expect(r.ok).to.equal(false);
+      expect(r.ok === false ? r.kind : undefined).to.equal("conflict");
     });
   });
 

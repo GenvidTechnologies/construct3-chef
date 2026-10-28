@@ -82,6 +82,10 @@ export function formatScaffoldSourceAmbiguous(source: string, matchRels: readonl
   return `Source objectType '${source}' is ambiguous: ${sorted.length} objectTypes have this name (letter case is ignored): ${sorted.join(", ")}. Rename all but one before cloning.`;
 }
 
+export function formatScaffoldRegistryMissing(relPosix: string): string {
+  return `SID registry not found: ${relPosix} — run 'construct3-chef generate --only sid-registry' (MCP: the 'regenerate' tool) first`;
+}
+
 export function formatScaffoldSuccess(name: string, relPosix: string): string {
   return `Scaffolded ${name} → ${relPosix}`;
 }
@@ -124,7 +128,11 @@ export interface LayoutScaffoldPlanOptions {
   eventSheet: string;
 }
 
-/** Validate and build a layout scaffold. Never writes. */
+/**
+ * Validate and build a layout scaffold. Never writes. Returns a rejection for bad input, but
+ * throws when the SID registry is missing, so both surfaces render it as an `Error:` line and
+ * nothing is written.
+ */
 export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaffoldPlan | ScaffoldRejection {
   const { rootDir, layoutsDir, extractedDirAbs, pathBase, source, out, name, eventSheet } = opts;
   const anchor = (p: string): string => (pathBase === "layouts" ? p : path.resolve(rootDir, p));
@@ -175,7 +183,12 @@ export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaff
   // anything in eventSheets/, layouts/, or objectTypes/.
   const existingUids = collectAllUids(layoutsDir);
   const sidRegistryPath = path.join(extractedDirAbs, "sid-registry.txt");
-  const existingSids = existsSync(sidRegistryPath) ? readRegistryFile(sidRegistryPath) : new Set<number>();
+  // A missing registry is an environment fault, not an input rejection, so it is thrown rather
+  // than returned (#316).
+  if (!existsSync(sidRegistryPath)) {
+    throw new Error(formatScaffoldRegistryMissing(relPosix(rootDir, sidRegistryPath)));
+  }
+  const existingSids = readRegistryFile(sidRegistryPath);
   const cloned = cloneLayout(sourceLayout, { name, eventSheet, existingUids, existingSids });
 
   return { ok: true, outPath, cloned, successLine: formatScaffoldSuccess(name, relPosix(rootDir, outPath)) };

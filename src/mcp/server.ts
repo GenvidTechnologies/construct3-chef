@@ -1590,7 +1590,7 @@ regP(
   {
     title: "Scaffold Layout",
     description:
-      "Clone an existing layout to create a new one; never overwrites existing files. Remaps all UIDs and SIDs for uniqueness, sets the layout name and event sheet, writes the new layout JSON, and syncs project.c3proj. Optionally regenerates extracted/ files.",
+      "Clone an existing layout to create a new one; never overwrites existing files. Requires sid-registry.txt in the extracted directory (run regenerate first). Remaps all UIDs and SIDs for uniqueness, sets the layout name and event sheet, writes the new layout JSON, and syncs project.c3proj. Optionally regenerates extracted/ files.",
     annotations: MUTATE,
     inputSchema: {
       source: z
