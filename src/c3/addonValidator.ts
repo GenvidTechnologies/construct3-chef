@@ -38,6 +38,12 @@ export interface AddonFinding {
 export interface AddonValidationResult {
   checked: number;
   findings: AddonFinding[];
+  /**
+   * Full scan only: how many `usedAddons` entries are not `bundled: true`, so
+   * have no package to check. Lets the zero-checked line say what was skipped
+   * (#311).
+   */
+  unbundled?: number;
 }
 
 /**
@@ -448,7 +454,8 @@ export function validateAddons(projectRoot: string, target?: DiscoveredAddon): A
     });
   }
 
-  return { checked: addons.length, findings };
+  const unbundled = [...usedById.values()].filter((used) => used.bundled !== true).length;
+  return { checked: addons.length, findings, unbundled };
 }
 
 /**
@@ -467,6 +474,12 @@ export function formatAddonValidation(
   opts?: { skipGate?: readonly AddonFindingFamily[] },
 ): string {
   const { checked, findings } = result;
+
+  // Checking nothing must not read as a clean pass (#311).
+  if (findings.length === 0 && checked === 0) {
+    const n = result.unbundled ?? 0;
+    return `Checked 0 bundled addon(s): nothing to validate (${n} unbundled usedAddons ${n === 1 ? "entry" : "entries"} skipped).`;
+  }
 
   if (findings.length === 0) {
     return `Checked ${checked} bundled addon(s): all consistent.`;

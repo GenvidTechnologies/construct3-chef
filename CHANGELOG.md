@@ -46,12 +46,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a phantom change or drop the entry silently
   ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310)).
 
+- **`findObjectTypeFile` returns `null` on a project without an
+  `objectTypes/` directory.** It used to throw `ENOENT`
+  ([#328](https://github.com/GenvidTechnologies/construct3-chef/issues/328)).
+
 ### Added
 
 - **`SyncResult.wrote: boolean`** is true iff the sync call wrote
   `project.c3proj` ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310)).
 
 ### Fixed
+
+- **`validate-addons` (CLI and MCP) no longer reports "all consistent" after
+  checking nothing.** A run that found no bundled package to check now prints
+  `Checked 0 bundled addon(s): nothing to validate (N unbundled usedAddons
+  entries skipped).` The CLI still exits 0
+  ([#311](https://github.com/GenvidTechnologies/construct3-chef/issues/311)).
+
+- **An `addInstVars` recipe dry-run (`validate-recipe`, `apply-recipe
+  --dry-run`) on a project without `objectTypes/` reports `addInstVars:
+  objectType "X" not found under objectTypes/`, as apply does.** It used to
+  fail with a raw `ENOENT`. The public `processAddInstVars`, which lists from
+  disk the same way, now throws the same message there too
+  ([#328](https://github.com/GenvidTechnologies/construct3-chef/issues/328)).
 
 - **`validate-project` and `sync-project` converge on C3's nameless timelines
   container.** C3 saves that `transitions` container on every save, even with
@@ -64,8 +81,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for a no-op
   ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310),
   ADR [`0061`](wiki/decisions/0061-sync-treats-the-timelines-transitions-container-as-always-present.md)).
+  Known limitation: a manifest an earlier sync already corrupted with a named
+  `transitions` subfolder still validates clean and is not repaired
+  ([#333](https://github.com/GenvidTechnologies/construct3-chef/issues/333)).
 
-- **`scaffold-sprite` and `scaffold-layout` (CLI and MCP) refuse bad inputs
+- **`scaffold-sprite` and `scaffold-layout` (CLI and MCP) refuse these inputs
   before writing anything.** `scaffold-sprite` refuses an empty name (which
   wrote `objectTypes/.json`) and a name containing `:` (which wrote into an
   NTFS alternate data stream), with `Invalid name '<raw>' — <reason>`.

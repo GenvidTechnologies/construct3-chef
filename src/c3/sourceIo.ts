@@ -24,6 +24,7 @@ export interface SourceIo {
    * Absolute-or-relative paths (same form as the `objectTypesDir` argument,
    * joined with `path.join`, exactly as c3source's `find_all_objectTypes_path`
    * returns them) of every objectType `.json`: disk listing union overlay.
+   * A missing `objectTypesDir` lists as empty in both implementations (#328).
    */
   listObjectTypeFiles(objectTypesDir: string): string[];
 }
@@ -36,7 +37,7 @@ export const diskIo: SourceIo = {
     if (opts?.mkdir) mkdirSync(path.dirname(abs), { recursive: true });
     writeFileSync(abs, text);
   },
-  listObjectTypeFiles: (dir) => find_all_objectTypes_path(dir),
+  listObjectTypeFiles: (dir) => (existsSync(dir) ? find_all_objectTypes_path(dir) : []),
 };
 
 export type JournalEntry =
