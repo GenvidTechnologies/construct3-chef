@@ -35,8 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registry not found: <extractedDir>/sid-registry.txt — run 'construct3-chef
   generate --only sid-registry' (MCP: the 'regenerate' tool) first`, naming the
   resolved project-relative path; the CLI exits 1, MCP returns `isError`, and
-  nothing is written (MCP does not bump `txId`). This matches `apply-recipe`,
-  `validate-recipe`, the op and workflow tools and `generate-sids`. A CLI
+  nothing is written (MCP does not bump `txId`). `apply-recipe`,
+  `validate-recipe`, the op and workflow tools and `generate-sids` already
+  refused a missing registry, each with its own message. A CLI
   `scaffold-layout` on a project where `generate` has never run now needs
   `generate` first, and a non-default MCP project needs the `regenerate` tool
   first (only the default MCP project auto-generates `extracted/`, and only

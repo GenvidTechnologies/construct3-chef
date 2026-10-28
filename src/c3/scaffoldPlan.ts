@@ -184,7 +184,8 @@ export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaff
   const existingUids = collectAllUids(layoutsDir);
   const sidRegistryPath = path.join(extractedDirAbs, "sid-registry.txt");
   // A missing registry is an environment fault, not an input rejection, so it is thrown rather
-  // than returned (#316).
+  // than returned (#316). Checked here rather than left to readRegistryFile, whose own message
+  // names the absolute path; this one names the project-relative path on both surfaces.
   if (!existsSync(sidRegistryPath)) {
     throw new Error(formatScaffoldRegistryMissing(relPosix(rootDir, sidRegistryPath)));
   }

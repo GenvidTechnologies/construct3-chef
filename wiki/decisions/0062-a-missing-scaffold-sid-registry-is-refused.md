@@ -45,7 +45,7 @@ The user weighed the policy first: keep the silent fallback, warn and keep going
 
 ## Consequences
 
-- **ADR 0045 is not amended.** Its rejection kinds (`invalid-path`, `invalid-name`, `source-not-found`, `conflict`) are unchanged; this fault is deliberately outside that enumeration.
+- **ADR 0045 is not amended.** The rejection kinds it enumerates (`invalid-path`, `invalid-name`, `source-not-found`, `conflict`) are unchanged, as are the two sprite kinds ADR [0056](0056-scaffold-sprite-resolves-a-bare-source-across-objecttypes-subfolders.md) added later (`source-case-mismatch`, `source-ambiguous`); this fault is deliberately outside that enumeration.
 - **The message is rendered once,** by a shared formatter, so CLI and MCP agree on the path form (ADR 0004).
 - **Behaviour change.** A CLI `scaffold-layout` before `generate` has ever run now fails until `generate` runs. A non-default MCP project needs `regenerate` first, because only the default project auto-generates `extracted/` at startup, and only when the directory is missing.
 - **Out of scope, filed.** [#336](https://github.com/GenvidTechnologies/construct3-chef/issues/336): `scaffold-sprite` mints SIDs against objectTypes only, never the registry. [#337](https://github.com/GenvidTechnologies/construct3-chef/issues/337): MCP `scaffold-layout` does not call `checkDerivedFreshness` on the registry, so a stale one goes undetected.
