@@ -66,7 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **An `addInstVars` recipe dry-run (`validate-recipe`, `apply-recipe
   --dry-run`) on a project without `objectTypes/` reports `addInstVars:
   objectType "X" not found under objectTypes/`, as apply does.** It used to
-  fail with a raw `ENOENT`
+  fail with a raw `ENOENT`. The public `processAddInstVars`, which lists from
+  disk the same way, now throws the same message there too
   ([#328](https://github.com/GenvidTechnologies/construct3-chef/issues/328)).
 
 - **`validate-project` and `sync-project` converge on C3's nameless timelines
