@@ -74,6 +74,23 @@ describe("MCP tools seed SIDs from the configured extractedDir (#289)", () => {
     __setRegistry(registry);
   }
 
+  it("I316-R1: scaffold-layout seeds SIDs from the configured extractedDir", async () => {
+    await setup("gen");
+    const result = (await __getHandler("scaffold-layout")!(
+      {
+        source: "Gameplay/Main Layout.json",
+        name: "I316R1Layout",
+        path: "I316/I316R1Layout.json",
+        eventSheet: "Event sheet 1",
+        txId: "xd:0",
+        regenerate: false,
+      },
+      extra(),
+    )) as any;
+    expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+    expect(fs.existsSync(path.join(root, "layouts", "I316", "I316R1Layout.json"))).to.be.true;
+  });
+
   it("XD1: validate-recipe seeds SIDs from the configured extractedDir", async () => {
     await setup("gen");
     const result = (await __getHandler("validate-recipe")!({ recipe: VALID_RECIPE }, extra())) as any;

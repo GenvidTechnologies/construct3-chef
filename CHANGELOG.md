@@ -28,6 +28,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`scaffold-layout` (CLI and MCP) now refuses when
+  `<extractedDir>/sid-registry.txt` is missing.** It used to seed the cloned
+  layout's new SIDs from an empty set, so a mis-derived directory went
+  unnoticed and SID uniqueness rested on chance. It now fails with `SID
+  registry not found: <extractedDir>/sid-registry.txt — run 'construct3-chef
+  generate --only sid-registry' (MCP: the 'regenerate' tool) first`, naming the
+  resolved project-relative path; the CLI exits 1, MCP returns `isError`, and
+  nothing is written (MCP does not bump `txId`). `apply-recipe`,
+  `validate-recipe`, the op and workflow tools and `generate-sids` already
+  refused a missing registry, each with its own message. A CLI
+  `scaffold-layout` on a project where `generate` has never run now needs
+  `generate` first, and a non-default MCP project needs the `regenerate` tool
+  first (only the default MCP project auto-generates `extracted/`, and only
+  when that directory is missing). Known limitations: `scaffold-sprite` still
+  mints SIDs without consulting the registry
+  ([#336](https://github.com/GenvidTechnologies/construct3-chef/issues/336)),
+  and MCP `scaffold-layout` does not check the registry's freshness, so a
+  stale registry is still undetected
+  ([#337](https://github.com/GenvidTechnologies/construct3-chef/issues/337))
+  ([#316](https://github.com/GenvidTechnologies/construct3-chef/issues/316)).
+
 - **`scaffold-sprite` now accepts a name containing `..` that is not `..`
   itself (for example `a..b`).** It shares the objectType name rule of a
   recipe `objectTypes` CREATE, which never refused such a name; only `..`,

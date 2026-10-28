@@ -25,6 +25,7 @@ import {
   formatScaffoldSourceAmbiguous,
   formatScaffoldSourceCaseMismatch,
   formatScaffoldSourceNotFound,
+  formatScaffoldRegistryMissing,
   planLayoutScaffold,
   planSpriteScaffold,
   writeLayoutScaffold,
@@ -533,6 +534,59 @@ describe("scaffoldPlan (T26, #259)", function () {
       expect(planSpriteScaffold(spriteOpts({ source: "NoSuchType" })).ok).to.equal(false);
       expect(planSpriteScaffold(spriteOpts({ name: "Sprite" })).ok).to.equal(false);
       expect(snapshotTree(tmp)).to.deep.equal(before);
+    });
+  });
+
+  describe("registry SIDs (#316)", () => {
+    it("I316-R7: the registry's SIDs are never minted for the clone", () => {
+      const MIN_SID = 1e14;
+      const MAX_SID = 1e15;
+      const planted = 555555555555555;
+      const sourceText = readFileSync(path.join(layoutsDir(), SOURCE_REL), "utf-8");
+      expect(sourceText.includes(String(planted)), "planted SID must not be in the source layout").to.equal(false);
+
+      const genDir = path.join(tmp, "gen");
+      mkdirSync(genDir, { recursive: true });
+      writeFileSync(path.join(genDir, "sid-registry.txt"), `${planted}\tplanted\tI316\n`);
+
+      const realRandom = Math.random;
+      let calls = 0;
+      // Every other draw proposes `planted`; the rest propose distinct fresh values.
+      Math.random = () =>
+        calls++ % 2 === 0
+          ? (planted - MIN_SID + 0.5) / (MAX_SID - MIN_SID)
+          : (200 + calls / 10) / (MAX_SID - MIN_SID) + 0.1;
+      let r: ReturnType<typeof planLayoutScaffold>;
+      try {
+        r = planLayoutScaffold(layoutOpts("layouts", { extractedDirAbs: genDir }));
+      } finally {
+        Math.random = realRandom;
+      }
+      expect(calls, "the Math.random rig fired").to.be.greaterThan(0);
+      expect(r.ok, JSON.stringify(r)).to.equal(true);
+      if (!r.ok) return;
+      expect(JSON.stringify(r.cloned).split(String(planted)).length - 1).to.equal(0);
+    });
+  });
+
+  describe("missing registry (#316)", () => {
+    it("I316-R6: the refusal names the resolved configured registry path", () => {
+      mkdirSync(path.join(tmp, "gen"), { recursive: true });
+      let err: Error | undefined;
+      try {
+        planLayoutScaffold(layoutOpts("layouts", { extractedDirAbs: path.join(tmp, "gen") }));
+      } catch (e) {
+        err = e as Error;
+      }
+      expect(err, "planLayoutScaffold must throw").to.be.instanceOf(Error);
+      expect(err!.message).to.equal(formatScaffoldRegistryMissing("gen/sid-registry.txt"));
+    });
+
+    it("I316-R8: input and conflict rejections still return, ahead of the registry check", () => {
+      rmSync(path.join(tmp, "extracted", "sid-registry.txt"));
+      const r = planLayoutScaffold(layoutOpts("layouts", { out: SOURCE_REL }));
+      expect(r.ok).to.equal(false);
+      expect(r.ok === false ? r.kind : undefined).to.equal("conflict");
     });
   });
 

@@ -43,6 +43,7 @@ import {
   formatScaffoldSourceNotFound,
   formatScaffoldSourceCaseMismatch,
   formatScaffoldSourceAmbiguous,
+  formatScaffoldRegistryMissing,
 } from "../../src/c3/scaffoldPlan.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1345,6 +1346,10 @@ describe("MCP server handler response shaping", () => {
       const scaffold = __getHandler("scaffold-layout")!;
       expect(scaffold).to.exist;
 
+      // scaffold-layout needs the SID registry (#316).
+      fs.mkdirSync(path.join(strayRoot, "extracted"), { recursive: true });
+      fs.writeFileSync(path.join(strayRoot, "extracted", "sid-registry.txt"), "");
+
       const scaffolded = (await scaffold(
         {
           source: "MainLayout.json",
@@ -2476,5 +2481,96 @@ describe("sync-project txId bump (#310)", function () {
       syncHasUpdated: false,
       bumped: 0,
     });
+  });
+});
+
+// ── #316: scaffold-layout refuses when the SID registry is missing ───────────
+
+describe("scaffold-layout with a missing SID registry (#316)", function () {
+  this.timeout(30_000);
+  let tmp: string | undefined;
+  let watcher: FakeWatcher;
+
+  beforeEach(() => {
+    watcher = makeFakeWatcher(5);
+  });
+
+  afterEach(() => {
+    if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+    tmp = undefined;
+    __resetTestState();
+  });
+
+  /** relPath -> sha256 of every file under root, extracted/ included. */
+  function snapshotWholeRoot(root: string): Map<string, string> {
+    const out = new Map<string, string>();
+    const walk = (d: string): void => {
+      for (const name of fs.readdirSync(d)) {
+        const full = path.join(d, name);
+        if (fs.statSync(full).isDirectory()) walk(full);
+        else
+          out.set(
+            path.relative(root, full).split(path.sep).join("/"),
+            createHash("sha256").update(fs.readFileSync(full)).digest("hex"),
+          );
+      }
+    };
+    walk(root);
+    return out;
+  }
+
+  function project(withRegistry: boolean): string {
+    tmp = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "c3chef-i316-"));
+    fs.cpSync(FIXTURE_DIR, tmp, { recursive: true });
+    if (!withRegistry) fs.rmSync(path.join(tmp, "extracted", "sid-registry.txt"));
+    __setProjectRoot(tmp);
+    __setTestWatcher(watcher as any);
+    __setExtractedDirty(false);
+    return tmp;
+  }
+
+  const callScaffold = async (): Promise<any> =>
+    __getHandler("scaffold-layout")!(
+      {
+        source: "Gameplay/Main Layout.json",
+        name: "I316Layout",
+        path: "I316/I316Layout.json",
+        eventSheet: "Event sheet 1",
+        regenerate: false,
+      },
+      makeExtra(),
+    );
+
+  it("I316-R4: a missing registry is refused with the shared message, nothing written, no bump, not dirty", async () => {
+    const root = project(false);
+    const before = snapshotWholeRoot(root);
+    const result = await callScaffold();
+    const lines: string[] = result.content
+      .map((b: any) => b.text)
+      .join("\n")
+      .split("\n");
+    const token = lines.pop();
+    expect({
+      isError: result.isError,
+      message: lines.join("\n"),
+      token,
+      bumped: watcher.bumped,
+      dirty: __getExtractedDirty(),
+      treeUnchanged: JSON.stringify([...snapshotWholeRoot(root)]) === JSON.stringify([...before]),
+    }).to.deep.equal({
+      isError: true,
+      message: "Error: " + formatScaffoldRegistryMissing("extracted/sid-registry.txt"),
+      token: "txId: default:5",
+      bumped: 0,
+      dirty: false,
+      treeUnchanged: true,
+    });
+  });
+
+  it("I316-R4a: with the registry present the same call succeeds and writes the layout", async () => {
+    const root = project(true);
+    const result = await callScaffold();
+    expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+    expect(fs.existsSync(path.join(root, "layouts", "I316", "I316Layout.json"))).to.equal(true);
   });
 });

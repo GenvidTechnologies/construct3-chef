@@ -19,6 +19,7 @@ import {
   formatScaffoldPathRejection,
   formatScaffoldNameRejection,
   formatScaffoldSourceNotFound,
+  formatScaffoldRegistryMissing,
 } from "../../src/c3/scaffoldPlan.js";
 
 // #254: the scaffold-layout / scaffold-sprite CLI subcommands must refuse an output that
@@ -299,6 +300,30 @@ describe("scaffold-layout / scaffold-sprite CLI refuse overwrites (#254)", funct
     } finally {
       rmSync(cwdDir, { recursive: true, force: true });
     }
+  });
+
+  it("I316-R5: a missing SID registry is refused with the shared message, exit 1, nothing written", () => {
+    rmSync(path.join(tmp, "extracted", "sid-registry.txt"));
+    const before = snapshotTree(tmp);
+
+    const r = runCli(layoutArgs(tmp, LAYOUT_REL, "layouts/I316/I316R5.json", "I316R5"), { cwd: tmp });
+
+    expect({
+      exitCode: r.exitCode,
+      stderr: r.stderr.trimEnd(),
+      treeUnchanged: JSON.stringify([...snapshotTree(tmp)]) === JSON.stringify([...before]),
+    }).to.deep.equal({
+      exitCode: 1,
+      stderr: "Error: " + formatScaffoldRegistryMissing("extracted/sid-registry.txt"),
+      treeUnchanged: true,
+    });
+  });
+
+  it("I316-R5a: with the registry present the same call exits 0 and writes the layout", () => {
+    const r = runCli(layoutArgs(tmp, LAYOUT_REL, "layouts/I316/I316R5a.json", "I316R5a"), { cwd: tmp });
+
+    expect(r.exitCode, r.stderr).to.equal(0);
+    expect(existsSync(path.join(tmp, "layouts/I316/I316R5a.json"))).to.be.true;
   });
 
   it("T10: missing parent folders of --out are created", () => {
