@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Generator output cleanup now lists `extracted/` through mcp-utils'
+  `walkFiles`.** A symlink to a regular file named with a generator-owned
+  suffix (`.ts`, `.dsl.txt`, `.dsl.idx.txt` or `.layout.txt`) that is not one of
+  that generator's outputs used to be left in place; it is now removed as an
+  orphan. Only the link is removed, never its target. Junctions and directory
+  symlinks are still neither followed nor deleted (#324).
 - **`scaffold-layout` (CLI and MCP) now refuses when
   `<extractedDir>/sid-registry.txt` is missing.** It used to seed the cloned
   layout's new SIDs from an empty set, so a mis-derived directory went

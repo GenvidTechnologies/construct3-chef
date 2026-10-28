@@ -105,4 +105,31 @@ describe("replaceOwnedOutputs", () => {
       rmSync(target, { recursive: true, force: true });
     }
   });
+
+  it("I324-R3: an owned-suffix file symlink that is not an output is removed as an orphan, its target intact", function () {
+    const target = mkdtempSync(path.join(realpathSync.native(os.tmpdir()), "chef-genout-target-"));
+    const targetFile = path.join(target, "victim.ts");
+    const link = path.join(dir, "Linked.ts");
+    try {
+      writeFileSync(targetFile, "keep");
+      try {
+        symlinkSync(targetFile, link, "file");
+      } catch {
+        this.skip();
+      }
+      replaceOwnedOutputs(dir, [".ts"], new Map([[path.join(dir, "a.ts"), "a"]]));
+      assert.deepEqual(
+        {
+          a: readFileSync(path.join(dir, "a.ts"), "utf-8"),
+          link: lstatSync(link, { throwIfNoEntry: false }) !== undefined,
+          target: readFileSync(targetFile, "utf-8"),
+        },
+        { a: "a", link: false, target: "keep" },
+      );
+    } finally {
+      // Remove the link itself (never its target) before the target dir.
+      if (lstatSync(link, { throwIfNoEntry: false })) unlinkSync(link);
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
 });

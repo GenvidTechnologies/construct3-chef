@@ -47,6 +47,6 @@ Separately, a missing `scripts/importsForEvents.ts`, or no `scripts/` folder at 
 - This is not all-or-nothing atomic. A write that fails midway leaves new and old files mixed on disk and deletes no orphan; the next successful run converges. The requirement is met: nothing existing is deleted by a failing run.
 - Only the ancestors of deleted orphans are pruned. An unrelated empty directory already under the output directory is left alone, where the old delete-first step pruned every empty directory. Generated output bytes are unchanged.
 - The case-only rename runs only where the filesystem folds case (`FOLD_CASE`: Windows and macOS). On Linux an output and an existing file that differ only in case are two files, and the stale one is deleted as an orphan. The rename branch is therefore exercised only on Windows and macOS.
-- Links (symlinks, junctions) under the output directory are neither followed nor deleted, even when their name ends in an owned suffix.
+- Junctions and directory symlinks under the output directory are neither followed nor deleted, even when their name ends in an owned suffix. Amended by #324, which moved enumeration onto mcp-utils' `walkFiles`: a symlink to a regular file named with an owned suffix that is not an output is removed as an orphan — the link, never its target.
 - Every unchanged output is rewritten on every run, which costs I/O but keeps the mtime freshness check correct.
 - ADR 0022's statement that #181 is not fixed no longer holds; it carries an amendment note pointing here.

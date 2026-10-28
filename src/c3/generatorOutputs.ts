@@ -1,26 +1,12 @@
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { walkFiles } from "@genvidtech/mcp-utils";
 import { FOLD_CASE } from "./sourceIo.js";
 
 /** Identity of a path on this platform: case-folded where the filesystem folds case. */
 function foldKey(p: string): string {
   const resolved = path.resolve(p);
   return FOLD_CASE ? resolved.toLowerCase() : resolved;
-}
-
-/**
- * Every regular file under `dir`, recursively. Empty when `dir` is absent. Links (symlinks,
- * junctions) are neither followed nor listed, so the orphan pass never hands one to `rmSync`.
- */
-function listFiles(dir: string): string[] {
-  if (!existsSync(dir)) return [];
-  const found: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) found.push(...listFiles(full));
-    else if (entry.isFile()) found.push(full);
-  }
-  return found;
 }
 
 /**
@@ -38,7 +24,9 @@ export function replaceOwnedOutputs(
   ownedSuffixes: readonly string[],
   outputs: ReadonlyMap<string, string>,
 ): void {
-  const owned = listFiles(outDir).filter((f) => ownedSuffixes.some((s) => f.endsWith(s)));
+  // walkFiles lists regular files only: junctions and directory symlinks are never listed. A symlink
+  // to a regular file is listed, so one that is not an output is removed as an orphan (the link, never its target).
+  const owned = walkFiles(outDir, (p) => ownedSuffixes.some((s) => p.endsWith(s)));
 
   mkdirSync(outDir, { recursive: true });
 
