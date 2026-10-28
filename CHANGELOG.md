@@ -64,8 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for a no-op
   ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310),
   ADR [`0061`](wiki/decisions/0061-sync-treats-the-timelines-transitions-container-as-always-present.md)).
+  Known limitation: a manifest an earlier sync already corrupted with a named
+  `transitions` subfolder still validates clean and is not repaired
+  ([#333](https://github.com/GenvidTechnologies/construct3-chef/issues/333)).
 
-- **`scaffold-sprite` and `scaffold-layout` (CLI and MCP) refuse bad inputs
+- **`scaffold-sprite` and `scaffold-layout` (CLI and MCP) refuse these inputs
   before writing anything.** `scaffold-sprite` refuses an empty name (which
   wrote `objectTypes/.json`) and a name containing `:` (which wrote into an
   NTFS alternate data stream), with `Invalid name '<raw>' — <reason>`.
