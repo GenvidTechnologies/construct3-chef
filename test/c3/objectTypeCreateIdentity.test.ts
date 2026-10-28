@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "mocha";
 import { assert } from "chai";
-import { cpSync, mkdtempSync, mkdirSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -10,6 +10,7 @@ import type { Recipe } from "../../src/c3/recipeInterpreter.js";
 import { objectTypeEntryIssue } from "../../src/c3/recipeKeys.js";
 import { decideObjectTypeCreate } from "../../src/c3/objectTypeIdentity.js";
 import { snapshotTree } from "../helpers/applyFixtures.js";
+import { runCli } from "../helpers/runCli.js";
 
 // A throwaway copy of the canonical fixture, one dedicated parent dir per test so "outside the copy" is listable.
 const FIXTURE_ROOT = path.resolve("test/fixtures/construct3-chef-sample");
@@ -352,6 +353,40 @@ describe("objectType create identity (#274)", () => {
       const first = findObjectTypeFile(tmp, "Sprite");
       assert.isString(first);
       assert.equal(path.basename(first!), "Sprite.json");
+    });
+  });
+
+  describe("a project without objectTypes/ (#328)", function () {
+    this.timeout(30_000);
+    const recipe = { addInstVars: [{ type: "NavButton", instanceVariables: [{ name: "w3probe", type: "number" }] }] };
+    const notFound = 'addInstVars: objectType "NavButton" not found under objectTypes/';
+
+    it("I328-R1: dry-run (validate-recipe's path) refuses with apply's not-found message, not ENOENT", () => {
+      rmSync(path.join(tmp, "objectTypes"), { recursive: true, force: true });
+      assert.deepEqual(
+        { dry: run(tmp, recipe, true), applied: run(tmp, recipe, false) },
+        { dry: notFound, applied: notFound },
+      );
+    });
+
+    it("I328-R1: CLI apply-recipe --dry-run prints the same not-found line", () => {
+      rmSync(path.join(tmp, "objectTypes"), { recursive: true, force: true });
+      const recipePath = path.join(parent, "recipe.json");
+      writeFileSync(recipePath, JSON.stringify(recipe));
+      const r = runCli(["apply-recipe", recipePath, "--project-dir", tmp, "--no-regenerate", "--dry-run"]);
+      assert.deepEqual(
+        { exitCode: r.exitCode, stderr: r.stderr.trim() },
+        { exitCode: 1, stderr: `Error: ${notFound}` },
+      );
+    });
+
+    it("I328-R2: accept control: with objectTypes/ present the same recipe dry-runs clean", () => {
+      assert.isUndefined(run(tmp, recipe, true));
+    });
+
+    it("I328-R3: the public findObjectTypeFile returns null instead of throwing", () => {
+      rmSync(path.join(tmp, "objectTypes"), { recursive: true, force: true });
+      assert.isNull(findObjectTypeFile(tmp, "NavButton"));
     });
   });
 

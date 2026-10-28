@@ -46,12 +46,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a phantom change or drop the entry silently
   ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310)).
 
+- **`findObjectTypeFile` returns `null` on a project without an
+  `objectTypes/` directory.** It used to throw `ENOENT`
+  ([#328](https://github.com/GenvidTechnologies/construct3-chef/issues/328)).
+
 ### Added
 
 - **`SyncResult.wrote: boolean`** is true iff the sync call wrote
   `project.c3proj` ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310)).
 
 ### Fixed
+
+- **An `addInstVars` recipe dry-run (`validate-recipe`, `apply-recipe
+  --dry-run`) on a project without `objectTypes/` reports `addInstVars:
+  objectType "X" not found under objectTypes/`, as apply does.** It used to
+  fail with a raw `ENOENT`
+  ([#328](https://github.com/GenvidTechnologies/construct3-chef/issues/328)).
 
 - **`validate-project` and `sync-project` converge on C3's nameless timelines
   container.** C3 saves that `transitions` container on every save, even with
