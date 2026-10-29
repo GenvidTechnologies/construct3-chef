@@ -77,12 +77,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `objectTypes/` directory.** It used to throw `ENOENT`
   ([#328](https://github.com/GenvidTechnologies/construct3-chef/issues/328)).
 
+- **Recipe dry-run (`validate-recipe`, `apply-recipe --dry-run` and
+  `--preview`) now runs the same computation as apply**, so the two give the
+  same first error (#280, ADR 0063). A sheet that fails editor-load and
+  custom-action validation is reported as `Editor-validation failed for
+  eventSheets/<path>.json:`, project-relative with `/`, in both modes. This
+  changes `apply-recipe`'s own first error too: it used to report the
+  custom-action failure first, with an absolute path. Known limitation:
+  `rename-symbol` still labels its sheets with OS path separators
+  ([#341](https://github.com/GenvidTechnologies/construct3-chef/issues/341)).
+
+- **A recipe dry-run prints apply's lines for `addInstVars`, in dry-run
+  tense.** On a type the same recipe creates, and on an existing type the
+  recipe re-declares under `objectTypes`, it now prints `UPDATE
+  objectTypes/X.json (+v)` and the layout and ts-def lines instead of `UPDATE
+  pending objectType`, and a repeated entry for one type SKIPs instead of
+  printing the same lines twice (#280). An `addInstVars` entry on a type the
+  same recipe creates, in a project with no `layouts/` folder, now fails the
+  dry-run with the `ENOENT` apply already gave. A direct call to
+  `processAddInstVars` with `dryRun` and a pending type of an unknown plugin
+  now throws `createObjectType: unknown plugin`; `validateRecipe` already
+  refuses that plugin on every recipe path.
+
 ### Added
 
 - **`SyncResult.wrote: boolean`** is true iff the sync call wrote
   `project.c3proj` ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310)).
 
+### Deprecated
+
+- **`processAddInstVars`'s `pendingObjectTypes` parameter** is deprecated but
+  still honoured. Dry-run now computes against an in-memory overlay, so it no
+  longer needs the caller to describe the types a recipe creates (#280).
+
 ### Fixed
+
+- **`apply-recipe` no longer refuses a recipe that `validate-recipe` passed
+  because of a stale source-layout cache.** A layout copied from (`from:`)
+  before an earlier layout in the same recipe had changed it was served
+  without the change, so a later `copy-instance` failed with `instance of type
+  "X" not found in source layout`. Apply now refreshes the cache after each
+  layout, so recipes that were refused now apply (#280).
 
 - **`validate-addons` (CLI and MCP) no longer reports "all consistent" after
   checking nothing.** A run that found no bundled package to check now prints

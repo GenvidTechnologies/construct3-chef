@@ -557,3 +557,12 @@ See the [wiki index](../index.md) for the other sections.
   new SIDs from an empty set. An environment precondition fault is thrown and
   rendered as `Error:`; an input mistake stays a returned rejection
   ([#316](https://github.com/GenvidTechnologies/construct3-chef/issues/316))
+* [0063. Recipe dry-run and apply share one compute pass](0063-recipe-dry-run-and-apply-share-one-compute-pass.md) -
+  Amends ADR 0047. `applyRecipeInner` runs objectTypes, addInstVars, layouts
+  and files through one private `computeRecipe` against an in-memory
+  `OverlayIo` in both modes. Dry-run discards the journal; the modes differ
+  only in the narration of `recipeNarration.ts`. `validate-recipe` and apply
+  now give the same first error, with a project-relative label and editor-load
+  first, and apply refreshes its source-layout cache so it no longer refuses a
+  recipe that validated
+  ([#280](https://github.com/GenvidTechnologies/construct3-chef/issues/280))

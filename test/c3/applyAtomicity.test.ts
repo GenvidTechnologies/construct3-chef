@@ -157,7 +157,9 @@ describe("recipe apply behaviour pins (#255)", () => {
       "  UPDATE scripts/ts-defs/objects.d.ts",
       "",
       "addInstVars:",
-      '  UPDATE pending objectType "NewJ" (+v)',
+      "  UPDATE objectTypes/NewJ.json (+v)",
+      "  No layout instances found for NewJ",
+      "  UPDATE scripts/ts-defs/instanceTypes.d.ts (+v)",
       "",
       "\nValidation passed. Run without --dry-run to apply.",
     ]);
@@ -183,38 +185,6 @@ describe("recipe apply behaviour pins (#255)", () => {
         ],
       },
     );
-  });
-
-  it("C5: apply and dry-run check a CREATEd sheet in different orders", () => {
-    const recipe = {
-      files: {
-        "eventSheets/NewE2/Both.json": {
-          create: true,
-          events: [
-            { "custom-ace-block": { object: "Text", aceType: "action" } },
-            { block: { actions: [{ "custom-action": "OnClickAction", object: "NavButton", family: "TextFamily" }] } },
-          ],
-        },
-      },
-    };
-    const dry = run(tmp, recipe, true);
-    assert.isDefined(dry.err);
-    assert.equal(dry.err!.message.split("\n")[0], "Editor-validation failed for eventSheets/NewE2/Both.json:");
-    assert.deepEqual(dry.lines, [
-      "Recipe: 1 eventSheet file(s), 1 operation(s)",
-      "\n--- Dry run (no files written) ---\n",
-      "files:",
-      "  CREATE eventSheets/NewE2/Both.json (2 events)",
-    ]);
-    const applied = run(tmp, recipe, false);
-    assert.isDefined(applied.err);
-    assert.equal(
-      applied.err!.message.split("\n")[0],
-      "Custom-action validation failed for eventSheets/NewE2/Both.json:",
-    );
-    // A refused apply prints only the lines logged before the in-memory compute pass (#279):
-    // the "\nfiles:" header is journaled and discarded with the rest of the failed pass.
-    assert.deepEqual(applied.lines, ["Recipe: 1 eventSheet file(s), 1 operation(s)"]);
   });
 });
 
@@ -250,7 +220,7 @@ describe("a refused apply writes nothing (#279)", () => {
     assert.isDefined(err);
     assert.equal(
       err!.message,
-      `Editor-validation failed for ${path.join(tmp, "eventSheets", "NewFolder278", "Bad.json")}:\n` +
+      "Editor-validation failed for eventSheets/NewFolder278/Bad.json:\n" +
         "  - events[0] [custom-ace-name-required]: CustomAceBlockEvent.aceName must be a string (C3 editor refuses to open the project)",
     );
     assert.isFalse(existsSync(path.join(tmp, "eventSheets", "NewFolder278", "Bad.json")), "Bad.json written");

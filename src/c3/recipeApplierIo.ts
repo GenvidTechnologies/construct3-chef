@@ -4,7 +4,7 @@ import { find_all_layouts_path, openProject } from "@genvidtech/c3source";
 import type { ObjectTypeCreate, AddInstVarsEntry } from "./recipeInterpreter.js";
 import type { SidGenerator } from "./sidUtils.js";
 import { serializeSourceJson } from "./sourceJson.js";
-import type { SourceIo } from "./sourceIo.js";
+import { OverlayIo, type SourceIo } from "./sourceIo.js";
 import { lookupObjectTypeByName } from "./objectTypeIdentity.js";
 import {
   addInstVarsToObjectType,
@@ -35,6 +35,14 @@ export function getObjectTypePath(objectType: ObjectTypeCreate): string {
     : `objectTypes/${objectType.name}.json`;
 }
 
+/**
+ * `dryRun` in these helpers selects the log tense only; every helper writes to the `io` it is given. A dry-run
+ * must therefore compute against an in-memory overlay, or it would write for real.
+ */
+function assertDryRunOverlay(io: SourceIo, dryRun: boolean): void {
+  if (dryRun && !(io instanceof OverlayIo)) throw new Error("dry-run must compute against an OverlayIo, never diskIo");
+}
+
 export function createObjectTypeIo(
   io: SourceIo,
   sidGen: SidGenerator,
@@ -43,6 +51,7 @@ export function createObjectTypeIo(
   dryRun: boolean,
   log: Logger,
 ): boolean {
+  assertDryRunOverlay(io, dryRun);
   const relPath = getObjectTypePath(objectType);
   const fullPath = path.join(rootDir, relPath);
 
@@ -80,13 +89,8 @@ export function createObjectTypeIo(
     instanceVariables: ivars,
   };
 
-  if (dryRun) {
-    log(`  CREATE ${relPath} (plugin: ${objectType.plugin})`);
-    return true;
-  }
-
   io.writeText(fullPath, serializeSourceJson(json), { mkdir: true });
-  log(`  CREATED ${relPath}`);
+  log(dryRun ? `  CREATE ${relPath} (plugin: ${objectType.plugin})` : `  CREATED ${relPath}`);
   return true;
 }
 
@@ -115,6 +119,7 @@ export function updateInstanceTypesIo(
   dryRun: boolean,
   log: Logger,
 ): void {
+  assertDryRunOverlay(io, dryRun);
   const filePath = path.join(openProject(rootDir).scriptsDir, "ts-defs/instanceTypes.d.ts");
   const content = readTextIfPresent(io, filePath);
   if (content === null) {
@@ -137,13 +142,8 @@ export function updateInstanceTypesIo(
   const lastBrace = content.lastIndexOf("\n}");
   const updated = content.slice(0, lastBrace) + "\n" + classBody + "\n" + content.slice(lastBrace);
 
-  if (dryRun) {
-    log(`  UPDATE scripts/ts-defs/instanceTypes.d.ts`);
-    return;
-  }
-
   io.writeText(filePath, updated);
-  log(`  UPDATED scripts/ts-defs/instanceTypes.d.ts`);
+  log(dryRun ? `  UPDATE scripts/ts-defs/instanceTypes.d.ts` : `  UPDATED scripts/ts-defs/instanceTypes.d.ts`);
 }
 
 export function updateObjectsIo(
@@ -153,6 +153,7 @@ export function updateObjectsIo(
   dryRun: boolean,
   log: Logger,
 ): void {
+  assertDryRunOverlay(io, dryRun);
   const filePath = path.join(openProject(rootDir).scriptsDir, "ts-defs/objects.d.ts");
   const content = readTextIfPresent(io, filePath);
   if (content === null) {
@@ -166,13 +167,8 @@ export function updateObjectsIo(
   const lastBrace = content.lastIndexOf("\n}");
   const updated = content.slice(0, lastBrace) + "\n" + line + "\n" + content.slice(lastBrace);
 
-  if (dryRun) {
-    log(`  UPDATE scripts/ts-defs/objects.d.ts`);
-    return;
-  }
-
   io.writeText(filePath, updated);
-  log(`  UPDATED scripts/ts-defs/objects.d.ts`);
+  log(dryRun ? `  UPDATE scripts/ts-defs/objects.d.ts` : `  UPDATED scripts/ts-defs/objects.d.ts`);
 }
 
 export function findObjectTypeFileIo(io: SourceIo, rootDir: string, typeName: string): string | null {
@@ -199,42 +195,10 @@ export function processAddInstVarsIo(
   entries: AddInstVarsEntry[],
   dryRun: boolean,
   log: Logger,
-  pendingObjectTypes?: ObjectTypeCreate[],
 ): void {
-  const pending = new Map<string, ObjectTypeCreate>();
-  for (const ot of pendingObjectTypes ?? []) pending.set(ot.name, ot);
-
+  assertDryRunOverlay(io, dryRun);
   for (const entry of entries) {
     const newVars: InstVarDef[] = entry.instanceVariables;
-
-    // In dry-run, a type being created earlier in the same recipe won't be on
-    // disk yet (createObjectType's write is suppressed). Without this branch,
-    // validate-recipe would spuriously throw `objectType "X" not found` for a
-    // recipe that apply-recipe would accept. The createObjectType pass already
-    // logged the would-be create, so we just merge addInstVars into the
-    // pending entry's variable list (no layout instances exist for a
-    // brand-new type, and updateInstanceTypes will declare the class).
-    if (dryRun) {
-      // Apply sees the created file in the overlay and refuses a case-only match; dry-run must refuse it too.
-      // The message is byte-identical to apply's case-mismatch refusal below.
-      const variant = [...pending.values()].find(
-        (o) => o.name !== entry.type && o.name.toLowerCase() === entry.type.toLowerCase(),
-      );
-      if (variant !== undefined && !pending.has(entry.type)) {
-        throw new Error(caseMismatchMessage(entry.type, getObjectTypePath(variant)));
-      }
-    }
-    if (dryRun && pending.has(entry.type)) {
-      const ot = pending.get(entry.type)!;
-      const existing = new Set((ot.instanceVariables ?? []).map((v) => v.name));
-      const added = newVars.filter((v) => !existing.has(v.name)).map((v) => v.name);
-      if (added.length === 0) {
-        log(`  SKIP pending objectType "${entry.type}" (all instVars already declared)`);
-      } else {
-        log(`  UPDATE pending objectType "${entry.type}" (+${added.join(", ")})`);
-      }
-      continue;
-    }
 
     // 1. Update objectType JSON
     const rel = (p: string) => path.relative(rootDir, p).replace(/\\/g, "/");
@@ -261,11 +225,9 @@ export function processAddInstVarsIo(
     const added = addInstVarsToObjectType(sidGen, objectType, newVars);
     if (added.length === 0) {
       log(`  SKIP ${relOtPath} (all instVars already exist)`);
-    } else if (dryRun) {
-      log(`  UPDATE ${relOtPath} (+${added.join(", ")})`);
     } else {
       io.writeText(objectTypeFile, serializeSourceJson(objectType));
-      log(`  UPDATED ${relOtPath} (+${added.join(", ")})`);
+      log(`  ${dryRun ? "UPDATE" : "UPDATED"} ${relOtPath} (+${added.join(", ")})`);
     }
 
     // 2. Update layout instances (layouts listing stays on disk: recipes never create layouts)
@@ -278,12 +240,8 @@ export function processAddInstVarsIo(
       if (count > 0) {
         totalInstances += count;
         const relPath = path.relative(rootDir, layoutPath).replace(/\\/g, "/");
-        if (dryRun) {
-          log(`  UPDATE ${relPath} (${count} instance(s))`);
-        } else {
-          io.writeText(layoutPath, serializeSourceJson(layout));
-          log(`  UPDATED ${relPath} (${count} instance(s))`);
-        }
+        io.writeText(layoutPath, serializeSourceJson(layout));
+        log(`  ${dryRun ? "UPDATE" : "UPDATED"} ${relPath} (${count} instance(s))`);
       }
     }
     if (totalInstances === 0) {
@@ -303,11 +261,9 @@ export function processAddInstVarsIo(
         log(`  WARN: class "${entry.type}" not found in instanceTypes.d.ts — manual update needed`);
       } else if (updatedTypes === typesContent) {
         log(`  SKIP instanceTypes.d.ts (instVars already declared)`);
-      } else if (dryRun) {
-        log(`  UPDATE scripts/ts-defs/instanceTypes.d.ts (+${added.join(", ")})`);
       } else {
         io.writeText(typesFile, updatedTypes);
-        log(`  UPDATED scripts/ts-defs/instanceTypes.d.ts (+${added.join(", ")})`);
+        log(`  ${dryRun ? "UPDATE" : "UPDATED"} scripts/ts-defs/instanceTypes.d.ts (+${added.join(", ")})`);
       }
     }
   }

@@ -1,6 +1,10 @@
 import type { Logger } from "@genvidtech/mcp-utils";
 
 export interface ApplyOptions {
+  /**
+   * Runs apply's in-memory compute pass and discards its writes: every step sees the earlier ones, and a
+   * refusal is apply's own. Nothing reaches disk and `beforeSourceWrite` never fires.
+   */
   dryRun?: boolean;
   preview?: boolean;
   regenerate?: boolean;

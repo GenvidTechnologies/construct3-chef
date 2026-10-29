@@ -22,6 +22,8 @@ generated: { by: process:tech-writer, at: 2026-10-13T00:00:00Z }
 - **Issues:** [#279](https://github.com/GenvidTechnologies/construct3-chef/issues/279) (a refused apply leaves earlier writes on disk), [#278](https://github.com/GenvidTechnologies/construct3-chef/issues/278) (a refused apply leaves an empty folder), and [#255](https://github.com/GenvidTechnologies/construct3-chef/issues/255) (MCP bookkeeping for writes that can still happen).
 - **Amends:** ADR [0003](0003-recipe-pipeline-pure-interpreter-vs-io-applier.md).
 
+**Amended by ADR [0063](0063-recipe-dry-run-and-apply-share-one-compute-pass.md):** dry-run and `validate-recipe` now run this same in-memory compute pass and discard the journal, which retires the differences listed below.
+
 ## Context
 
 `applyRecipeInner` used to write as it went: Step 1 (objectTypes), Step 1b (addInstVars), Step 2 (layouts), Step 3 (files, one sheet at a time). A refusal in a later step therefore left the earlier writes on disk, and the project was half-edited. The measured scenarios:
