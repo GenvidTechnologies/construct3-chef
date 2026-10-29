@@ -547,9 +547,9 @@ See the [wiki index](../index.md) for the other sections.
   walk produces them (the nameless direct child of the timelines root is the
   `transitions` segment), throws on a drift entry it cannot resolve, and
   writes `project.c3proj` only when the synced bytes change, reporting that as
-  `SyncResult.wrote`. A temporary local bridge drops upstream's
+  `SyncResult.wrote`. A temporary local bridge dropped upstream's
   `folder-missing ["transitions"]` entry because C3 saves that container on
-  every save, pending c3source#97
+  every save; it was retired when c3source 3.0.0 shipped c3source#97 (#343)
   ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310))
 * [0062. A missing scaffold SID registry is refused](0062-a-missing-scaffold-sid-registry-is-refused.md) -
   `scaffold-layout` throws a project-relative, shared-formatted error when

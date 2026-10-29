@@ -553,21 +553,6 @@ export function applyNameDrift(
 // Main sync entry point
 // ---------------------------------------------------------------------------
 
-// Temporary bridge for construct3-chef#310, pending
-// https://github.com/GenvidTechnologies/c3source/issues/97: C3 saves the nameless
-// timelines container on every save even when there is no transitions/ dir, so its
-// absence on disk is not drift, yet upstream detectManifestDrift reports it as
-// folder-missing. Fires whatever the container holds.
-// Retire it when I310-T1 goes red after a c3source bump: delete this function, its call
-// in runSync, and the `I310-T1:` tripwire, then confirm the I310 convergence tests
-// (I310-R1, I310-R2, I310-C1) stay green on upstream's rule alone.
-function isTransitionsContainerFolderMissing(folder: NameFolder, entry: DriftEntry, sectionKey: string): boolean {
-  if (sectionKey !== "timelines" || entry.kind !== "folder-missing") return false;
-  const manifestPath = entry.manifestPath ?? [];
-  if (manifestPath.length !== 1 || manifestPath[0] !== TIMELINE_TRANSITIONS_FOLDER) return false;
-  return folder.subfolders.some((s) => s.name === undefined);
-}
-
 export function runSync(
   rootDir: string,
   dryRun: boolean,
@@ -626,10 +611,7 @@ export function runSync(
       log(`Warning: ${s.section} not found in project.c3proj`);
       continue;
     }
-    // Drop at most one container-absence entry (see isTransitionsContainerFolderMissing).
-    const bridgeIdx = s.entries.findIndex((e) => isTransitionsContainerFolderMissing(folder, e, s.section));
-    const entries = bridgeIdx < 0 ? s.entries : s.entries.filter((_, i) => i !== bridgeIdx);
-    applyNameDrift(folder, entries, s.section, allChanges, dryRun);
+    applyNameDrift(folder, s.entries, s.section, allChanges, dryRun);
   }
 
   // Print results

@@ -816,27 +816,6 @@ describe("timelines transitions container (#310)", function () {
   this.timeout(30_000);
   afterEach(cleanupScenarios);
 
-  it("I310-T1: upstream detectManifestDrift still reports the nameless container as folder-missing only when its dir is absent", () => {
-    const timelinesEntries = (root: string) =>
-      detectManifestDrift(root).sections.find((s) => s.section === "timelines")?.entries ?? [];
-    const f0 = timelinesEntries(buildScenario("F0").root);
-    const f1 = timelinesEntries(buildScenario("F1").root);
-    assert.deepEqual(
-      {
-        f0Timelines: f0.map((e) => ({ kind: e.kind, name: e.name, manifestPath: e.manifestPath })),
-        f1HasTimelines: f1.length > 0,
-      },
-      {
-        f0Timelines: [{ kind: "folder-missing", name: "transitions", manifestPath: ["transitions"] }],
-        f1HasTimelines: false,
-      },
-      "TRIPWIRE: upstream detectManifestDrift changed its answer on the nameless timelines container. " +
-        "When this goes red, upstream (GenvidTechnologies/c3source#97) has shipped: delete the local bridge " +
-        "isTransitionsContainerFolderMissing in src/c3/projectSync.ts plus this test, and revert-confirm " +
-        "the I310 convergence tests.",
-    );
-  });
-
   const render = (changes: Change[]): string[] => changes.map((c) => `${c.action} ${c.detail}`);
 
   /** Write-mode sync of one scenario's timelines, then re-read the tree and re-validate with a dry run. */
@@ -1062,5 +1041,66 @@ describe("timelines transitions container (#310)", function () {
     const dryWrote = runSync(buildScenario("S1").root, true, () => {}).wrote;
     const writeWrote = runSync(buildScenario("S1").root, false, () => {}).wrote;
     assert.deepEqual({ dryWrote, writeWrote }, { dryWrote: false, writeWrote: true });
+  });
+});
+
+describe("repeated names converge under sync (#343)", function () {
+  this.timeout(30_000);
+
+  /** Copy the canonical fixture, then let `mutate` edit the parsed eventSheets section of its manifest. */
+  function seed(mutate: (eventSheets: NameFolder) => void): { root: string; manifestPath: string } {
+    const root = createTmpDir();
+    cpSync(sampleProjectDir, root, { recursive: true });
+    const manifestPath = path.join(root, "project.c3proj");
+    const manifest = readProjectManifest(manifestPath);
+    mutate(manifest.eventSheets as NameFolder);
+    writeFileSync(manifestPath, serializeProjectManifest(manifest));
+    return { root, manifestPath };
+  }
+
+  const render = (changes: Change[]): string[] => changes.map((c) => `${c.action} ${c.detail}`);
+  const sheetsOf = (manifestPath: string) => JSON.parse(readFileSync(manifestPath, "utf8")).eventSheets as NameFolder;
+
+  it("I343-R3a: a name listed twice in one folder with no file on disk loses both entries in one sync, and a second sync reports no changes", () => {
+    const { root, manifestPath } = seed((es) => {
+      es.items.push("DupGhost", "DupGhost");
+    });
+    const first = render(runSync(root, false, () => {}, "eventSheets").changes);
+    const after = sheetsOf(manifestPath);
+    const second = render(runSync(root, true, () => {}, "eventSheets").changes);
+    assert.deepEqual(
+      { rootItems: after.items, firstReported: first.length > 0, second },
+      { rootItems: [], firstReported: true, second: [] },
+    );
+  });
+
+  it("I343-R3b: a ghost entry whose name also exists, on disk and in the manifest, in another folder is removed alone in one sync, and a second sync reports no changes", () => {
+    const { root, manifestPath } = seed((es) => {
+      es.items.push("Event sheet 1");
+    });
+    const first = render(runSync(root, false, () => {}, "eventSheets").changes);
+    const after = sheetsOf(manifestPath);
+    const second = render(runSync(root, true, () => {}, "eventSheets").changes);
+    assert.deepEqual(
+      {
+        rootItems: after.items,
+        gameplayItems: after.subfolders.find((s) => s.name === "Gameplay")?.items,
+        firstReported: first.length > 0,
+        second,
+      },
+      { rootItems: [], gameplayItems: ["Event sheet 1"], firstReported: true, second: [] },
+    );
+  });
+
+  it("I343-R3c: a name listed twice in one folder whose file exists gets no sync change and keeps both entries", () => {
+    const { root, manifestPath } = seed((es) => {
+      es.subfolders.find((s) => s.name === "Gameplay")!.items.push("Event sheet 1");
+    });
+    const first = render(runSync(root, false, () => {}, "eventSheets").changes);
+    const after = sheetsOf(manifestPath);
+    assert.deepEqual(
+      { first, gameplayItems: after.subfolders.find((s) => s.name === "Gameplay")?.items },
+      { first: [], gameplayItems: ["Event sheet 1", "Event sheet 1"] },
+    );
   });
 });
