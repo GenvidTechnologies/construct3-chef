@@ -153,8 +153,7 @@ export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaff
   if (eventSheet === "") {
     return { ok: false, kind: "invalid-name", message: formatScaffoldEmptyInput("event sheet") };
   }
-  // `isSectionItemName(".json")` is true, so an empty file stem needs its own check.
-  if (!isSectionItemName(outPath) || path.basename(outPath) === ".json") {
+  if (!isSectionItemName(outPath)) {
     return { ok: false, kind: "invalid-path", message: formatScaffoldOutputNotJson(relPosix(rootDir, outPath)) };
   }
   if (!existsSync(sourcePath)) {
