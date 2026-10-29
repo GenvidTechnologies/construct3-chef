@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-29
+
 ### Changed
 
 - **`@genvidtech/c3source` is bumped to `^3.0.0`.** This is a major of the
@@ -1184,7 +1186,8 @@ Initial public release, extracted from the retired c3-mcp-server initiative.
 - `read-event-sids` matches condition and action content. ([#8](https://github.com/GenvidTechnologies/construct3-chef/issues/8))
 - The DSL extractor marks disabled conditions with `[DISABLED]`. ([#5](https://github.com/GenvidTechnologies/construct3-chef/issues/5))
 
-[Unreleased]: https://github.com/GenvidTechnologies/construct3-chef/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/GenvidTechnologies/construct3-chef/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/GenvidTechnologies/construct3-chef/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/GenvidTechnologies/construct3-chef/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/GenvidTechnologies/construct3-chef/compare/v1.2.0...v2.0.0
 [1.2.0]: https://github.com/GenvidTechnologies/construct3-chef/compare/v1.1.0...v1.2.0
