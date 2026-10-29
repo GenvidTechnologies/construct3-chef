@@ -99,6 +99,21 @@ const ALL4 = {
   },
 };
 
+// Second is read as a `from:` source before it is mutated; Templates then copies the 9patch Second gained.
+const P3 = {
+  layouts: {
+    "layouts/Gameplay/Main Layout.json": [
+      { op: "copy-instance", type: "Text", from: "layouts/UI/Second Layout.json", targetLayer: "layer 0" },
+    ],
+    "layouts/UI/Second Layout.json": [
+      { op: "copy-instance", type: "9patch", from: "layouts/Gameplay/Main Layout.json", targetLayer: "layer 0" },
+    ],
+    "layouts/Templates Layout.json": [
+      { op: "copy-instance", type: "9patch", from: "layouts/UI/Second Layout.json", targetLayer: "Layer 0" },
+    ],
+  },
+};
+
 const PATCH = {
   files: {
     "eventSheets/Gameplay/Event sheet 1.json": [
@@ -230,6 +245,18 @@ describe("dry-run / preview / apply parity pins (#280)", function () {
         preview: { changed: [], calls: 0, wfFolder: false },
         apply: { changedCount: 6, calls: 8 },
       },
+    );
+  });
+
+  it("UP280-R7: a layout read as a copy source then mutated is not served stale to later layouts", () => {
+    const { dry, apply } = runBoth(P3);
+    assert.deepEqual(
+      {
+        dryErr: dry.err,
+        applyErr: apply.err,
+        templates9patch: apply.read("layouts/Templates Layout.json").includes('"type": "9patch"'),
+      },
+      { dryErr: undefined, applyErr: undefined, templates9patch: true },
     );
   });
 

@@ -12,8 +12,8 @@
 // Primitive layout ops pass through unchanged. The only stateful concern is
 // `replace-instance-with-replica`, which must snapshot the existing instance's
 // world props before the apply loop removes it — that's what `loadLayout` is
-// for. The applier wires it to the same `sourceLayoutCache` the primitive
-// `copy-instance` / `add-replica` ops already share.
+// for. The applier gives it its own disk-only cache, separate from the apply
+// loop's `sourceLayoutCache` that the primitive `copy-instance` / `add-replica` ops share.
 
 import type {
   PrimitiveLayoutOp,
@@ -28,8 +28,8 @@ import { readInstanceWorld } from "./layoutMutator.js";
 
 /**
  * Read a layout JSON from a path relative to the recipe's project root. The
- * applier wires this to its `sourceLayoutCache` so expander reads share the
- * cache with the primitive `copy-instance` / `add-replica` reads.
+ * applier backs this with its own disk-only cache, separate from the apply
+ * loop's `sourceLayoutCache` (expansion reads only from disk).
  */
 export type LoadLayout = (layoutPath: string) => LayoutJson;
 

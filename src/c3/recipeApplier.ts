@@ -768,6 +768,8 @@ function computeRecipe(
       }
 
       io.writeText(fullPath, serializeSourceJson(layout));
+      // A layout cached as a `from:` source before this loop mutated it would be served stale to later layouts.
+      sourceLayoutCache.set(layoutPath, layout as MutatorLayoutJson);
     }
   }
 
