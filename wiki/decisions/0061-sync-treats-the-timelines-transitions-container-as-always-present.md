@@ -6,9 +6,9 @@ description: >-
   walk produces them (the nameless direct child of the timelines root is the
   `transitions` segment), throws on a drift entry it cannot resolve, and
   writes `project.c3proj` only when the synced bytes change, reporting that as
-  `SyncResult.wrote`. A temporary local bridge drops upstream's
+  `SyncResult.wrote`. A temporary local bridge dropped upstream's
   `folder-missing ["transitions"]` entry because C3 saves that container on
-  every save, pending c3source#97
+  every save; it was retired when c3source 3.0.0 shipped c3source#97 (#343)
   ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310))
 tags: [decision, sync, timelines, upstream]
 status: stable
@@ -44,6 +44,7 @@ Separately, `runSync` wrote `project.c3proj` and logged `Updated` on every succe
 1. **Resolver.** In `src/c3/projectSync.ts`, `segmentOf`, `withTransparent`, `foldersAt` and `ensureFolder` resolve a drift path the way c3source's walk produces it. The nameless direct child of the timelines root is the `transitions` segment (`TIMELINE_TRANSITIONS_FOLDER`); other nameless subfolders are transparent. A missing container is created nameless at index 0, never as a folder named `transitions`. Removals resolve in dry-run too, so `validate-project` and `sync-project` agree.
 2. **`applyNameDrift` throws** `sync: cannot apply <kind> drift for <section> "<name>"` for an entry it cannot resolve. It used to record a phantom change or drop the entry. It is a barrel-exported function, so this is a behaviour change on invalid input.
 3. **Bridge.** `isTransitionsContainerFolderMissing` (module-private, in `runSync`) drops upstream's `folder-missing ["transitions"]` entry when the timelines root has the nameless container, whatever it holds ("container always present"). The predicate is not "empty only": a non-empty container with no directory would still report `- transitions/`, which the fixed engine would then delete and C3 would add back on the next save.
+   *(Superseded in part: the bridge was retired when c3source 3.0.0 shipped c3source#97, in [#343](https://github.com/GenvidTechnologies/construct3-chef/issues/343). `isTransitionsContainerFolderMissing`, its `runSync` call and `I310-T1` are deleted; decisions 1, 2 and the rest stand.)*
 4. **Write guard.** `runSync` writes `project.c3proj`, logs `Updated` and calls `beforeWrite` only when the serialized manifest differs from the serialization taken right after parsing. The comparison is against the parsed object, not the raw file, so a phantom change never reformats a non-canonical file (CRLF, a trailing newline; see ADR 0030 for the no-trailing-newline convention).
 5. **`SyncResult.wrote: boolean`**, an additive public-API field, true iff the call wrote `project.c3proj`.
 6. **MCP `sync-project` bumps the `txId` only when `wrote`**, the rule `sync-addon-metadata` already follows. `scaffold-layout` and `scaffold-sprite` are unchanged, since they always write source first. This replaces ADR 0017's description of `sync-project` as bumping unconditionally.
