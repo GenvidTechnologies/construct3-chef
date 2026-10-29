@@ -228,6 +228,44 @@ describe("dry-run / preview / apply parity pins (#280)", function () {
     );
   });
 
+  it("UP280-R1: a CREATEd sheet failing both checks gives the same first error in both modes, editor-load first", () => {
+    const { dry, apply } = runBoth(C5);
+    assert.deepEqual(
+      { dry: dry.err, apply: apply.err },
+      {
+        dry: "Editor-validation failed for eventSheets/NewE2/Both.json:",
+        apply: "Editor-validation failed for eventSheets/NewE2/Both.json:",
+      },
+    );
+  });
+
+  it("UP280-R2: a modified sheet failing both checks gives the same first error in both modes", () => {
+    // The variable lacks `comment` (editor-load) and the family custom-action lacks `family` (runtime-resolution).
+    const recipe = {
+      files: {
+        Target: [
+          {
+            op: "insert-actions",
+            in: "sid:200000000000001",
+            after: -1,
+            actions: [{ "custom-action": "Refresh", object: "Widget" }],
+          },
+        ],
+      },
+    };
+    const drive = (root: string, r: Recipe, o: object) => applyRecipeInner(freshSidGen(), root, r, o);
+    const mk = () => targetProject({});
+    const dry = runIn(mk, drive, recipe, { dryRun: true });
+    const apply = runIn(mk, drive, recipe, {});
+    assert.deepEqual(
+      { dry: dry.err, apply: apply.err },
+      {
+        dry: "Editor-validation failed for eventSheets/Target.json:",
+        apply: "Editor-validation failed for eventSheets/Target.json:",
+      },
+    );
+  });
+
   it("UP280-R10: dry-run and preview are write-free and fire no beforeSourceWrite", () => {
     const drive = (root: string, r: Recipe, o: object) => applyParsed(root, r, o);
     const mk = () => copyFixture("c3chef-parity-");

@@ -785,12 +785,12 @@ function computeRecipe(
       const fullPath = path.join(rootDir, filePath);
       if (isFileCreate(entry)) {
         const sheet = createSheet(sidGen, extractSheetName(filePath), entry.events);
-        // Brand-new sheet: original is empty (no pre-existing events).
-        assertCustomActionsValid(customAceIndex, filePath, { ...sheet, events: [] }, sheet);
         // checkCreateTargets refused any CREATE over an existing path before Step 1 (#249),
         // so every CREATE reaching here writes a file sync-project must register.
         createdNewFile = true;
-        assertEditorValid(fullPath, sheet);
+        assertEditorValid(filePath, sheet);
+        // Brand-new sheet: original is empty (no pre-existing events).
+        assertCustomActionsValid(customAceIndex, filePath, { ...sheet, events: [] }, sheet);
         io.writeText(fullPath, serializeSourceJson(sheet), { mkdir: true });
         n.fileCreated(filePath);
       } else {
@@ -802,8 +802,8 @@ function computeRecipe(
         executeFileOpsWithHints(sidGen, filePath, original, clone, opsClone, {
           autoAdjust: recipe.autoAdjust,
         });
+        assertEditorValid(filePath, clone);
         assertCustomActionsValid(customAceIndex, filePath, original, clone);
-        assertEditorValid(fullPath, clone);
         io.writeText(fullPath, serializeSourceJson(clone));
         n.fileModified(filePath);
       }
