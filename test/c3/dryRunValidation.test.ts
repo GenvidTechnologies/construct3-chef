@@ -412,9 +412,8 @@ describe("applyRecipeInner dry-run: surfaces apply-time errors", () => {
 
   describe("dry-run / apply parity", () => {
     it("addInstVars on a pending objectType created in the same recipe passes dry-run (C4)", () => {
-      // Without the pending-objectType awareness, processAddInstVars would
-      // throw `objectType "Foo" not found` because dry-run skipped the create
-      // write. With the fix it logs an "UPDATE pending" line instead.
+      // Dry-run computes against an in-memory overlay, so the create is visible to the addInstVars step and it
+      // logs the real `UPDATE objectTypes/Foo.json (+y)` line, as apply would (#280).
       const dir = makeProject({
         scripts: {
           "instanceTypes.d.ts": "declare namespace InstanceType {\n}\n",
@@ -428,7 +427,7 @@ describe("applyRecipeInner dry-run: surfaces apply-time errors", () => {
       const lines: string[] = [];
       const log = (...args: unknown[]) => lines.push(args.map(String).join(" "));
       assert.doesNotThrow(() => applyRecipeInner(sidGen, dir, recipe, { dryRun: true, regenerate: false, log }));
-      assert.match(lines.join("\n"), /UPDATE pending objectType "Foo".*y/);
+      assert.match(lines.join("\n"), /UPDATE objectTypes\/Foo\.json \(\+y\)/);
     });
 
     it("cross-layout copy-instance sees prior in-recipe layout mutations in dry-run (S2)", () => {

@@ -53,7 +53,7 @@ import {
   renameLayer,
   type LayoutJson as MutatorLayoutJson,
 } from "./layoutMutator.js";
-import { collectAllUids, collectLayoutSids } from "./layoutScaffold.js";
+import { collectAllUids } from "./layoutScaffold.js";
 import { seedLayoutSids } from "./layoutSidSeed.js";
 import { readRegistryFile, makeSidGen, freshSidGen, type SidGenerator } from "./sidUtils.js";
 import { diffScripts } from "./previewDiff.js";
@@ -181,7 +181,7 @@ export function createObjectType(
   dryRun: boolean,
   log: Logger = console.log,
 ): boolean {
-  return createObjectTypeIo(diskIo, sidGen, rootDir, objectType, dryRun, log);
+  return createObjectTypeIo(dryRun ? new OverlayIo() : diskIo, sidGen, rootDir, objectType, dryRun, log);
 }
 
 export function updateInstanceTypes(
@@ -190,7 +190,7 @@ export function updateInstanceTypes(
   dryRun: boolean,
   log: Logger = console.log,
 ): void {
-  updateInstanceTypesIo(diskIo, rootDir, objectType, dryRun, log);
+  updateInstanceTypesIo(dryRun ? new OverlayIo() : diskIo, rootDir, objectType, dryRun, log);
 }
 
 export function updateObjects(
@@ -199,7 +199,7 @@ export function updateObjects(
   dryRun: boolean,
   log: Logger = console.log,
 ): void {
-  updateObjectsIo(diskIo, rootDir, objectType, dryRun, log);
+  updateObjectsIo(dryRun ? new OverlayIo() : diskIo, rootDir, objectType, dryRun, log);
 }
 
 // ─── addInstVars helpers ───
@@ -208,6 +208,12 @@ export function findObjectTypeFile(rootDir: string, typeName: string): string | 
   return findObjectTypeFileIo(diskIo, rootDir, typeName);
 }
 
+/**
+ * @param pendingObjectTypes @deprecated Still honoured, but no longer needed: dry-run now computes against an
+ *   in-memory overlay, so this function emulates the pending types itself (creating each one in the overlay,
+ *   silently, as the recipe's objectTypes step would). Use `applyRecipeInner`/`applyParsed` with `dryRun` instead.
+ *   Ignored when `dryRun` is false, where the objectTypes are already on disk.
+ */
 export function processAddInstVars(
   sidGen: SidGenerator,
   rootDir: string,
@@ -216,7 +222,19 @@ export function processAddInstVars(
   log: Logger = console.log,
   pendingObjectTypes?: ObjectTypeCreate[],
 ): void {
-  processAddInstVarsIo(diskIo, sidGen, rootDir, entries, dryRun, log, pendingObjectTypes);
+  if (!dryRun) {
+    processAddInstVarsIo(diskIo, sidGen, rootDir, entries, false, log);
+    return;
+  }
+  const io = new OverlayIo();
+  const quiet: Logger = () => {};
+  for (const ot of pendingObjectTypes ?? []) {
+    if (createObjectTypeIo(io, sidGen, rootDir, ot, true, quiet)) {
+      updateInstanceTypesIo(io, rootDir, ot, true, quiet);
+      updateObjectsIo(io, rootDir, ot, true, quiet);
+    }
+  }
+  processAddInstVarsIo(io, sidGen, rootDir, entries, true, log);
 }
 
 // ─── Layout mutation helpers ───
@@ -694,9 +712,16 @@ function applyLayoutOp(
   }
 }
 
+/** One `--preview` entry, in recipe.files order, so creates and modifies interleave as the user wrote them. */
+type PreviewEntry =
+  | { filePath: string; kind: "create"; eventCount: number }
+  | { filePath: string; kind: "diff"; diffs: string[] };
+
 /**
- * Apply's compute pass: Steps 1-3 against the in-memory overlay `io`, narrating through `n`.
- * Returns whether a file was created that sync-project must register in project.c3proj (#245).
+ * The compute pass shared by dry-run and apply: Steps 1-3 against the in-memory overlay `io`, narrating through
+ * `n`. Dry-run and apply differ only in `n` and in what the caller does with the journal afterwards.
+ * Returns whether a file was created that sync-project must register in project.c3proj (#245), and the preview
+ * entries (collected only when `preview` is set).
  */
 function computeRecipe(
   io: OverlayIo,
@@ -706,8 +731,10 @@ function computeRecipe(
   layoutsForLoop: Map<string, PrimitiveLayoutOp[]>,
   customAceIndex: ReturnType<typeof buildCustomAceIndex> | null,
   n: RecipeNarration,
-): { createdNewFile: boolean } {
+  preview: boolean,
+): { createdNewFile: boolean; previewEntries: PreviewEntry[] } {
   let createdNewFile = false;
+  const previewEntries: PreviewEntry[] = [];
 
   // ─── Step 1: Process objectTypes ───
   if (recipe.objectTypes && recipe.objectTypes.length > 0) {
@@ -720,15 +747,15 @@ function computeRecipe(
         updateObjectsIo(io, rootDir, ot, n.dryRun, n.log);
       }
     }
+    n.sectionEnd();
   }
 
   // ─── Step 1b: Process addInstVars ───
   if (recipe.addInstVars && recipe.addInstVars.length > 0) {
     n.section("addInstVars");
-    // In apply mode the objectType files are already in the overlay from Step 1,
-    // so passing pendingObjectTypes is harmless (findObjectTypeFileIo will find
-    // them via the overlay). Still passed for symmetry with the dry-run call.
-    processAddInstVarsIo(io, sidGen, rootDir, recipe.addInstVars, n.dryRun, n.log, recipe.objectTypes);
+    // The objectType files Step 1 created are already in the overlay, in both modes, so the lookup finds them.
+    processAddInstVarsIo(io, sidGen, rootDir, recipe.addInstVars, n.dryRun, n.log);
+    n.sectionEnd();
   }
 
   // ─── Step 2: Process layouts ───
@@ -751,6 +778,7 @@ function computeRecipe(
       // unchanged file (which would bump mtime and produce a misleading
       // "MODIFIED" log line).
       if (ops.length === 0) continue;
+      n.layout(layoutPath, ops);
 
       const fullPath = path.join(rootDir, layoutPath);
       const layout = JSON.parse(io.readText(fullPath)) as LayoutJson;
@@ -771,6 +799,7 @@ function computeRecipe(
       // A layout cached as a `from:` source before this loop mutated it would be served stale to later layouts.
       sourceLayoutCache.set(layoutPath, layout as MutatorLayoutJson);
     }
+    n.sectionEnd();
   }
 
   // ─── Step 3: Process files ───
@@ -784,6 +813,7 @@ function computeRecipe(
     for (const [filePath, entry] of Object.entries(recipe.files)) {
       const fullPath = path.join(rootDir, filePath);
       if (isFileCreate(entry)) {
+        n.fileCreating(filePath, entry.events.length);
         const sheet = createSheet(sidGen, extractSheetName(filePath), entry.events);
         // checkCreateTargets refused any CREATE over an existing path before Step 1 (#249),
         // so every CREATE reaching here writes a file sync-project must register.
@@ -793,7 +823,9 @@ function computeRecipe(
         assertCustomActionsValid(customAceIndex, filePath, { ...sheet, events: [] }, sheet);
         io.writeText(fullPath, serializeSourceJson(sheet), { mkdir: true });
         n.fileCreated(filePath);
+        if (preview) previewEntries.push({ filePath, kind: "create", eventCount: entry.events.length });
       } else {
+        n.fileModifying(filePath, entry);
         // Event sheets are never written by Steps 1-2, so the overlay holds nothing for them; reading through
         // io is equivalent to loadSheet's disk read.
         const original = JSON.parse(io.readText(fullPath)) as EventSheet;
@@ -806,11 +838,13 @@ function computeRecipe(
         assertCustomActionsValid(customAceIndex, filePath, original, clone);
         io.writeText(fullPath, serializeSourceJson(clone));
         n.fileModified(filePath);
+        if (preview) previewEntries.push({ filePath, kind: "diff", diffs: diffScripts(filePath, original, clone) });
       }
     }
+    n.sectionEnd();
   }
 
-  return { createdNewFile };
+  return { createdNewFile, previewEntries };
 }
 
 export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: Recipe, opts: ApplyOptions = {}) {
@@ -890,151 +924,44 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
     checkMoveVariableDemotions(rootDir, recipe.files, log);
   }
 
-  // Build the custom-ACE index once, shared by both the dry-run and apply
-  // branches below. Custom-ACE definitions come from the existing on-disk
-  // project (not from the recipe's own inserts), so building it here — after
-  // structural validation but before any write — is correct for both paths.
+  // Build the custom-ACE index once, for the compute pass both modes share.
+  // Custom-ACE definitions come from the existing on-disk project (not from
+  // the recipe's own inserts), so building it here — after structural
+  // validation but before any write — is correct for both paths.
   // Skipped entirely when the recipe has no file ops (no custom-actions to
   // validate, and no eventSheets dir is required to exist).
   const customAceIndex = recipe.files && Object.keys(recipe.files).length > 0 ? buildCustomAceIndex(rootDir) : null;
 
+  // Dry-run and apply run the same compute pass against an in-memory overlay (#280); they differ only in how it
+  // is narrated and in what happens to the journal afterwards. Dry-run discards it: no replay, no mkdir, no
+  // beforeSourceWrite. Apply replays it. Apply's atomicity (#278, #279) is the same property: nothing reaches
+  // disk or the caller's logger until every step has succeeded; only dry-run narrates live, so a refusal still
+  // prints the lines before it.
+  const io = new OverlayIo();
   if (dryRun) {
     log("\n--- Dry run (no files written) ---\n");
-    const n = dryRunNarration(log);
+    const { previewEntries } = computeRecipe(
+      io,
+      sidGen,
+      rootDir,
+      recipe,
+      layoutsForLoop,
+      customAceIndex,
+      dryRunNarration(log),
+      preview,
+    );
 
-    // objectTypes dry-run output
-    if (recipe.objectTypes && recipe.objectTypes.length > 0) {
-      n.section("objectTypes");
-      for (const ot of recipe.objectTypes) {
-        // Same as apply (Step 1): the ts-def updates run only for a type the create actually creates.
-        if (createObjectType(sidGen, rootDir, ot, true, log)) {
-          updateInstanceTypes(rootDir, ot, true, log);
-          updateObjects(rootDir, ot, true, log);
-        }
-      }
-      n.sectionEnd();
-    }
-
-    // addInstVars dry-run output. Pass recipe.objectTypes so entries targeting
-    // a type being CREATED in this recipe (not yet on disk in dry-run) are
-    // recognized as pending instead of "objectType not found".
-    if (recipe.addInstVars && recipe.addInstVars.length > 0) {
-      n.section("addInstVars");
-      processAddInstVars(sidGen, rootDir, recipe.addInstVars, true, log, recipe.objectTypes);
-      n.sectionEnd();
-    }
-
-    // layouts dry-run output + in-memory validation. Match the non-dry-run
-    // section order (objectTypes → addInstVars → layouts → files) so any
-    // cross-section dependency surfaces consistently. Iterates `layoutsForLoop`
-    // (the workflow-expanded view) so workflow ops are validated as their
-    // primitive sequence, matching what apply will do.
-    if (layoutsForLoop.size > 0) {
-      n.section("layouts");
-      const layoutsDir = openProject(rootDir).layoutsDir;
-      const allUids = collectAllUids(layoutsDir);
-      const dryRunUidCounter = { next: maxFromSet(allUids) + 1 };
-      const dryRunSourceCache = new Map<string, MutatorLayoutJson>();
-      const noopLog: Logger = () => {};
-
-      for (const [filePath, ops] of layoutsForLoop) {
-        // Defensive skip — same rationale as the apply loop below.
-        if (ops.length === 0) continue;
-        n.layout(filePath, ops);
-
-        // Validate by running each op against a clone. Errors thrown by
-        // layoutMutator (missing layer, missing instance type, etc.) now
-        // surface in dry-run instead of only at apply.
-        const fullPath = path.join(rootDir, filePath);
-        const original = JSON.parse(readFileSync(fullPath, "utf-8")) as LayoutJson;
-        const clone = JSON.parse(JSON.stringify(original)) as LayoutJson;
-        // Validation pass uses a per-layout fresh SID generator seeded with
-        // the layout's existing SIDs — keeps the dry-run mutations isolated
-        // from the recipe-wide sidGen.
-        const dryRunCtx: LayoutOpContext = {
-          rootDir,
-          uidCounter: dryRunUidCounter,
-          sourceLayoutCache: dryRunSourceCache,
-          sidGen: makeSidGen(collectLayoutSids(clone as Record<string, unknown>)),
-          objectTypes: recipe.objectTypes ?? [],
-          readText: diskIo.readText,
-        };
-        for (const op of ops) {
-          applyLayoutOp(clone, filePath, op, dryRunCtx, noopLog);
-        }
-
-        // Cross-layout consistency: a later layout's `copy-instance` /
-        // `add-replica` with `from: filePath` should see the mutated clone,
-        // matching apply behavior where each layout is written to disk before
-        // the next iterates (and reads the modified version via cache miss).
-        // Without this, a recipe `{ layouts: { A: [add X], B: [copy X from A] } }`
-        // throws spuriously at dry-run while apply succeeds.
-        dryRunSourceCache.set(filePath, clone as MutatorLayoutJson);
-      }
-      n.sectionEnd();
-    }
-
-    // files dry-run output + in-memory validation. Errors thrown by
-    // executeFileOps (SID-kind mismatches, missing nodes, etc.) and by
-    // createSheet (malformed file-create events) now surface during
-    // validate-recipe instead of only at apply.
-    if (recipe.files && Object.keys(recipe.files).length > 0) {
-      n.section("files");
-      // Ordered preview entries: preserves recipe.files insertion order so
-      // creates and modifies interleave the same way the user wrote them.
-      type PreviewEntry =
-        | { filePath: string; kind: "create"; eventCount: number }
-        | { filePath: string; kind: "diff"; diffs: string[] };
-      const previewEntries: PreviewEntry[] = [];
-
-      for (const [filePath, entry] of Object.entries(recipe.files)) {
-        if (isFileCreate(entry)) {
-          n.fileCreating(filePath, entry.events.length);
-          // Validate the create by building the sheet directly — createSheet
-          // is the only thing executeRecipe would have called for a FileCreate
-          // entry, so calling it here avoids the throwing-loader contract trap.
-          const created = createSheet(sidGen, extractSheetName(filePath), entry.events);
-          assertEditorValid(filePath, created);
-          // Brand-new sheet: original is empty (no pre-existing events).
-          assertCustomActionsValid(customAceIndex, filePath, { ...created, events: [] }, created);
-          if (preview) previewEntries.push({ filePath, kind: "create", eventCount: entry.events.length });
+    if (preview && previewEntries.length > 0) {
+      log("--- Preview (script diffs) ---\n");
+      for (const entry of previewEntries) {
+        if (entry.kind === "create") {
+          log(`  CREATE ${entry.filePath} — new file with ${entry.eventCount} event(s)`);
+        } else if (entry.diffs.length === 0) {
+          log(`  ${entry.filePath} — no script changes`);
         } else {
-          n.fileModifying(filePath, entry);
-
-          // Validate by load → clone → executeFileOps. SID-kind mismatches
-          // and other apply-time errors throw here; the wrapper enriches
-          // "SID not found" / "does not support …" errors with a hint when the
-          // SID lives on a condition / action / function-param or on the wrong
-          // event kind. Defensive clone of `entry` keeps executeFileOps's
-          // internal remove-event normalization from mutating the caller's
-          // Recipe object.
-          const original = loadSheet(rootDir, filePath);
-          const clone = JSON.parse(JSON.stringify(original)) as EventSheet;
-          const opsClone = JSON.parse(JSON.stringify(entry)) as FileOp[];
-          executeFileOpsWithHints(sidGen, filePath, original, clone, opsClone, {
-            autoAdjust: recipe.autoAdjust,
-          });
-          assertEditorValid(filePath, clone);
-          assertCustomActionsValid(customAceIndex, filePath, original, clone);
-          if (preview) {
-            previewEntries.push({ filePath, kind: "diff", diffs: diffScripts(filePath, original, clone) });
-          }
-        }
-      }
-      n.sectionEnd();
-
-      if (preview && previewEntries.length > 0) {
-        log("--- Preview (script diffs) ---\n");
-        for (const entry of previewEntries) {
-          if (entry.kind === "create") {
-            log(`  CREATE ${entry.filePath} — new file with ${entry.eventCount} event(s)`);
-          } else if (entry.diffs.length === 0) {
-            log(`  ${entry.filePath} — no script changes`);
-          } else {
-            log(`  ${entry.filePath}:`);
-            for (const d of entry.diffs) {
-              log(d);
-            }
+          log(`  ${entry.filePath}:`);
+          for (const d of entry.diffs) {
+            log(d);
           }
         }
       }
@@ -1044,10 +971,6 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
     return;
   }
 
-  // Atomic apply (#278, #279): Steps 1-3 compute against an in-memory overlay and journal their writes and log
-  // lines; nothing reaches disk (or the caller's logger) until every step has succeeded. A refusal anywhere
-  // therefore leaves the project untouched.
-  const io = new OverlayIo();
   const { createdNewFile } = computeRecipe(
     io,
     sidGen,
@@ -1056,6 +979,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
     layoutsForLoop,
     customAceIndex,
     applyNarration(io.logger()),
+    false,
   );
 
   // Replay. Nothing can refuse after compute, so this loop is the only place apply writes to disk,

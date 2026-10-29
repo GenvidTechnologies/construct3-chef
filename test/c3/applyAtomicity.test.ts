@@ -157,7 +157,9 @@ describe("recipe apply behaviour pins (#255)", () => {
       "  UPDATE scripts/ts-defs/objects.d.ts",
       "",
       "addInstVars:",
-      '  UPDATE pending objectType "NewJ" (+v)',
+      "  UPDATE objectTypes/NewJ.json (+v)",
+      "  No layout instances found for NewJ",
+      "  UPDATE scripts/ts-defs/instanceTypes.d.ts (+v)",
       "",
       "\nValidation passed. Run without --dry-run to apply.",
     ]);

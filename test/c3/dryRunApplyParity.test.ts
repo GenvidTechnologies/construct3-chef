@@ -4,7 +4,7 @@ import { rmSync, readFileSync, existsSync, mkdtempSync, mkdirSync, writeFileSync
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { applyParsed, applyRecipeInner } from "../../src/c3/recipeApplier.js";
+import { applyParsed, applyRecipeInner, createObjectType, processAddInstVars } from "../../src/c3/recipeApplier.js";
 import type { Recipe } from "../../src/c3/recipeInterpreter.js";
 import { freshSidGen } from "../../src/c3/sidUtils.js";
 import { copyFixture, snapshotTree } from "../helpers/applyFixtures.js";
@@ -113,6 +113,38 @@ const P3 = {
     ],
   },
 };
+
+const PV = [{ name: "pv", type: "number" }];
+// Text exists on disk, so the second entry has nothing left to add.
+const P1 = {
+  addInstVars: [
+    { type: "Text", instanceVariables: PV },
+    { type: "Text", instanceVariables: PV },
+  ],
+};
+// Re-declares an existing objectType (a SKIP), then adds an instance variable to it.
+const P2 = { objectTypes: [{ name: "Text", plugin: "Json" }], addInstVars: [{ type: "Text", instanceVariables: PV }] };
+const SIDMIX = {
+  objectTypes: [{ name: "NewJ", plugin: "Json" }],
+  addInstVars: [
+    { type: "NewJ", instanceVariables: [{ name: "v", type: "number" }] },
+    { type: "Text", instanceVariables: PV },
+    { type: "Text", instanceVariables: PV },
+  ],
+  layouts: {
+    "layouts/Templates Layout.json": [
+      { op: "copy-instance", type: "Text", from: "layouts/UI/Second Layout.json", targetLayer: "Layer 0" },
+    ],
+  },
+};
+
+/** The lines of the addInstVars section: from its header to the next blank line or `\n`-led line. */
+function addInstVarsLines(lines: string[]): string[] {
+  const at = lines.findIndex((l) => l.endsWith("addInstVars:"));
+  const rest = lines.slice(at + 1);
+  const end = rest.findIndex((l) => l === "" || l.startsWith("\n"));
+  return end < 0 ? rest : rest.slice(0, end);
+}
 
 const PATCH = {
   files: {
@@ -296,6 +328,132 @@ describe("dry-run / preview / apply parity pins (#280)", function () {
       },
       { dryErr: undefined, applyErr: undefined, templates9patch: true },
     );
+  });
+
+  it("UP280-R4: the all-sections recipe's dry-run output keeps its rendering and real addInstVars lines", () => {
+    const { dry } = runBoth(ALL4);
+    assert.deepEqual(dry.lines, [
+      "Recipe: 1 objectType(s), 1 addInstVars type(s), 2 eventSheet file(s), 1 layout file(s), 3 operation(s)",
+      BANNER,
+      "objectTypes:",
+      "  CREATE objectTypes/WfJ.json (plugin: Json)",
+      "  UPDATE scripts/ts-defs/instanceTypes.d.ts",
+      "  UPDATE scripts/ts-defs/objects.d.ts",
+      "",
+      "addInstVars:",
+      "  UPDATE objectTypes/WfJ.json (+v)",
+      "  No layout instances found for WfJ",
+      "  UPDATE scripts/ts-defs/instanceTypes.d.ts (+v)",
+      "",
+      "layouts:",
+      "  MODIFY layouts/Templates Layout.json (1 ops)",
+      '    - add-layer name="WF"',
+      "",
+      "files:",
+      "  MODIFY eventSheets/Gameplay/Event sheet 1.json (1 ops)",
+      "    - insert-event",
+      "  CREATE eventSheets/WfFolder/Fresh.json (0 events)",
+      "",
+      "\nValidation passed. Run without --dry-run to apply.",
+    ]);
+  });
+
+  it("UP280-R5: addInstVars on a type the recipe re-declares prints apply's lines in dry tense", () => {
+    const { dry, apply } = runBoth(P2);
+    assert.deepEqual(
+      { dry: addInstVarsLines(dry.lines), apply: addInstVarsLines(apply.lines) },
+      {
+        dry: [
+          "  UPDATE objectTypes/Text.json (+pv)",
+          "  UPDATE layouts/UI/Second Layout.json (1 instance(s))",
+          "  UPDATE scripts/ts-defs/instanceTypes.d.ts (+pv)",
+        ],
+        apply: [
+          "  UPDATED objectTypes/Text.json (+pv)",
+          "  UPDATED layouts/UI/Second Layout.json (1 instance(s))",
+          "  UPDATED scripts/ts-defs/instanceTypes.d.ts (+pv)",
+        ],
+      },
+    );
+  });
+
+  it("UP280-R6: a repeated addInstVars entry SKIPs in dry-run, as in apply", () => {
+    const { dry, apply } = runBoth(P1);
+    const triple = (tense: string) => [
+      `  ${tense} objectTypes/Text.json (+pv)`,
+      `  ${tense} layouts/UI/Second Layout.json (1 instance(s))`,
+      `  ${tense} scripts/ts-defs/instanceTypes.d.ts (+pv)`,
+    ];
+    const tail = ["  SKIP objectTypes/Text.json (all instVars already exist)", "  No layout instances found for Text"];
+    assert.deepEqual(
+      { dry: addInstVarsLines(dry.lines), apply: addInstVarsLines(apply.lines) },
+      { dry: [...triple("UPDATE"), ...tail], apply: [...triple("UPDATED"), ...tail] },
+    );
+  });
+
+  it("UP280-R8: dry-run and apply mint SIDs equally on one recipe-wide generator", () => {
+    const count = (flags: Flags): number => {
+      let n = 0;
+      let next = 500000000000000;
+      const drive = (root: string, r: Recipe, o: object) =>
+        applyRecipeInner(
+          () => {
+            n++;
+            return next++;
+          },
+          root,
+          r,
+          o,
+        );
+      const mode = runIn(() => copyFixture("c3chef-parity-"), drive, SIDMIX, flags);
+      assert.isUndefined(mode.err);
+      return n;
+    };
+    assert.deepEqual({ dry: count({ dryRun: true }), apply: count({}) }, { dry: 4, apply: 4 });
+  });
+
+  it("UP280-R11: the public wrappers in dry-run print the real lines and leave the tree unchanged", () => {
+    const root = copyFixture("c3chef-parity-");
+    try {
+      const before = snapshotTree(root);
+      const lines: string[] = [];
+      const log = (...a: unknown[]) => lines.push(a.join(" "));
+      const sg = freshSidGen();
+      const pv = [{ name: "pv", type: "number" as const }];
+      createObjectType(sg, root, { name: "NewJ", plugin: "Json" }, true, log);
+      processAddInstVars(sg, root, [{ type: "NewJ", instanceVariables: [{ name: "v", type: "number" }] }], true, log, [
+        { name: "NewJ", plugin: "Json" },
+      ]);
+      processAddInstVars(
+        sg,
+        root,
+        [
+          { type: "Text", instanceVariables: pv },
+          { type: "Text", instanceVariables: pv },
+        ],
+        true,
+        log,
+      );
+      assert.deepEqual(
+        { lines, changed: diffTrees(before, snapshotTree(root)) },
+        {
+          lines: [
+            "  CREATE objectTypes/NewJ.json (plugin: Json)",
+            "  UPDATE objectTypes/NewJ.json (+v)",
+            "  No layout instances found for NewJ",
+            "  UPDATE scripts/ts-defs/instanceTypes.d.ts (+v)",
+            "  UPDATE objectTypes/Text.json (+pv)",
+            "  UPDATE layouts/UI/Second Layout.json (1 instance(s))",
+            "  UPDATE scripts/ts-defs/instanceTypes.d.ts (+pv)",
+            "  SKIP objectTypes/Text.json (all instVars already exist)",
+            "  No layout instances found for Text",
+          ],
+          changed: [],
+        },
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("UP280-R12: patch-script find/replace and the preview diff section keep rendering", () => {
