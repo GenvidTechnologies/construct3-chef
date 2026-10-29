@@ -29,8 +29,6 @@ import {
   type ObjectTypeCreate,
   type AddInstVarsEntry,
   type AddNonworldInstanceOp,
-  type PatchScriptOp,
-  type RenameSymbolOp,
   type PrimitiveLayoutOp,
   type FileOp,
   validateRecipe,
@@ -61,6 +59,7 @@ import { readRegistryFile, makeSidGen, freshSidGen, type SidGenerator } from "./
 import { diffScripts } from "./previewDiff.js";
 import { findCaseFoldedMatch, findSpellingMismatches, type SpellingRef } from "./recipeKeys.js";
 import { expandWorkflows, type LoadLayout } from "./workflowExpansion.js";
+import { dryRunNarration } from "./recipeNarration.js";
 import { buildCustomAceIndex, validateInsertedCustomActions, type CustomAceIndex } from "./customAceIndex.js";
 
 // ─── Constants ───
@@ -782,10 +781,11 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
 
   if (dryRun) {
     log("\n--- Dry run (no files written) ---\n");
+    const n = dryRunNarration(log);
 
     // objectTypes dry-run output
     if (recipe.objectTypes && recipe.objectTypes.length > 0) {
-      log("objectTypes:");
+      n.section("objectTypes");
       for (const ot of recipe.objectTypes) {
         // Same as apply (Step 1): the ts-def updates run only for a type the create actually creates.
         if (createObjectType(sidGen, rootDir, ot, true, log)) {
@@ -793,16 +793,16 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
           updateObjects(rootDir, ot, true, log);
         }
       }
-      log();
+      n.sectionEnd();
     }
 
     // addInstVars dry-run output. Pass recipe.objectTypes so entries targeting
     // a type being CREATED in this recipe (not yet on disk in dry-run) are
     // recognized as pending instead of "objectType not found".
     if (recipe.addInstVars && recipe.addInstVars.length > 0) {
-      log("addInstVars:");
+      n.section("addInstVars");
       processAddInstVars(sidGen, rootDir, recipe.addInstVars, true, log, recipe.objectTypes);
-      log();
+      n.sectionEnd();
     }
 
     // layouts dry-run output + in-memory validation. Match the non-dry-run
@@ -811,7 +811,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
     // (the workflow-expanded view) so workflow ops are validated as their
     // primitive sequence, matching what apply will do.
     if (layoutsForLoop.size > 0) {
-      log("layouts:");
+      n.section("layouts");
       const layoutsDir = openProject(rootDir).layoutsDir;
       const allUids = collectAllUids(layoutsDir);
       const dryRunUidCounter = { next: maxFromSet(allUids) + 1 };
@@ -821,61 +821,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
       for (const [filePath, ops] of layoutsForLoop) {
         // Defensive skip — same rationale as the apply loop below.
         if (ops.length === 0) continue;
-        log(`  MODIFY ${filePath} (${ops.length} ops)`);
-        for (const op of ops) {
-          switch (op.op) {
-            case "add-nonworld-instance":
-              log(`    - ${op.op} type=${op.type}`);
-              break;
-            case "add-sublayer":
-              log(`    - ${op.op} name="${op.name}" parent="${op.parent}"${op.after ? ` after="${op.after}"` : ""}`);
-              break;
-            case "add-layer":
-              log(`    - ${op.op} name="${op.name}"${op.after ? ` after="${op.after}"` : ""}`);
-              break;
-            case "copy-instance":
-              log(`    - ${op.op} type=${op.type} from=${op.from} targetLayer="${op.targetLayer}"`);
-              break;
-            case "templatize":
-              log(`    - ${op.op} type=${op.type} templateName="${op.templateName}"`);
-              break;
-            case "replicify":
-              log(`    - ${op.op} type=${op.type} sourceTemplateName="${op.sourceTemplateName}"`);
-              break;
-            case "add-replica":
-              log(
-                `    - ${op.op} sourceTemplateName="${op.sourceTemplateName}" from=${op.from} targetLayer="${op.targetLayer}"`,
-              );
-              break;
-            case "remove-instance":
-              log(`    - ${op.op} type=${op.type}`);
-              break;
-            case "remove-layer": {
-              const cascadeSuffix =
-                op.cascade === true
-                  ? op.removeInstances === true
-                    ? " (cascade + removeInstances)"
-                    : " (cascade)"
-                  : "";
-              log(`    - ${op.op} layer="${op.layer}"${cascadeSuffix}`);
-              break;
-            }
-            case "move-instance":
-              log(`    - ${op.op} type=${op.type} targetLayer="${op.targetLayer}"`);
-              break;
-            case "rename-layer":
-              log(`    - ${op.op} "${op.currentName}" → "${op.newName}"`);
-              break;
-            default: {
-              // Matches the exhaustiveness check in applyLayoutOp so a new
-              // PrimitiveLayoutOp variant is a compile error here too. Workflow
-              // ops never reach this switch — expandWorkflows replaces them
-              // with primitive ops before the dry-run loop iterates.
-              const exhaustive: never = op;
-              throw new Error(`layouts dry-run: unsupported op ${(exhaustive as { op: string }).op}`);
-            }
-          }
-        }
+        n.layout(filePath, ops);
 
         // Validate by running each op against a clone. Errors thrown by
         // layoutMutator (missing layer, missing instance type, etc.) now
@@ -906,7 +852,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
         // throws spuriously at dry-run while apply succeeds.
         dryRunSourceCache.set(filePath, clone as MutatorLayoutJson);
       }
-      log();
+      n.sectionEnd();
     }
 
     // files dry-run output + in-memory validation. Errors thrown by
@@ -914,7 +860,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
     // createSheet (malformed file-create events) now surface during
     // validate-recipe instead of only at apply.
     if (recipe.files && Object.keys(recipe.files).length > 0) {
-      log("files:");
+      n.section("files");
       // Ordered preview entries: preserves recipe.files insertion order so
       // creates and modifies interleave the same way the user wrote them.
       type PreviewEntry =
@@ -924,7 +870,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
 
       for (const [filePath, entry] of Object.entries(recipe.files)) {
         if (isFileCreate(entry)) {
-          log(`  CREATE ${filePath} (${entry.events.length} events)`);
+          n.fileCreating(filePath, entry.events.length);
           // Validate the create by building the sheet directly — createSheet
           // is the only thing executeRecipe would have called for a FileCreate
           // entry, so calling it here avoids the throwing-loader contract trap.
@@ -934,33 +880,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
           assertCustomActionsValid(customAceIndex, filePath, { ...created, events: [] }, created);
           if (preview) previewEntries.push({ filePath, kind: "create", eventCount: entry.events.length });
         } else {
-          log(`  MODIFY ${filePath} (${entry.length} ops)`);
-          for (const op of entry) {
-            const opPath = "path" in op ? op.path : undefined;
-            const opPaths = "paths" in op ? op.paths : undefined;
-            const pathStr = opPath ?? (opPaths ? `[${opPaths.length} paths]` : "");
-            const indexStr =
-              "actionIndex" in op && (op as { actionIndex?: number }).actionIndex !== undefined
-                ? ` [actionIndex: ${(op as { actionIndex: number }).actionIndex}]`
-                : "";
-            log(`    - ${op.op}${pathStr ? ` @ ${pathStr}` : ""}${indexStr}`);
-            if (op.op === "patch-script") {
-              const patchOp = op as PatchScriptOp;
-              if (patchOp.matchScript !== undefined) {
-                log(`      matchScript: ${JSON.stringify(patchOp.matchScript)}`);
-              }
-              log(`      find:    ${JSON.stringify(patchOp.find)}`);
-              log(
-                `      replace: ${JSON.stringify(Array.isArray(patchOp.replace) ? patchOp.replace.join("\n") : patchOp.replace)}`,
-              );
-            }
-            if (op.op === "rename-symbol") {
-              const renameOp = op as RenameSymbolOp;
-              for (const r of renameOp.replacements) {
-                log(`      ${JSON.stringify(r.from)} → ${JSON.stringify(r.to)}`);
-              }
-            }
-          }
+          n.fileModifying(filePath, entry);
 
           // Validate by load → clone → executeFileOps. SID-kind mismatches
           // and other apply-time errors throw here; the wrapper enriches
@@ -982,7 +902,7 @@ export function applyRecipeInner(sidGen: SidGenerator, rootDir: string, recipe: 
           }
         }
       }
-      log();
+      n.sectionEnd();
 
       if (preview && previewEntries.length > 0) {
         log("--- Preview (script diffs) ---\n");
