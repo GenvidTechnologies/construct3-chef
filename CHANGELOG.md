@@ -32,7 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dependency, with no change to this package's own public API.
   `validate-project` and `sync-project` keep treating the timelines
   transitions container as always present, now by upstream's rule instead of a
-  local bridge, with no visible change (#343).
+  local bridge (#343). One case changes: a manifest with two nameless timelines
+  containers is no longer collapsed to one, and now validates clean (#333).
 
 - **Generator output cleanup now lists `extracted/` through mcp-utils'
   `walkFiles`.** A symlink to a regular file named with a generator-owned
@@ -121,11 +122,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`validate-project` now reports, and `sync-project` removes, a ghost
   `project.c3proj` entry whose name also exists in another folder of the same
   section.** On c3source 2.x the name-only drift key hid it (CLI and MCP).
-  Known limitations: a name listed twice in one manifest folder is not
-  reported (#344), and a manifest that is valid JSON but breaks c3source's
-  shape rules, newly including an item named `""` which the C3 flowcharts
-  editor can save, is still reported as `Could not parse ... as JSON` (#345)
-  (#343).
+  Known limitations: a name listed twice in one manifest folder whose file
+  exists is not reported (#344), and a manifest that is valid JSON but breaks
+  c3source's shape rules, newly including an item named `""` (which the C3
+  editor saves for a nameless flowchart, per c3source ADR 0034), is still
+  reported as `Could not parse ... as JSON` (#345) (#343).
 - **`apply-recipe` no longer refuses a recipe that `validate-recipe` passed
   because of a stale source-layout cache.** A layout copied from (`from:`)
   before an earlier layout in the same recipe had changed it was served
