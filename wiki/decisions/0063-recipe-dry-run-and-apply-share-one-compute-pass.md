@@ -44,7 +44,7 @@ L1 and L2 had no observable symptom. D6 was a false green from `validate-recipe`
 
 **One compute pass, narrated per mode.** A private `computeRecipe` in `src/c3/recipeApplier.ts` runs Steps 1, 1b, 2 and 3 against an `OverlayIo` for both modes. Apply replays the journal to disk afterwards, as ADR 0047 decided. Dry-run and `--preview` discard the journal, so nothing is replayed, no folder is made and `beforeSourceWrite` never fires.
 
-- **Narration is the only mode difference.** The off-barrel `src/c3/recipeNarration.ts` owns every mode-specific line: dry-run keeps present tense (`CREATE`, `UPDATE`, `MODIFY`), section headers, per-op descriptor lines (including gotcha 21's `find:` line), and the `--preview` diff. Apply keeps `CREATED`, `UPDATED`, `MODIFIED` and its journaled lines.
+- **The modes differ only in what they print and in preview collection, never in what is computed or written.** The off-barrel `src/c3/recipeNarration.ts` owns every mode-specific line apart from the Io helpers' tense, and `computeRecipe` collects `--preview` entries only when asked: dry-run keeps present tense (`CREATE`, `UPDATE`, `MODIFY`), section headers, per-op descriptor lines (including gotcha 21's `find:` line), and the `--preview` diff. Apply keeps `CREATED`, `UPDATED`, `MODIFIED` and its journaled lines.
 - **Dry-run narrates live,** so a refused dry-run still prints the lines before the error (D9), as ADR 0054 does for rename. Apply stays silent after the summary until the replay.
 - **The `dryRun` flag in the Io helpers selects tense only.** It no longer means "don't write". A dry-run Io helper handed anything but an `OverlayIo` throws, so a future caller cannot write to disk by passing `dryRun`.
 - **Public wrappers keep their signatures.** `createObjectType`, `updateInstanceTypes`, `updateObjects` and `processAddInstVars` compute on a private overlay in dry-run. `processAddInstVars`'s `pendingObjectTypes` is deprecated but still honoured: it seeds that overlay the way Step 1 would.
@@ -73,6 +73,6 @@ L1 and L2 had no observable symptom. D6 was a false green from `validate-recipe`
 - **Direct library callers.** A pending type with an unknown plugin now throws `createObjectType: unknown plugin`. `validateRecipe` already refuses that plugin on every recipe path, so only a direct call can reach it.
 - **`layouts/` parity.** An `addInstVars` entry on a pending type in a project with no `layouts/` now fails in dry-run with the `ENOENT` apply already gave.
 - **Same memory profile as apply.** Dry-run now holds every serialized write in memory, as apply already did.
-- **Rule for later work.** Never add a `dryRun` branch to a compute step; a mode difference belongs in the narration.
+- **Rule for later work.** A `dryRun` flag may choose log text or collect preview entries, never what a step computes or writes; a new mode difference belongs in the narration.
 - **Open limitation, filed.** [#341](https://github.com/GenvidTechnologies/construct3-chef/issues/341): `renameSymbols` still builds its label with OS path separators, so on Windows it differs from the recipe key's `/`.
 - **ADR 0047 is amended, not rewritten.** Its Decision 2, rejected alternative (c) and Consequences describe the state before this change.

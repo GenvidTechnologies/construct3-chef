@@ -88,13 +88,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([#341](https://github.com/GenvidTechnologies/construct3-chef/issues/341)).
 
 - **A recipe dry-run prints apply's lines for `addInstVars`, in dry-run
-  tense.** On a type the same recipe creates it now prints `UPDATE
+  tense.** On a type the same recipe creates, and on an existing type the
+  recipe re-declares under `objectTypes`, it now prints `UPDATE
   objectTypes/X.json (+v)` and the layout and ts-def lines instead of `UPDATE
   pending objectType`, and a repeated entry for one type SKIPs instead of
-  printing the same lines twice (#280). A direct call to `processAddInstVars`
-  with `dryRun` and a pending type of an unknown plugin now throws
-  `createObjectType: unknown plugin`; `validateRecipe` already refuses that
-  plugin on every recipe path.
+  printing the same lines twice (#280). An `addInstVars` entry on a type the
+  same recipe creates, in a project with no `layouts/` folder, now fails the
+  dry-run with the `ENOENT` apply already gave. A direct call to
+  `processAddInstVars` with `dryRun` and a pending type of an unknown plugin
+  now throws `createObjectType: unknown plugin`; `validateRecipe` already
+  refuses that plugin on every recipe path.
 
 ### Added
 

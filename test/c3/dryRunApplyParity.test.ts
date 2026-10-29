@@ -9,8 +9,8 @@ import type { Recipe } from "../../src/c3/recipeInterpreter.js";
 import { freshSidGen } from "../../src/c3/sidUtils.js";
 import { copyFixture, snapshotTree } from "../helpers/applyFixtures.js";
 
-// Pins that dry-run, preview and apply agree (#280), green before the one-compute-pass refactor.
-// Expected values were measured by hand-written probes against 4b22079, then confirmed here.
+// Pins that dry-run, preview and apply agree (#280). Expected values are the behaviour after the
+// one-compute-pass change; R3, R9, R10 and R12 also held before it, the other rows were red then.
 
 interface Mode {
   lines: string[];
