@@ -19,7 +19,7 @@ import { resolveWithin } from "@genvidtech/mcp-utils";
 import { cloneLayout, collectAllUids } from "./layoutScaffold.js";
 import { lookupObjectTypeByName } from "./objectTypeIdentity.js";
 import { findLayoutScaffoldConflicts, findSpriteScaffoldConflicts, formatScaffoldRefusal } from "./scaffoldGuard.js";
-import { nameSegmentIssueText } from "./pathSegments.js";
+import { nameSegmentIssueText, segmentIssueText, segmentsIssue, type SegmentIssue } from "./pathSegments.js";
 import { objectTypeNameIssue, type ObjectTypeNameIssue } from "./recipeKeys.js";
 import { readRegistryFile } from "./sidUtils.js";
 import { writeSourceJson } from "./sourceJson.js";
@@ -72,6 +72,11 @@ export function formatScaffoldEmptyInput(label: "name" | "event sheet"): string 
 /** `relPosix` is the resolved output, project-relative with `/` separators, so CLI and MCP render the same text. */
 export function formatScaffoldOutputNotJson(relPosix: string): string {
   return `Invalid output path '${relPosix}' — the output must be a .json file with a non-empty name`;
+}
+
+/** `rel` is the resolved output, project-relative with `/` separators, like `formatScaffoldOutputNotJson`'s. */
+export function formatScaffoldOutputSegmentRejection(rel: string, i: SegmentIssue): string {
+  return `Invalid output path '${rel}' — ${segmentIssueText(i)}`;
 }
 
 export function formatScaffoldSourceNotFile(relPosix: string): string {
@@ -150,7 +155,7 @@ export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaff
   if (sourcePath === null) {
     return { ok: false, kind: "invalid-path", message: formatScaffoldPathRejection("source", source) };
   }
-  // Order: containment (out, source), then input shape (name, eventSheet, out extension),
+  // Order: containment (out, source), then input shape (name, eventSheet, out extension, out segments),
   // then the source on disk (exists, is a file), then conflicts.
   if (name === "") {
     return { ok: false, kind: "invalid-name", message: formatScaffoldEmptyInput("name") };
@@ -160,6 +165,14 @@ export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaff
   }
   if (!isSectionItemName(outPath)) {
     return { ok: false, kind: "invalid-path", message: formatScaffoldOutputNotJson(relPosix(rootDir, outPath)) };
+  }
+  const outIssue = segmentsIssue(relPosix(layoutsDir, outPath).split("/"));
+  if (outIssue !== undefined) {
+    return {
+      ok: false,
+      kind: "invalid-path",
+      message: formatScaffoldOutputSegmentRejection(relPosix(rootDir, outPath), outIssue),
+    };
   }
   if (!existsSync(sourcePath)) {
     return {

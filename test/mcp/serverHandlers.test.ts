@@ -2176,6 +2176,86 @@ describe("MCP server handler response shaping", () => {
       await spriteCase("empty source", { source: "" }, formatScaffoldNameRejection("source", ""));
       await spriteCase("colon name", { name: "a:b" }, formatScaffoldNameRejection("name", "a:b"));
     });
+
+    it("DN330-R20: CLI and MCP refuse reserved/colon scaffold inputs with identical text, no bump, not dirty", async function () {
+      this.timeout(180_000);
+      const mcpMessage = (result: any): string => {
+        expect(result.isError).to.be.true;
+        const lines = textOf(result).split("\n");
+        expect(lines.pop()).to.equal("txId: default:5");
+        return lines.join("\n");
+      };
+      const layoutHandler = __getHandler("scaffold-layout")!;
+      const spriteHandler = __getHandler("scaffold-sprite")!;
+      const reserved = (seg: string, dev: string): string =>
+        `must not contain a segment that is a Windows reserved device name: '${seg}' (${dev})`;
+      const check = (
+        label: string,
+        mcp: string,
+        cli: { exitCode: number | null; stderr: string },
+        expected: string,
+      ) => {
+        expect(mcp, `${label} MCP`).to.equal(expected);
+        expect(cli.exitCode, `${label} CLI exit: ${cli.stderr}`).to.equal(1);
+        expect(cli.stderr.trimEnd(), `${label} CLI`).to.equal(expected);
+      };
+      const layoutCase = async (out: string, expected: string): Promise<void> => {
+        const mcp = mcpMessage(
+          await layoutHandler(
+            {
+              source: "Gameplay/Main Layout.json",
+              name: "DN330",
+              path: out,
+              eventSheet: "Event sheet 1",
+              regenerate: false,
+            },
+            makeExtra(),
+          ),
+        );
+        const cli = runCli([
+          "scaffold-layout",
+          "--project-dir",
+          tmp,
+          "--source",
+          "layouts/Gameplay/Main Layout.json",
+          "--out",
+          "layouts/" + out,
+          "--name",
+          "DN330",
+          "--event-sheet",
+          "Event sheet 1",
+          "--no-regenerate",
+        ]);
+        check(`layout ${out}`, mcp, cli, expected);
+      };
+      await layoutCase("NUL.json", `Invalid output path 'layouts/NUL.json' — ${reserved("NUL.json", "NUL")}`);
+      await layoutCase(
+        "Gameplay/a:b.json",
+        "Invalid output path 'layouts/Gameplay/a:b.json' — must not contain ':' (host-dependent on Windows)",
+      );
+      const spriteCase = async (source: string, name: string, expected: string): Promise<void> => {
+        const mcp = mcpMessage(await spriteHandler({ source, name, regenerate: false }, makeExtra()));
+        const cli = runCli([
+          "scaffold-sprite",
+          "--project-dir",
+          tmp,
+          "--source",
+          source,
+          "--name",
+          name,
+          "--no-regenerate",
+        ]);
+        check(`sprite ${source}/${name}`, mcp, cli, expected);
+      };
+      await spriteCase("Text", "nul", "Invalid name 'nul' — must not be a Windows reserved device name: 'nul' (NUL)");
+      await spriteCase(
+        "CON",
+        "DN330Clone",
+        "Invalid source 'CON' — must not be a Windows reserved device name: 'CON' (CON)",
+      );
+      expect(watcher.bumped).to.equal(0);
+      expect(__getExtractedDirty()).to.be.false;
+    });
   });
 
   // ── a refused apply writes nothing (#279) ─────────────────────────────────
