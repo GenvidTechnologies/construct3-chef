@@ -65,3 +65,5 @@ The scaffold tools and the CREATE-target check (ADRs 0044 and 0043) compared nam
 - A case variant of an *empty* folder is not detected, since the listing is derived from files.
 - Non-sheet CREATE targets still use `existsSync`. The objectTypes CREATE case/subfolder gap is [#274](https://github.com/GenvidTechnologies/construct3-chef/issues/274). *(Resolved by ADR [0059](0059-recipe-objecttypes-create-uses-the-objecttype-identity.md).)*
 - The CLI help text is untouched; it stays with [#266](https://github.com/GenvidTechnologies/construct3-chef/issues/266). *(Resolved by ADR [0055](0055-cli-handler-errors-are-rendered-by-a-registration-guard.md).)*
+
+**Amended by ADR [0064](0064-windows-reserved-device-names-are-refused-in-every-write-target-segment.md):** `keyIssue` also refuses a reserved device name segment, in every key and cross-layout field.

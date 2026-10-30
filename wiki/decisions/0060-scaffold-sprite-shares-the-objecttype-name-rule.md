@@ -42,3 +42,5 @@ Two rules guarded the same `objectTypes/<name>.json` file, and each was strict w
 - **Behaviour change: `a..b` is now accepted by `scaffold-sprite`.** It was refused by the substring test. A name that is exactly `..`, or only dots and spaces, is still refused.
 - **Inputs that were accepted are now refused:** an empty sprite name, a sprite name containing `:`, an empty layout name or event sheet, and a layout output that is not a `.json` file. Each exits 1 with nothing written.
 - **The layout `.json` check is case-sensitive,** because `isSectionItemName` is, by upstream design: `Foo.JSON` is refused too. Aligning it would be an upstream request, not a local predicate.
+
+**Amended by ADR [0064](0064-windows-reserved-device-names-are-refused-in-every-write-target-segment.md):** the shared objectType name rule refuses reserved device names, and `scaffold-layout`'s output path gains the shared segment rule.
