@@ -1,6 +1,11 @@
 import { describe, it } from "mocha";
 import { assert } from "chai";
-import { reservedDeviceName } from "../../src/c3/pathSegments.js";
+import {
+  nameSegmentIssueText,
+  reservedDeviceName,
+  segmentIssueText,
+  segmentsIssue,
+} from "../../src/c3/pathSegments.js";
 
 const SUP1 = String.fromCharCode(0xb9);
 const SUP3 = String.fromCharCode(0xb3);
@@ -57,5 +62,27 @@ describe("pathSegments", () => {
     const expected: Record<string, undefined> = {};
     for (const s of inputs) expected[s] = undefined;
     assert.deepEqual(mapOf(inputs), expected);
+  });
+
+  it("DN330-R3: segmentsIssue is kind-major and the colon and dots wording is unchanged", () => {
+    const reserved = { kind: "reserved", segment: "NUL", device: "NUL" } as const;
+    assert.deepEqual(
+      {
+        colon: segmentsIssue(["a:b", "NUL"]),
+        dots: segmentsIssue(["...", "NUL"]),
+        colonText: segmentIssueText({ kind: "colon" }),
+        dotsText: segmentIssueText({ kind: "dots-and-spaces" }),
+        reservedPath: segmentIssueText(reserved),
+        reservedName: nameSegmentIssueText(reserved),
+      },
+      {
+        colon: { kind: "colon" },
+        dots: { kind: "dots-and-spaces" },
+        colonText: "must not contain ':' (host-dependent on Windows)",
+        dotsText: "must not contain a segment that is only dots and spaces",
+        reservedPath: "must not contain a segment that is a Windows reserved device name: 'NUL' (NUL)",
+        reservedName: "must not be a Windows reserved device name: 'NUL' (NUL)",
+      },
+    );
   });
 });

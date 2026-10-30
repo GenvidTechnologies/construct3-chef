@@ -19,6 +19,7 @@ import { resolveWithin } from "@genvidtech/mcp-utils";
 import { cloneLayout, collectAllUids } from "./layoutScaffold.js";
 import { lookupObjectTypeByName } from "./objectTypeIdentity.js";
 import { findLayoutScaffoldConflicts, findSpriteScaffoldConflicts, formatScaffoldRefusal } from "./scaffoldGuard.js";
+import { nameSegmentIssueText } from "./pathSegments.js";
 import { objectTypeNameIssue, type ObjectTypeNameIssue } from "./recipeKeys.js";
 import { readRegistryFile } from "./sidUtils.js";
 import { writeSourceJson } from "./sourceJson.js";
@@ -43,11 +44,15 @@ function scaffoldNameReason(issue: ObjectTypeNameIssue | undefined): string {
     case "dot":
       return `must not be '${issue.name}'`;
     case "colon":
-      return "must not contain ':' (host-dependent on Windows)";
     case "dots-and-spaces":
-      return "must not be only dots and spaces";
-    default:
+    case "reserved":
+      return nameSegmentIssueText(issue);
+    case undefined:
       return "must be a plain objectType name";
+    default: {
+      const exhaustive: never = issue;
+      return exhaustive;
+    }
   }
 }
 

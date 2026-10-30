@@ -5,6 +5,7 @@
  * key-identity fixes #252 and #273, not published API.
  */
 import path from "node:path";
+import { nameSegmentIssueText, segmentIssueText, segmentsIssue, type SegmentIssue } from "./pathSegments.js";
 
 /** The two recipe sections whose keys name a JSON file under a fixed top-level project folder. */
 export type RecipeKeySection = "eventSheets" | "layouts";
@@ -60,12 +61,10 @@ export function keyIssue(key: string, section: RecipeKeySection): string | undef
   // collapsed by canonicalizeRecipeKey (KI12).
   if (slashed.endsWith("/")) return "must name a file, not a folder (it ends with '/')";
   const raw = slashed.split("/");
-  // ':' is an NTFS alternate data stream on Windows but a literal name elsewhere, so it is host-dependent.
-  if (raw.some((s) => s.includes(":"))) return "must not contain ':' (host-dependent on Windows)";
-  // Windows strips trailing spaces and dots, so `.. ` or `...` is a '.'/'..' in disguise. A bare '.' is fine.
-  if (raw.some((s) => s !== "." && s !== "" && s.replace(/[ .]+$/, "") === "")) {
-    return "must not contain a segment that is only dots and spaces";
-  }
+  // Win32 path normalisation strips trailing dots and spaces (Node writes keep them), so `.. ` or `...` is a
+  // '.'/'..' in disguise. A bare '.' is fine.
+  const s = segmentsIssue(raw);
+  if (s) return segmentIssueText(s);
   const segments = path.posix
     .normalize(slashed)
     .split("/")
@@ -76,18 +75,12 @@ export function keyIssue(key: string, section: RecipeKeySection): string | undef
   return undefined;
 }
 
-/** True for a segment Windows would strip down to nothing (`.. `, `...`); a bare `.` and `` are not flagged. */
-function isDotsAndSpaces(segment: string): boolean {
-  return segment !== "." && segment !== "" && segment.replace(/[ .]+$/, "") === "";
-}
-
 /** Why a single objectType name is unusable; each caller renders its own wording (recipe CREATE vs scaffold-sprite). */
 export type ObjectTypeNameIssue =
   | { kind: "empty" }
   | { kind: "separator" }
   | { kind: "dot"; name: "." | ".." }
-  | { kind: "colon" }
-  | { kind: "dots-and-spaces" };
+  | SegmentIssue;
 
 /**
  * The label-agnostic name-only rule shared by recipe `objectTypes` CREATE and scaffold-sprite (`--source`/`--name`):
@@ -98,9 +91,7 @@ export function objectTypeNameIssue(name: string): ObjectTypeNameIssue | undefin
   if (name === "") return { kind: "empty" };
   if (name.includes("/") || name.includes("\\")) return { kind: "separator" };
   if (name === "." || name === "..") return { kind: "dot", name };
-  if (name.includes(":")) return { kind: "colon" };
-  if (isDotsAndSpaces(name)) return { kind: "dots-and-spaces" };
-  return undefined;
+  return segmentsIssue([name]);
 }
 
 /**
@@ -122,9 +113,13 @@ export function objectTypeEntryIssue(name: string, folder: string | undefined): 
       case "dot":
         return `"name" must not be '${nameIssue.name}'`;
       case "colon":
-        return "\"name\" must not contain ':' (host-dependent on Windows)";
       case "dots-and-spaces":
-        return '"name" must not be only dots and spaces';
+      case "reserved":
+        return `"name" ${nameSegmentIssueText(nameIssue)}`;
+      default: {
+        const exhaustive: never = nameIssue;
+        return exhaustive;
+      }
     }
   }
   if (folder === undefined) return undefined;
@@ -133,8 +128,8 @@ export function objectTypeEntryIssue(name: string, folder: string | undefined): 
   if (hasDotDotSegment(slashed)) return "\"folder\" must not contain a '..' segment";
   if (isAbsoluteOrDrive(slashed)) return '"folder" must be a relative path, not an absolute or drive-letter path';
   const raw = slashed.split("/");
-  if (raw.some((s) => s.includes(":"))) return "\"folder\" must not contain ':' (host-dependent on Windows)";
-  if (raw.some(isDotsAndSpaces)) return '"folder" must not contain a segment that is only dots and spaces';
+  const s = segmentsIssue(raw);
+  if (s) return `"folder" ${segmentIssueText(s)}`;
   return undefined;
 }
 
