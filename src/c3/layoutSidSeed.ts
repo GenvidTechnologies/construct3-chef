@@ -14,7 +14,8 @@ import { keyIssue } from "./recipeKeys.js";
 /**
  * Deduped, canonical project-relative layout paths to seed SIDs from: each `layouts` key that {@link keyIssue}
  * accepts, mapped through `normalizeLayoutKey` (a bare `Gameplay/Main Layout` becomes
- * `layouts/Gameplay/Main Layout.json`). Rejected keys (`..`, absolute, empty) are skipped.
+ * `layouts/Gameplay/Main Layout.json`). A key {@link keyIssue} rejects (`..`, absolute, empty, a reserved device
+ * name such as `NUL`) is skipped and never read.
  */
 export function layoutSeedPaths(layouts: Record<string, unknown> | undefined): string[] {
   const seen = new Set<string>();

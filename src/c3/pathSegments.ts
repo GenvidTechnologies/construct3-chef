@@ -48,7 +48,8 @@ export type SegmentIssue =
 
 /**
  * The first issue across `segments`, kind-major: every segment is scanned for `:` before any is scanned for
- * dots-and-spaces. `undefined` when every segment is usable.
+ * dots-and-spaces, and every segment for that before any is scanned for a reserved device name. `undefined` when
+ * every segment is usable.
  */
 export function segmentsIssue(segments: readonly string[]): SegmentIssue | undefined {
   // ':' is an NTFS alternate data stream on Windows but a literal name elsewhere, so it is host-dependent.
@@ -56,7 +57,12 @@ export function segmentsIssue(segments: readonly string[]): SegmentIssue | undef
   // Win32 path normalisation strips trailing dots and spaces, so `.. ` or `...` is a '.'/'..' in disguise.
   // A bare '.' is fine. (Node writes keep them; Win32 normalisation is what drops them.)
   if (segments.some(isDotsAndSpaces)) return { kind: "dots-and-spaces" };
-  // The reserved-device-name scan is added by the next change.
+  // Last, so a segment that is both reserved and malformed keeps its older, more specific wording. The segment is
+  // reported as the caller passed it (`con.txt`), with the device it resolves to (`CON`).
+  for (const segment of segments) {
+    const device = reservedDeviceName(segment);
+    if (device !== undefined) return { kind: "reserved", segment, device };
+  }
   return undefined;
 }
 

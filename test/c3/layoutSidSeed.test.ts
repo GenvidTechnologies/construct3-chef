@@ -86,4 +86,13 @@ describe("layoutSidSeed (#253)", () => {
     });
     assert.deepEqual(read, []);
   });
+
+  it("DN330-R14: seedLayoutSids reads no reserved-name layout", () => {
+    const read: string[] = [];
+    seedLayoutSids("/root", { NUL: {}, "CON/x": {}, CONSOLE: {} }, new Set<number>(), (p) => {
+      read.push(p);
+      return undefined;
+    });
+    assert.deepEqual(read, [path.join("/root", "layouts/CONSOLE.json")]);
+  });
 });

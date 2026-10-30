@@ -438,6 +438,41 @@ describe("scaffoldPlan (T26, #259)", function () {
       const r = planSpriteScaffold(spriteOpts({ source: "s/x", name: "n/y" })) as ScaffoldRejection;
       expect(r.message).to.equal(formatScaffoldNameRejection("source", "s/x"));
     });
+
+    // #330: L-name is the single-name reserved-device wording; superscripts are built from char codes.
+    const lName = (seg: string, dev: string): string => `must not be a Windows reserved device name: '${seg}' (${dev})`;
+
+    it("DN330-R15: sprite --name that is a reserved device name is invalid-name; CONSOLE plans", () => {
+      const sup1 = String.fromCharCode(0xb9);
+      const before = snapshotTree(tmp);
+      const cases: Record<string, [string, string]> = {
+        nul: ["nul", "NUL"],
+        "Con.txt": ["Con.txt", "CON"],
+        CONIN$: ["CONIN$", "CONIN$"],
+        ["COM" + sup1]: ["COM" + sup1, "COM" + sup1],
+      };
+      const got: Record<string, { ok: boolean; kind?: string; message?: string }> = {};
+      const want: typeof got = {};
+      for (const [n, [seg, dev]] of Object.entries(cases)) {
+        const r = planSpriteScaffold(spriteOpts({ name: n })) as ScaffoldRejection;
+        got[n] = { ok: r.ok, kind: r.kind, message: r.message };
+        want[n] = { ok: false, kind: "invalid-name", message: `Invalid name '${n}' — ${lName(seg, dev)}` };
+      }
+      expect(got).to.deep.equal(want);
+      expect(planSpriteScaffold(spriteOpts({ name: "CONSOLE" })).ok, "CONSOLE must plan").to.equal(true);
+      expect(snapshotTree(tmp)).to.deep.equal(before);
+    });
+
+    it("DN330-R16: sprite --source that is a reserved device name is invalid-name", () => {
+      const before = snapshotTree(tmp);
+      const r = planSpriteScaffold(spriteOpts({ source: "CON" })) as ScaffoldRejection;
+      expect({ ok: r.ok, kind: r.kind, message: r.message }).to.deep.equal({
+        ok: false,
+        kind: "invalid-name",
+        message: `Invalid source 'CON' — ${lName("CON", "CON")}`,
+      });
+      expect(snapshotTree(tmp)).to.deep.equal(before);
+    });
   });
 
   describe("no images dir", () => {

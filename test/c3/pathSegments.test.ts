@@ -70,6 +70,8 @@ describe("pathSegments", () => {
       {
         colon: segmentsIssue(["a:b", "NUL"]),
         dots: segmentsIssue(["...", "NUL"]),
+        reservedOnly: segmentsIssue(["NUL"]),
+        reservedRaw: segmentsIssue(["ok", "con.txt"]),
         colonText: segmentIssueText({ kind: "colon" }),
         dotsText: segmentIssueText({ kind: "dots-and-spaces" }),
         reservedPath: segmentIssueText(reserved),
@@ -78,6 +80,8 @@ describe("pathSegments", () => {
       {
         colon: { kind: "colon" },
         dots: { kind: "dots-and-spaces" },
+        reservedOnly: { kind: "reserved", segment: "NUL", device: "NUL" },
+        reservedRaw: { kind: "reserved", segment: "con.txt", device: "CON" },
         colonText: "must not contain ':' (host-dependent on Windows)",
         dotsText: "must not contain a segment that is only dots and spaces",
         reservedPath: "must not contain a segment that is a Windows reserved device name: 'NUL' (NUL)",

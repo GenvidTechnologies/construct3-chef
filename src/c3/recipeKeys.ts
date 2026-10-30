@@ -51,7 +51,8 @@ export function canonicalizeRecipeKey(key: string, section: RecipeKeySection): s
  * the original key; `undefined` when the key is acceptable. Checked against the ORIGINAL key (backslashes
  * converted): any `..` segment, an absolute or drive-letter path, or an empty name (an empty string, or nothing
  * left once a leading `section` folder and the `.json` extension are stripped). Only `section`'s own folder is
- * stripped, so a `files` key `layouts` names a real top-level sheet and is accepted.
+ * stripped, so a `files` key `layouts` names a real top-level sheet and is accepted. A segment that is a Windows
+ * reserved device name (`NUL`, `con.txt`, `COM1`; #330) is refused too.
  */
 export function keyIssue(key: string, section: RecipeKeySection): string | undefined {
   const slashed = toSlashes(key);
@@ -85,7 +86,7 @@ export type ObjectTypeNameIssue =
 /**
  * The label-agnostic name-only rule shared by recipe `objectTypes` CREATE and scaffold-sprite (`--source`/`--name`):
  * ONE path segment that is not empty, has no `/` or `\`, is not `.` or `..`, has no `:`, and is not only dots and
- * spaces. `a..b` is acceptable. `undefined` when the name is usable.
+ * spaces, and is not a Windows reserved device name (#330). `a..b` is acceptable. `undefined` when the name is usable.
  */
 export function objectTypeNameIssue(name: string): ObjectTypeNameIssue | undefined {
   if (name === "") return { kind: "empty" };
@@ -99,7 +100,8 @@ export function objectTypeNameIssue(name: string): ObjectTypeNameIssue | undefin
  * prefixes with `objectTypes[i]:`; `undefined` when both are acceptable. `name` must be ONE path segment: not empty,
  * no `/` or `\`, not `.` or `..`, no `:`, not only dots and spaces. `folder` (when not `undefined`) must be a non-empty
  * relative path: no `..` segment (backslashes count as `/`), not absolute or drive-letter, no `:`, no segment made
- * only of dots and spaces. An empty-string folder is refused (omit `folder` instead). A trailing `/` and interior
+ * only of dots and spaces, no segment that is a Windows reserved device name. `name` is refused as a reserved device
+ * name too (#330). An empty-string folder is refused (omit `folder` instead). A trailing `/` and interior
  * `//` are tolerated (they name the same folder).
  */
 export function objectTypeEntryIssue(name: string, folder: string | undefined): string | undefined {
