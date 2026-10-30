@@ -5,6 +5,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { loadChefConfig } from "../../src/c3/chefConfig.js";
+import { createProjectContext } from "../../src/mcp/projectContext.js";
+import { runCli } from "../helpers/runCli.js";
 import {
   generateSidRegistry,
   generateDSL,
@@ -181,6 +183,48 @@ describe("chefConfig integration: extractedDir routing", () => {
 
     it("nothing leaks into the default extracted/ dir after applyParsed", () => {
       expect(existsSync(path.join(tmpRoot, "extracted"))).to.be.false;
+    });
+  });
+
+  // ── DN330-R23: a reserved extractedDir falls back on both surfaces ────────
+  describe("DN330-R23 — reserved extractedDir falls back on the MCP and CLI surfaces", () => {
+    const WARNING =
+      '[chefConfig] extractedDir "NUL" contains a Windows reserved device name: \'NUL\' (NUL); falling back to "extracted"';
+    let tmpRoot: string;
+
+    before(() => {
+      // copyFixture() copies source entries only, so extracted/ (and its golden sid-registry.txt) is absent:
+      // the "was written" assertion below cannot pass vacuously.
+      tmpRoot = copyFixture();
+      writeFileSync(path.join(tmpRoot, "construct3-chef.config.json"), JSON.stringify({ extractedDir: "NUL" }));
+    });
+
+    after(() => {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    });
+
+    it("DN330-R23: createProjectContext and the CLI both fall back to extracted and warn", async () => {
+      const warns: string[] = [];
+      const original = console.warn;
+      console.warn = (...a: unknown[]) => {
+        warns.push(a.map(String).join(" "));
+      };
+      let ctx;
+      try {
+        ctx = await createProjectContext("p", tmpRoot);
+      } finally {
+        console.warn = original;
+      }
+      expect({ extractedDir: ctx.extractedDir, warns }).to.deep.equal({
+        extractedDir: path.join(tmpRoot, "extracted"),
+        warns: [WARNING],
+      });
+
+      const res = runCli(["generate", "--only", "sid-registry", "--project-dir", tmpRoot]);
+      expect(res.stderr).to.include(WARNING);
+      const names = readdirSync(tmpRoot);
+      expect(names.filter((n) => n.toLowerCase() === "nul" || n.toLowerCase().startsWith("nul."))).to.deep.equal([]);
+      expect(existsSync(path.join(tmpRoot, "extracted", "sid-registry.txt"))).to.be.true;
     });
   });
 });
