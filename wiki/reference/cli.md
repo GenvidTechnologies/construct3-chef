@@ -35,7 +35,7 @@ The rendering lives in `src/cliErrors.ts`; the reasoning is in ADR [0055](../dec
 
 ## Configuration file
 
-Drop an optional `construct3-chef.config.json` at the project root (`--project-dir`) to override defaults. It is read by both the CLI and the MCP server; there are no per-key CLI flags. A missing, malformed, or out-of-bounds config falls back to defaults rather than erroring. An `extractedDir` with a Windows reserved device name segment also falls back to the default, but with a `[chefConfig]` warning; it is the only config value that warns.
+Drop an optional `construct3-chef.config.json` at the project root (`--project-dir`) to override defaults. It is read by both the CLI and the MCP server; there are no per-key CLI flags. A missing, malformed, or out-of-bounds config falls back to defaults rather than erroring. An `extractedDir` with a Windows reserved device name segment also falls back to the default, but with a `[chefConfig]` warning, as an `ops.dir` that escapes the project root does.
 
 | Field | Default | Description |
 | ----- | ------- | ----------- |

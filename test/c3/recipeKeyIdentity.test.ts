@@ -516,14 +516,30 @@ describe("recipe key identity (#252/#253/#273)", () => {
         ],
       },
     } as unknown as Recipe);
+    const source = validateRecipe({
+      layouts: {
+        "Gameplay/Main Layout": [{ op: "extract-template", sourceLayout: "AUX", type: "Sprite3", uid: 1 }],
+      },
+    } as unknown as Recipe);
+    const templates = validateRecipe({
+      layouts: {
+        "Gameplay/Main Layout": [{ op: "replace-instance-with-replica", templatesLayout: "PRN.json", uid: 1 }],
+      },
+    } as unknown as Recipe);
     assert.deepEqual(
       {
         from: from.includes(`layouts["Gameplay/Main Layout"][0].from: value "NUL" ${lKey("NUL", "NUL")}`),
         target: target.includes(
           `layouts["Gameplay/Main Layout"][0].targets[0].layout: value "CON" ${lKey("CON", "CON")}`,
         ),
+        sourceLayout: source.includes(
+          `layouts["Gameplay/Main Layout"][0].sourceLayout: value "AUX" ${lKey("AUX", "AUX")}`,
+        ),
+        templatesLayout: templates.includes(
+          `layouts["Gameplay/Main Layout"][0].templatesLayout: value "PRN.json" ${lKey("PRN.json", "PRN")}`,
+        ),
       },
-      { from: true, target: true },
+      { from: true, target: true, sourceLayout: true, templatesLayout: true },
     );
   });
 });

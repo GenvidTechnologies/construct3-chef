@@ -59,7 +59,7 @@ Host evidence, posted on [#330](https://github.com/GenvidTechnologies/construct3
 
   `[chefConfig] extractedDir "<value>" contains a Windows reserved device name: '<seg>' (<DEV>); falling back to "extracted"`
 
-  The CLI loads config per command, so it warns on every command. MCP loads it once per project at launch because chef config is fixed at launch (ADR [0035](0035-mcp-chef-config-is-launch-fixed-per-context.md)), so it warns once per project. It never throws, which keeps `loadChefConfig`'s documented contract. Only the reserved check applies to `extractedDir`, not the full segment rule.
+  The CLI loads config per command, so it warns on each command that loads config. MCP loads it once per project at launch because chef config is fixed at launch (ADR [0035](0035-mcp-chef-config-is-launch-fixed-per-context.md)), so it warns once per project. It never throws, which keeps `loadChefConfig`'s documented contract. Only the reserved check applies to `extractedDir`, not the full segment rule.
 
 **A deliberate asymmetry.** `scaffold-layout --source` is **not** checked: it only reads an existing layout and writes nothing under that name. Recipe keys are refused even when they only edit an existing file, because one rule for every key was chosen at planning over a create-only rule, and because refusing in `keyIssue` also stops `seedLayoutSids` from opening a reserved path before validation runs.
 
@@ -83,5 +83,5 @@ For `extractedDir`:
 - **`createObjectType` still performs no name check.** It is barrel-exported, so a library caller who skips `validateRecipe` bypasses the rule. This predates the change.
 - **The C3 editor's behaviour with such names is unchecked.** The rule follows the documented Windows set, not an observation of the editor.
 - **`CONIN$`/`CONOUT$` are a local choice,** grounded in `CreateFile`'s documented console names, not in the naming page's list.
-- **`extractedDir` is the one place that warns instead of refusing,** so a misconfigured project keeps working against `extracted/`. The containment fallback for a path escape is untouched and still silent.
+- **`extractedDir` warns and falls back instead of refusing,** so a misconfigured project keeps working against `extracted/`. That matches how `resolveOpsDir` already treats an `ops.dir` that escapes the project root. The whole-file fallback for an invalid or path-escaping config file is untouched and still silent.
 - **ADRs 0046 and 0060 are amended, not rewritten.** Each carries a one-line pointer here.
