@@ -10,7 +10,7 @@ import { runSync } from "../../src/c3/projectSync.js";
 
 // #346: sync withholds removals by default. Each row runs against a temp COPY of the canonical
 // fixture, never the fixture itself. The removal-only seed deletes files/sample.gif (declared in
-// `general`, SID 542941095423235); the R1 seed also adds scripts/newScript.ts for a `+` line.
+// `general`, SID 542941095423235); the shared seed also adds scripts/newScript.ts for a `+` line.
 
 const FIXTURE_ROOT = path.resolve("test/fixtures/construct3-chef-sample");
 
@@ -40,7 +40,7 @@ describe("sync-project removal policy (#346)", function () {
     return root;
   }
 
-  /** The R1 seed: sample.gif declared but absent, plus a new scripts/newScript.ts. */
+  /** The shared seed: sample.gif declared but absent, plus a new scripts/newScript.ts. */
   function seedR1(): string {
     const root = copy();
     seedAbsentFile(root);

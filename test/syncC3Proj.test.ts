@@ -1197,8 +1197,16 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
         rootItem: general(afterB).items.find((i) => i.name === "sample.gif"),
         subItems: sub(afterB, "sub")?.items,
         minusWithheld: withheldB.changes.filter((c) => c.action === "-").every((c) => c.withheld === true),
+        plusHalf: withheldB.changes
+          .filter((c) => c.movedFrom !== undefined)
+          .map((c) => ({ detail: c.detail, withheld: c.withheld })),
       },
-      { rootItem: seeded, subItems: [], minusWithheld: true },
+      {
+        rootItem: seeded,
+        subItems: [],
+        minusWithheld: true,
+        plusHalf: [{ detail: `sub/sample.gif (kept sid=${SAMPLE_SID})`, withheld: true }],
+      },
     );
     writeFileSync(a.manifestPath, aBefore);
 
