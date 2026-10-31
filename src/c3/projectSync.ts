@@ -596,10 +596,14 @@ export function applyNameDrift(
         );
         if (!target) throw unresolvable(sectionKey, entry);
         if (!dryRun) target.items = target.items.filter((n) => n !== entry.name);
-        changes.push({ section: sectionKey, action: "-", detail: itemDisplay(entry.manifestPath ?? [], entry.name) });
+        const fromDisplay = itemDisplay(entry.manifestPath ?? [], entry.name);
+        const removal: Change = { section: sectionKey, action: "-", detail: fromDisplay };
+        changes.push(removal);
         if (entry.kind === "moved") {
           if (!dryRun) ensureFolder(folder, entry.diskPath ?? [], sectionKey).items.push(entry.name);
-          changes.push({ section: sectionKey, action: "+", detail: itemDisplay(entry.diskPath ?? [], entry.name) });
+          const toDisplay = itemDisplay(entry.diskPath ?? [], entry.name);
+          removal.movedTo = toDisplay;
+          changes.push({ section: sectionKey, action: "+", detail: toDisplay, movedFrom: fromDisplay });
         }
         break;
       }
@@ -664,7 +668,11 @@ export function formatSyncReport(changes: Change[], sectionKeys: string[]): stri
       lines.push(`[${key}]`.padEnd(16) + "(no changes)");
     } else {
       for (const change of sectionChanges) {
-        lines.push(`[${change.section}]`.padEnd(16) + `${change.action} ${change.detail}`);
+        let line = `[${change.section}]`.padEnd(16) + `${change.action} ${change.detail}`;
+        if (change.movedTo !== undefined) line += ` (moved to ${change.movedTo})`;
+        else if (change.movedFrom !== undefined) line += ` (moved from ${change.movedFrom})`;
+        if (change.withheld) line += " [withheld]";
+        lines.push(line);
       }
     }
   }
@@ -672,7 +680,15 @@ export function formatSyncReport(changes: Change[], sectionKeys: string[]): stri
   if (changes.length === 0) {
     lines.push("\nAll sections in sync.");
   } else {
-    lines.push(`\n${changes.length} change(s) found.`);
+    const additions = changes.filter((c) => c.action === "+").length;
+    const removals = changes.filter((c) => c.action === "-").length;
+    lines.push(`\n${changes.length} change(s) found: ${additions} addition(s), ${removals} removal(s).`);
+    const withheld = changes.filter((c) => c.action === "-" && c.withheld).length;
+    if (withheld > 0) {
+      lines.push(
+        `${withheld} removal(s) withheld: sync-project applies a removal only with prune (CLI --prune, MCP prune: true). Restore the missing files, or sync with prune to remove the entries.`,
+      );
+    }
   }
   return lines;
 }

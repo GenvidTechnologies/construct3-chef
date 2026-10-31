@@ -24,6 +24,7 @@ import {
   applyNameDrift,
   reportImageDrift,
   runSync,
+  formatSyncReport,
   type FileItem,
   type FileFolder,
   type NameFolder,
@@ -1125,6 +1126,26 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
     type: "application/octet-stream",
     sid,
     "file-info": { purpose: "none" },
+  });
+
+  it("SR346-R6: formatSyncReport renders moves, withheld removals, the counts and the advisory", () => {
+    const changes: Change[] = [
+      { section: "general", action: "+", detail: "new.gif" },
+      { section: "general", action: "-", detail: "gone.gif", withheld: true },
+      { section: "general", action: "-", detail: "old.gif" },
+      { section: "eventSheets", action: "-", detail: "A/Sheet", movedTo: "B/Sheet" },
+      { section: "eventSheets", action: "+", detail: "B/Sheet", movedFrom: "A/Sheet" },
+    ];
+    assert.deepEqual(formatSyncReport(changes, ["general", "eventSheets", "layouts"]), [
+      "[general]       + new.gif",
+      "[general]       - gone.gif [withheld]",
+      "[general]       - old.gif",
+      "[eventSheets]   - A/Sheet (moved to B/Sheet)",
+      "[eventSheets]   + B/Sheet (moved from A/Sheet)",
+      "[layouts]       (no changes)",
+      "\n5 change(s) found: 2 addition(s), 3 removal(s).",
+      "1 removal(s) withheld: sync-project applies a removal only with prune (CLI --prune, MCP prune: true). Restore the missing files, or sync with prune to remove the entries.",
+    ]);
   });
 
   it("SR346-R9: a declared subfolder with no directory on disk reports each contained entry and then itself, and write mode removes it", () => {
