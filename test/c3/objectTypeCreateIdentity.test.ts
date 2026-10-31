@@ -31,6 +31,14 @@ function changedFiles(before: Map<string, string>, after: Map<string, string>): 
   return out;
 }
 
+// #330 helpers: superscripts are built from char codes; L-key / L-name are the two reserved-name wordings.
+const SUP1 = String.fromCharCode(0xb9);
+const NEAR_MISSES = ["CONSOLE", "NULL", "Con1", "COM0", "LPT0", "NUL_x"];
+type Pair = [string, string];
+const lKey = (seg: string, dev: string): string =>
+  `must not contain a segment that is a Windows reserved device name: '${seg}' (${dev})`;
+const lName = (seg: string, dev: string): string => `must not be a Windows reserved device name: '${seg}' (${dev})`;
+
 describe("objectType create identity (#274)", () => {
   let parent: string;
   let tmp: string;
@@ -96,6 +104,51 @@ describe("objectType create identity (#274)", () => {
         assert.isString(objectTypeEntryIssue("Widget", folder), `folder ${JSON.stringify(folder)}`);
       }
     });
+
+    it("DN330-R4: an objectType name that is a reserved device name is refused with the name wording", () => {
+      const cases: Record<string, Pair> = {
+        nul: ["nul", "NUL"],
+        "Con.txt": ["Con.txt", "CON"],
+        "NUL.": ["NUL.", "NUL"],
+        CONIN$: ["CONIN$", "CONIN$"],
+        ["COM" + SUP1]: ["COM" + SUP1, "COM" + SUP1],
+      };
+      const got: Record<string, string | undefined> = {};
+      const want: Record<string, string | undefined> = {};
+      for (const [n, [seg, dev]] of Object.entries(cases)) {
+        got[n] = objectTypeEntryIssue(n, undefined);
+        want[n] = `"name" ${lName(seg, dev)}`;
+      }
+      assert.deepEqual(got, want);
+    });
+
+    it("DN330-R5: an objectType folder with a reserved device name segment is refused naming that segment", () => {
+      const cases: Record<string, Pair> = {
+        CON: ["CON", "CON"],
+        "a/NUL": ["NUL", "NUL"],
+        "sub/com1.json": ["com1.json", "COM1"],
+        "a/CONOUT$": ["CONOUT$", "CONOUT$"],
+      };
+      const got: Record<string, string | undefined> = {};
+      const want: Record<string, string | undefined> = {};
+      for (const [f, [seg, dev]] of Object.entries(cases)) {
+        got[f] = objectTypeEntryIssue("Widget", f);
+        want[f] = `"folder" ${lKey(seg, dev)}`;
+      }
+      assert.deepEqual(got, want);
+    });
+
+    it("DN330-R6: near-miss names and folders are accepted", () => {
+      const asName: Record<string, string | undefined> = {};
+      const asFolder: Record<string, string | undefined> = {};
+      const want: Record<string, undefined> = {};
+      for (const n of NEAR_MISSES) {
+        asName[n] = objectTypeEntryIssue(n, undefined);
+        asFolder[n] = objectTypeEntryIssue("Widget", n);
+        want[n] = undefined;
+      }
+      assert.deepEqual({ asName, asFolder }, { asName: want, asFolder: want });
+    });
   });
 
   describe("validateRecipe / apply containment", () => {
@@ -141,6 +194,15 @@ describe("objectType create identity (#274)", () => {
       const errors = validateRecipe({ objectTypes: [{ name: "", plugin: "Json" }] } as unknown as Recipe);
       assert.lengthOf(errors, 1);
       assert.match(errors[0]!, /^objectTypes\[0\]: /);
+    });
+
+    it("DN330-R7: a reserved-name objectType CREATE is refused before any write", () => {
+      assertRefused({ objectTypes: [{ name: "NUL", plugin: "Json" }] }, [
+        `objectTypes[0]: "name" must not be a Windows reserved device name: 'NUL' (NUL)`,
+      ]);
+      assertRefused({ objectTypes: [{ name: "Widget", plugin: "Json", folder: "CON" }] }, [
+        `objectTypes[0]: "folder" must not contain a segment that is a Windows reserved device name: 'CON' (CON)`,
+      ]);
     });
   });
 

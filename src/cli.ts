@@ -299,12 +299,13 @@ guardAllHandlers(yargs(hideBin(process.argv)))
           type: "string",
           demandOption: true,
           describe:
-            "Source objectType name (one name: not empty, no '/', '\\' or ':', not '.' or '..'), looked up in every objectTypes/ subfolder",
+            "Source objectType name (one name: not empty, no '/', '\\' or ':', not '.' or '..', not a Windows reserved device name), looked up in every objectTypes/ subfolder",
         })
         .option("name", {
           type: "string",
           demandOption: true,
-          describe: "Target objectType name (one name: not empty, no '/', '\\' or ':', not '.' or '..')",
+          describe:
+            "Target objectType name (one name: not empty, no '/', '\\' or ':', not '.' or '..', not a Windows reserved device name)",
         })
         .option("regenerate", {
           type: "boolean",

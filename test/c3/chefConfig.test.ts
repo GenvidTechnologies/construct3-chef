@@ -91,6 +91,40 @@ describe("loadChefConfig", () => {
     const cfg = await loadChefConfig(tmpDir, { ops: { dir: "custom", watch: false } });
     expect(cfg.ops).to.deep.equal({ dir: "custom", watch: false });
   });
+
+  it("DN330-R22: an extractedDir with a reserved device segment falls back to extracted and warns once", async () => {
+    const nav = { targetPatterns: ["x"] };
+    const inputs = ["NUL", "Con.txt", "gen/COM1", "CONSOLE", "gen/NUL_x"];
+    const actual: Record<string, { extractedDir: string; navigation: unknown; warns: string[][] }> = {};
+    const original = console.warn;
+    try {
+      for (const v of inputs) {
+        tmpDir = mkdtempSync(path.join(os.tmpdir(), "chefcfg-"));
+        writeFileSync(
+          path.join(tmpDir, "construct3-chef.config.json"),
+          JSON.stringify({ extractedDir: v, navigation: nav }),
+        );
+        const warns: string[][] = [];
+        console.warn = (...a: unknown[]) => {
+          warns.push(a.map(String));
+        };
+        const cfg = await loadChefConfig(tmpDir);
+        actual[v] = { extractedDir: cfg.extractedDir, navigation: cfg.navigation, warns };
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
+    } finally {
+      console.warn = original;
+    }
+    const line = (v: string, seg: string, dev: string) =>
+      `[chefConfig] extractedDir "${v}" contains a Windows reserved device name: '${seg}' (${dev}); falling back to "extracted"`;
+    expect(actual).to.deep.equal({
+      NUL: { extractedDir: "extracted", navigation: nav, warns: [[line("NUL", "NUL", "NUL")]] },
+      "Con.txt": { extractedDir: "extracted", navigation: nav, warns: [[line("Con.txt", "Con.txt", "CON")]] },
+      "gen/COM1": { extractedDir: "extracted", navigation: nav, warns: [[line("gen/COM1", "COM1", "COM1")]] },
+      CONSOLE: { extractedDir: "CONSOLE", navigation: nav, warns: [] },
+      "gen/NUL_x": { extractedDir: "gen/NUL_x", navigation: nav, warns: [] },
+    });
+  });
 });
 
 describe("resolveOpsDir", () => {

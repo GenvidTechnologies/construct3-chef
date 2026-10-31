@@ -66,4 +66,46 @@ describe("recipeKeys", () => {
     assert.isUndefined(keyIssue("layouts", "eventSheets"), "a files key named layouts is a real sheet");
     assert.isUndefined(keyIssue("eventSheets", "layouts"), "a layouts key named eventSheets is a real layout");
   });
+
+  // #330 helpers: L-key wording, and one object per section so a deep.equal reports every input.
+  const lKey = (seg: string, dev: string): string =>
+    `must not contain a segment that is a Windows reserved device name: '${seg}' (${dev})`;
+  function mapKeys(section: "eventSheets" | "layouts", keys: string[]): Record<string, string | undefined> {
+    const out: Record<string, string | undefined> = {};
+    for (const k of keys) out[k] = keyIssue(k, section);
+    return out;
+  }
+
+  it("DN330-R8: keyIssue refuses reserved device names in files keys", () => {
+    const keys: Record<string, [string, string]> = {
+      NUL: ["NUL", "NUL"],
+      "Gameplay/con.txt": ["con.txt", "CON"],
+      "CON/Sheet": ["CON", "CON"],
+      "eventSheets/NUL .json": ["NUL .json", "NUL"],
+      "Gameplay/NUL.": ["NUL.", "NUL"],
+    };
+    const want: Record<string, string> = {};
+    for (const [k, [seg, dev]] of Object.entries(keys)) want[k] = lKey(seg, dev);
+    assert.deepEqual(mapKeys("eventSheets", Object.keys(keys)), want);
+  });
+
+  it("DN330-R9: keyIssue refuses reserved device names in layouts keys", () => {
+    assert.deepEqual(mapKeys("layouts", ["CON", "Gameplay/LPT1"]), {
+      CON: lKey("CON", "CON"),
+      "Gameplay/LPT1": lKey("LPT1", "LPT1"),
+    });
+  });
+
+  it("DN330-R10: near-miss keys are accepted in both sections", () => {
+    const keys = ["CONSOLE", "NULL", "Con1", "COM0", "LPT0", "NUL_x", "Gameplay/NULx.json"];
+    const want: Record<string, undefined> = {};
+    for (const k of keys) want[k] = undefined;
+    assert.deepEqual(
+      { files: mapKeys("eventSheets", keys), layouts: mapKeys("layouts", keys) },
+      {
+        files: want,
+        layouts: want,
+      },
+    );
+  });
 });

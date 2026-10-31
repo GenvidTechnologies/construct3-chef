@@ -566,3 +566,12 @@ See the [wiki index](../index.md) for the other sections.
   first, and apply refreshes its source-layout cache so it no longer refuses a
   recipe that validated
   ([#280](https://github.com/GenvidTechnologies/construct3-chef/issues/280))
+* [0064. Windows reserved device names are refused in every write-target segment](0064-windows-reserved-device-names-are-refused-in-every-write-target-segment.md) -
+  Amends ADRs 0046 and 0060. A path segment that is a Windows reserved device
+  name (`NUL`, `Con.txt`, `COM¹`, `CONIN$`) is refused in every recipe
+  `files`/`layouts` key and cross-layout field, the objectType CREATE name and
+  folder, `scaffold-sprite --name/--source` and `scaffold-layout
+  --out`/`path`, on every host. The predicate and its wording live in the
+  off-barrel `src/c3/pathSegments.ts`. An `extractedDir` naming a device falls
+  back to `extracted` with a `[chefConfig]` warning
+  ([#330](https://github.com/GenvidTechnologies/construct3-chef/issues/330))

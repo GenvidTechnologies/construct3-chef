@@ -195,6 +195,34 @@ describe("recipe key identity (#252/#253/#273)", () => {
         rmSync(escaped, { force: true });
       }
     });
+
+    it("DN330-R11: a files key that is a reserved device name is refused for CREATE and ops, dry-run equals apply", () => {
+      const line = `files: key "NUL" must not contain a segment that is a Windows reserved device name: 'NUL' (NUL)`;
+      const create = { files: { NUL: { create: true, events: [] } } };
+      const ops = { files: { NUL: ins("X") } };
+      assert.deepEqual(
+        {
+          create: validateRecipe(create as unknown as Recipe).includes(line),
+          ops: validateRecipe(ops as unknown as Recipe).includes(line),
+        },
+        { create: true, ops: true },
+      );
+      for (const recipe of [create, ops]) {
+        const before = snapshotTree(tmp);
+        const dry = caught(() =>
+          applyParsed(tmp, recipe as unknown as Recipe, { dryRun: true, regenerate: false, log: () => {} }),
+        );
+        const applied = caught(() =>
+          applyParsed(tmp, recipe as unknown as Recipe, { regenerate: false, log: () => {} }),
+        );
+        assert.instanceOf(dry, Error, "dry-run must throw");
+        assert.equal(dry!.message, applied?.message, "dry-run and apply disagree");
+        assert.include(applied!.message, line);
+        const after = snapshotTree(tmp);
+        assert.deepEqual([...after.keys()], [...before.keys()], "file set unchanged");
+        for (const [rel, bytes] of before) assert.isTrue(after.get(rel)!.equals(bytes), `${rel} bytes unchanged`);
+      }
+    });
   });
 
   it("KI15: invalid keys name the original key; (b) a non-object files / non-array layouts value reports the guard", () => {
@@ -459,5 +487,59 @@ describe("recipe key identity (#252/#253/#273)", () => {
     const err = caught(() => normalizeRecipePaths(r1()));
     assert.instanceOf(err, Error, "normalizeRecipePaths must throw");
     assert.include(err!.message, "name the same event sheet");
+  });
+
+  // #330: L-key is the reserved-device-name wording for a path segment.
+  const lKey = (seg: string, dev: string): string =>
+    `must not contain a segment that is a Windows reserved device name: '${seg}' (${dev})`;
+
+  it("DN330-R12: a layouts key that is a reserved device name gets the layouts key line", () => {
+    const errors = validateRecipe({ layouts: { CON: addLayer("L") } });
+    assert.include(errors, `layouts: key "CON" ${lKey("CON", "CON")}`);
+  });
+
+  it("DN330-R13: cross-layout fields holding a reserved device name are refused", () => {
+    const from = validateRecipe({
+      layouts: {
+        "Gameplay/Main Layout": [{ op: "copy-instance", from: "NUL", type: "Sprite3", targetLayer: "layer 0" }],
+      },
+    } as unknown as Recipe);
+    const target = validateRecipe({
+      layouts: {
+        "Gameplay/Main Layout": [
+          {
+            op: "clone-replica-to-layouts",
+            templateName: "default",
+            sourceType: "Sprite3",
+            targets: [{ layout: "CON", layer: "layer 0" }],
+          },
+        ],
+      },
+    } as unknown as Recipe);
+    const source = validateRecipe({
+      layouts: {
+        "Gameplay/Main Layout": [{ op: "extract-template", sourceLayout: "AUX", type: "Sprite3", uid: 1 }],
+      },
+    } as unknown as Recipe);
+    const templates = validateRecipe({
+      layouts: {
+        "Gameplay/Main Layout": [{ op: "replace-instance-with-replica", templatesLayout: "PRN.json", uid: 1 }],
+      },
+    } as unknown as Recipe);
+    assert.deepEqual(
+      {
+        from: from.includes(`layouts["Gameplay/Main Layout"][0].from: value "NUL" ${lKey("NUL", "NUL")}`),
+        target: target.includes(
+          `layouts["Gameplay/Main Layout"][0].targets[0].layout: value "CON" ${lKey("CON", "CON")}`,
+        ),
+        sourceLayout: source.includes(
+          `layouts["Gameplay/Main Layout"][0].sourceLayout: value "AUX" ${lKey("AUX", "AUX")}`,
+        ),
+        templatesLayout: templates.includes(
+          `layouts["Gameplay/Main Layout"][0].templatesLayout: value "PRN.json" ${lKey("PRN.json", "PRN")}`,
+        ),
+      },
+      { from: true, target: true, sourceLayout: true, templatesLayout: true },
+    );
   });
 });

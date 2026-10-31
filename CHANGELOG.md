@@ -26,6 +26,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Windows reserved device names are refused in every write target.** A path
+  segment that is a reserved device name (`NUL`, `con.txt`, `COM1`, `CONIN$`) is
+  now refused on every host, on both the CLI and the MCP server, in recipe
+  `files` and `layouts` keys and cross-layout fields, objectType CREATE names
+  and folders, `scaffold-sprite --name` and `--source`, and `scaffold-layout`
+  `--out` and `path`. `scaffold-layout` `--out` and `path` also newly refuse a
+  `:` segment and a segment made only of dots and spaces. An `extractedDir` with
+  a reserved segment falls back to `extracted` with a `[chefConfig]` warning
+  instead of failing. Known consequence: a `layouts` or `files` key naming an
+  existing reserved-named file (possible on Linux) can no longer be edited by
+  recipe. `scaffold-layout --source` is not checked, because it is only read
+  (#330, ADR 0064;
+  [issue](https://github.com/GenvidTechnologies/construct3-chef/issues/330)).
+
 ## [2.2.0] - 2026-10-29
 
 ### Changed

@@ -210,6 +210,59 @@ describe("scaffoldPlan (T26, #259)", function () {
     }
   });
 
+  describe("output path segment rule (#330)", () => {
+    const L_KEY = (seg: string, dev: string): string =>
+      `must not contain a segment that is a Windows reserved device name: '${seg}' (${dev})`;
+    const COLON = "must not contain ':' (host-dependent on Windows)";
+    const DOTS = "must not contain a segment that is only dots and spaces";
+    for (const pathBase of ["layouts", "project-root"] as const) {
+      const prefix = pathBase === "layouts" ? "" : "layouts/";
+      const msg = (rel: string, text: string): string => `Invalid output path 'layouts/${rel}' — ${text}`;
+
+      it(`DN330-R17: ${pathBase} base: out segment rule renders the project-relative path`, () => {
+        const snap = snapshotTree(tmp);
+        const cases: Array<[string, string]> = [
+          ["NUL.json", L_KEY("NUL.json", "NUL")],
+          ["Gameplay/CON/x.json", L_KEY("CON", "CON")],
+          ["NUL .json", L_KEY("NUL .json", "NUL")],
+          ["Gameplay/a:b.json", COLON],
+          ["Gameplay/.../x.json", DOTS],
+        ];
+        const actual = cases.map(([rel]) => {
+          const r = planLayoutScaffold(layoutOpts(pathBase, { out: prefix + rel })) as ScaffoldRejection;
+          return { ok: r.ok, kind: r.kind, message: r.message };
+        });
+        expect(actual).to.deep.equal(
+          cases.map(([rel, text]) => ({ ok: false, kind: "invalid-path", message: msg(rel, text) })),
+        );
+        expect(snapshotTree(tmp)).to.deep.equal(snap);
+      });
+
+      it(`DN330-R18: ${pathBase} base: out accept controls plan ok`, () => {
+        for (const rel of ["CONSOLE.json", "NUL_x.json", "COM0.json"]) {
+          const r = planLayoutScaffold(layoutOpts(pathBase, { out: prefix + rel }));
+          expect(r.ok, `${rel}: ${JSON.stringify(r)}`).to.equal(true);
+        }
+      });
+
+      it(`DN330-R19: ${pathBase} base: earlier checks win over the out segment rule`, () => {
+        const msgOf = (over: Partial<LayoutScaffoldPlanOptions>): string =>
+          (planLayoutScaffold(layoutOpts(pathBase, over)) as ScaffoldRejection).message;
+        expect({
+          notJson: msgOf({ out: prefix + "NUL" }),
+          emptyName: msgOf({ name: "", out: prefix + "NUL.json" }),
+          missingSource: msgOf({ out: prefix + "NUL.json", source: prefix + "Gameplay/NoSuch.json" }),
+          containment: msgOf({ out: prefix + "../NUL.json" }),
+        }).to.deep.equal({
+          notJson: formatScaffoldOutputNotJson("layouts/NUL"),
+          emptyName: formatScaffoldEmptyInput("name"),
+          missingSource: msg("NUL.json", L_KEY("NUL.json", "NUL")),
+          containment: formatScaffoldPathRejection("output", prefix + "../NUL.json"),
+        });
+      });
+    }
+  });
+
   describe("check order", () => {
     it("invalid-path wins over source-not-found", () => {
       const r = planLayoutScaffold(layoutOpts("layouts", { source: "../missing.json" })) as ScaffoldRejection;
@@ -437,6 +490,41 @@ describe("scaffoldPlan (T26, #259)", function () {
     it("when both source and name are bad, the message is about source", () => {
       const r = planSpriteScaffold(spriteOpts({ source: "s/x", name: "n/y" })) as ScaffoldRejection;
       expect(r.message).to.equal(formatScaffoldNameRejection("source", "s/x"));
+    });
+
+    // #330: L-name is the single-name reserved-device wording; superscripts are built from char codes.
+    const lName = (seg: string, dev: string): string => `must not be a Windows reserved device name: '${seg}' (${dev})`;
+
+    it("DN330-R15: sprite --name that is a reserved device name is invalid-name; CONSOLE plans", () => {
+      const sup1 = String.fromCharCode(0xb9);
+      const before = snapshotTree(tmp);
+      const cases: Record<string, [string, string]> = {
+        nul: ["nul", "NUL"],
+        "Con.txt": ["Con.txt", "CON"],
+        CONIN$: ["CONIN$", "CONIN$"],
+        ["COM" + sup1]: ["COM" + sup1, "COM" + sup1],
+      };
+      const got: Record<string, { ok: boolean; kind?: string; message?: string }> = {};
+      const want: typeof got = {};
+      for (const [n, [seg, dev]] of Object.entries(cases)) {
+        const r = planSpriteScaffold(spriteOpts({ name: n })) as ScaffoldRejection;
+        got[n] = { ok: r.ok, kind: r.kind, message: r.message };
+        want[n] = { ok: false, kind: "invalid-name", message: `Invalid name '${n}' — ${lName(seg, dev)}` };
+      }
+      expect(got).to.deep.equal(want);
+      expect(planSpriteScaffold(spriteOpts({ name: "CONSOLE" })).ok, "CONSOLE must plan").to.equal(true);
+      expect(snapshotTree(tmp)).to.deep.equal(before);
+    });
+
+    it("DN330-R16: sprite --source that is a reserved device name is invalid-name", () => {
+      const before = snapshotTree(tmp);
+      const r = planSpriteScaffold(spriteOpts({ source: "CON" })) as ScaffoldRejection;
+      expect({ ok: r.ok, kind: r.kind, message: r.message }).to.deep.equal({
+        ok: false,
+        kind: "invalid-name",
+        message: `Invalid source 'CON' — ${lName("CON", "CON")}`,
+      });
+      expect(snapshotTree(tmp)).to.deep.equal(before);
     });
   });
 
