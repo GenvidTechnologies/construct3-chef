@@ -373,7 +373,9 @@ export function syncFileFolder(
   existingSids: Set<number>,
   changes: Change[],
   dryRun: boolean,
+  opts?: { withhold?: boolean },
 ): void {
+  const withhold = opts?.withhold === true;
   const ctx: PlanContext = { manifest: [], diskList: [] };
   const root = planFileLevel(folder, diskPath, [], config, ctx, undefined, undefined);
 
@@ -407,6 +409,13 @@ export function syncFileFolder(
     const moved = movedFrom.get(keyOf(item.name, segs));
     const change: Change = { section: config.key, action: "-", detail: display(segs, item.name) };
     if (moved) change.movedTo = display(moved.diskPath, item.name);
+    if (withhold) change.withheld = true;
+    return change;
+  };
+
+  const folderRemovalChange = (detail: string): Change => {
+    const change: Change = { section: config.key, action: "-", detail };
+    if (withhold) change.withheld = true;
     return change;
   };
 
@@ -417,7 +426,7 @@ export function syncFileFolder(
       if (nested.name === undefined) continue;
       const nestedSegs = [...segs, nested.name];
       emitRemovedContents(nested, nestedSegs);
-      changes.push({ section: config.key, action: "-", detail: `${display(segs, nested.name)}/` });
+      changes.push(folderRemovalChange(`${display(segs, nested.name)}/`));
     }
   };
 
@@ -427,7 +436,7 @@ export function syncFileFolder(
       const key = keyOf(item.name, node.segs);
       if (movedFrom.has(key) || missing.has(key)) {
         changes.push(removalChange(item, node.segs));
-        if (!movedFrom.has(key)) ops.removes.push({ owner: node.target!, item });
+        if (!movedFrom.has(key) && !withhold) ops.removes.push({ owner: node.target!, item });
       }
     }
     // Item additions (including move-to halves)
@@ -435,13 +444,16 @@ export function syncFileFolder(
       const key = keyOf(file, node.segs);
       const moved = movedTo.get(key);
       if (moved) {
-        changes.push({
+        // Both halves of a move are withheld as a unit: the item stays put and nothing lands at the destination.
+        const addHalf: Change = {
           section: config.key,
           action: "+",
           detail: `${display(node.segs, file)} (kept sid=${moved.item.sid})`,
           movedFrom: display(moved.manifestPath, file),
-        });
-        ops.moves.push({ owner: moved.owner, item: moved.item, dest: node });
+        };
+        if (withhold) addHalf.withheld = true;
+        changes.push(addHalf);
+        if (!withhold) ops.moves.push({ owner: moved.owner, item: moved.item, dest: node });
       } else if (untracked.has(key)) {
         const sid = generateSid(existingSids);
         changes.push({ section: config.key, action: "+", detail: `${display(node.segs, file)} (new, sid=${sid})` });
@@ -461,8 +473,8 @@ export function syncFileFolder(
     // Removed folders: contained entries first, then the folder itself
     for (const sub of node.removedSubs) {
       emitRemovedContents(sub, [...node.segs, sub.name!]);
-      changes.push({ section: config.key, action: "-", detail: `${display(node.segs, sub.name!)}/` });
-      ops.folderRemoves.push({ node, sub });
+      changes.push(folderRemovalChange(`${display(node.segs, sub.name!)}/`));
+      if (!withhold) ops.folderRemoves.push({ node, sub });
     }
     for (const child of node.children) emit(child);
   };
@@ -579,7 +591,11 @@ export function applyNameDrift(
   sectionKey: string,
   changes: Change[],
   dryRun: boolean,
+  opts?: { withhold?: boolean },
 ): void {
+  const withhold = opts?.withhold === true;
+  // A withheld removal is reported but never applied; a move is withheld as a unit (both halves).
+  const mutate = !dryRun && !withhold;
   for (const entry of entries) {
     switch (entry.kind) {
       case "untracked": {
@@ -595,15 +611,18 @@ export function applyNameDrift(
           f.items.includes(entry.name),
         );
         if (!target) throw unresolvable(sectionKey, entry);
-        if (!dryRun) target.items = target.items.filter((n) => n !== entry.name);
+        if (mutate) target.items = target.items.filter((n) => n !== entry.name);
         const fromDisplay = itemDisplay(entry.manifestPath ?? [], entry.name);
         const removal: Change = { section: sectionKey, action: "-", detail: fromDisplay };
+        if (withhold) removal.withheld = true;
         changes.push(removal);
         if (entry.kind === "moved") {
-          if (!dryRun) ensureFolder(folder, entry.diskPath ?? [], sectionKey).items.push(entry.name);
+          if (mutate) ensureFolder(folder, entry.diskPath ?? [], sectionKey).items.push(entry.name);
           const toDisplay = itemDisplay(entry.diskPath ?? [], entry.name);
           removal.movedTo = toDisplay;
-          changes.push({ section: sectionKey, action: "+", detail: toDisplay, movedFrom: fromDisplay });
+          const addHalf: Change = { section: sectionKey, action: "+", detail: toDisplay, movedFrom: fromDisplay };
+          if (withhold) addHalf.withheld = true;
+          changes.push(addHalf);
         }
         break;
       }
@@ -636,8 +655,10 @@ export function applyNameDrift(
         }
         if (!hit) throw unresolvable(sectionKey, entry);
         const { parent, child } = hit;
-        if (!dryRun) parent.subfolders = parent.subfolders.filter((s) => s !== child);
-        changes.push({ section: sectionKey, action: "-", detail: folderDisplay(pathSegs) });
+        if (mutate) parent.subfolders = parent.subfolders.filter((s) => s !== child);
+        const folderRemoval: Change = { section: sectionKey, action: "-", detail: folderDisplay(pathSegs) };
+        if (withhold) folderRemoval.withheld = true;
+        changes.push(folderRemoval);
         break;
       }
       case "dangling-ref":
@@ -698,8 +719,10 @@ export function runSync(
   dryRun: boolean,
   log: Logger = console.log,
   section?: string,
-  opts?: { beforeWrite?: (manifestPath: string) => void },
+  opts?: { beforeWrite?: (manifestPath: string) => void; prune?: boolean },
 ): SyncResult {
+  // Task 4 of #346: prune still defaults to true here; the default flips once the callers are wired.
+  const withhold = !(opts?.prune ?? true);
   const projectPath = path.join(rootDir, "project.c3proj");
 
   // readProjectManifest reads + parses + validates the manifest shape in one call.
@@ -738,7 +761,7 @@ export function runSync(
       continue;
     }
     const diskPath = path.join(rootDir, config.diskDir);
-    syncFileFolder(folder, diskPath, "", config, existingSids, allChanges, dryRun);
+    syncFileFolder(folder, diskPath, "", config, existingSids, allChanges, dryRun, { withhold });
   }
 
   // Sync name-based sections via detectManifestDrift + applyNameDrift
@@ -751,7 +774,7 @@ export function runSync(
       log(`Warning: ${s.section} not found in project.c3proj`);
       continue;
     }
-    applyNameDrift(folder, s.entries, s.section, allChanges, dryRun);
+    applyNameDrift(folder, s.entries, s.section, allChanges, dryRun, { withhold });
   }
 
   // Print results

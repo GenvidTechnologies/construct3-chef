@@ -1,12 +1,13 @@
 import { describe, it, beforeEach, afterEach } from "mocha";
 import { assert } from "chai";
 import tmp from "tmp";
-import { mkdirSync, writeFileSync, readFileSync, cpSync, utimesSync, statSync, renameSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, cpSync, utimesSync, statSync, renameSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildScenario, cleanupScenarios } from "./helpers/syncScenarios.js";
 import { runCli } from "./helpers/runCli.js";
+import { seedAbsentFile } from "./helpers/seedAbsentFile.js";
 import {
   detectManifestDrift,
   detectImageDrift,
@@ -1158,13 +1159,24 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
     });
     writeManifest(manifestPath, m);
 
-    const dry = runSync(root, true, () => {}, "general");
-    assert.deepEqual(
-      { details: dry.changes.map((c) => `${c.action} ${c.detail}`), removed: dry.sections.general.removed },
-      { details: ["- sub/a.gif", "- sub/b.gif", "- sub/"], removed: 3 },
-    );
+    const summarize = (r: ReturnType<typeof runSync>) => ({
+      details: r.changes.map((c) => `${c.action} ${c.detail}`),
+      withheld: r.changes.map((c) => c.withheld === true),
+      removed: r.sections.general.removed,
+    });
+    const listed = ["- sub/a.gif", "- sub/b.gif", "- sub/"];
+    assert.deepEqual(summarize(runSync(root, true, () => {}, "general", { prune: true })), {
+      details: listed,
+      withheld: [false, false, false],
+      removed: 3,
+    });
+    assert.deepEqual(summarize(runSync(root, true, () => {}, "general", { prune: false })), {
+      details: listed,
+      withheld: [true, true, true],
+      removed: 3,
+    });
 
-    runSync(root, false, () => {}, "general");
+    runSync(root, false, () => {}, "general", { prune: true });
     assert.isUndefined(sub(readManifest(manifestPath), "sub"));
   });
 
@@ -1175,7 +1187,21 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
     assert.equal(seeded.sid, SAMPLE_SID);
     mkdirSync(path.join(a.root, "files", "sub"));
     renameSync(path.join(a.root, "files", "sample.gif"), path.join(a.root, "files", "sub", "sample.gif"));
-    const resultA = runSync(a.root, false, () => {}, "general");
+    const aBefore = readFileSync(a.manifestPath, "utf8");
+    // (b) without prune the move is withheld as a unit; only the empty new folder lands
+    const withheldB = runSync(a.root, false, () => {}, "general", { prune: false });
+    const afterB = readManifest(a.manifestPath);
+    assert.deepEqual(
+      {
+        rootItem: general(afterB).items.find((i) => i.name === "sample.gif"),
+        subItems: sub(afterB, "sub")?.items,
+        minusWithheld: withheldB.changes.filter((c) => c.action === "-").every((c) => c.withheld === true),
+      },
+      { rootItem: seeded, subItems: [], minusWithheld: true },
+    );
+    writeFileSync(a.manifestPath, aBefore);
+
+    const resultA = runSync(a.root, false, () => {}, "general", { prune: true });
     const afterA = readManifest(a.manifestPath);
     assert.deepEqual(
       {
@@ -1206,7 +1232,7 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
     const [item] = general(mc).items.splice(idx, 1);
     general(mc).subfolders.push({ name: "sub", items: [item], subfolders: [] });
     writeManifest(c.manifestPath, mc);
-    runSync(c.root, false, () => {}, "general");
+    runSync(c.root, false, () => {}, "general", { prune: true });
     const afterC = readManifest(c.manifestPath);
     assert.deepEqual(
       { root: general(afterC).items.find((i) => i.name === "sample.gif"), sub: sub(afterC, "sub") },
@@ -1227,7 +1253,7 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
     writeFileSync(path.join(root, "files", "a", "x.txt"), "");
     writeFileSync(path.join(root, "files", "c", "x.txt"), "");
 
-    const result = runSync(root, false, () => {}, "general");
+    const result = runSync(root, false, () => {}, "general", { prune: true });
     const after = readManifest(manifestPath);
     const fresh = sub(after, "c")?.items[0].sid;
     assert.deepEqual(
@@ -1238,6 +1264,113 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
         bGone: sub(after, "b"),
       },
       { paired: false, freshIsNew: true, aKept: 323456789012345, bGone: undefined },
+    );
+  });
+
+  it("SR346-R10: every removal class is withheld without prune (nothing written, equal dry and write lists) and applied with prune", () => {
+    const editManifest = (manifestPath: string, edit: (m: any) => void): void => {
+      const m = readManifest(manifestPath);
+      edit(m);
+      writeManifest(manifestPath, m);
+    };
+    interface RemovalSeed {
+      section: string;
+      seed: (root: string, manifestPath: string) => void;
+    }
+    const seeds: Record<string, RemovalSeed> = {
+      fileItem: { section: "general", seed: (root) => seedAbsentFile(root) },
+      fileSubfolder: {
+        section: "general",
+        seed: (_root, mp) =>
+          editManifest(mp, (m) =>
+            general(m).subfolders.push({ name: "sub", items: [fileItem("a.gif", 311111111111111)], subfolders: [] }),
+          ),
+      },
+      absentSectionDir: { section: "general", seed: (root) => rmSync(path.join(root, "files"), { recursive: true }) },
+      nameMissing: {
+        section: "eventSheets",
+        seed: (_root, mp) => editManifest(mp, (m) => m.eventSheets.items.push("Ghost")),
+      },
+      nameMoved: {
+        section: "eventSheets",
+        seed: (_root, mp) =>
+          editManifest(mp, (m) => {
+            const ui = m.eventSheets.subfolders.find((s: NameFolder) => s.name === "UI");
+            m.eventSheets.items.push(...ui.items.splice(0));
+          }),
+      },
+      folderMissing: {
+        section: "eventSheets",
+        seed: (_root, mp) =>
+          editManifest(mp, (m) => m.eventSheets.subfolders.push({ name: "Empty", items: [], subfolders: [] })),
+      },
+      staleDuplicate: {
+        section: "eventSheets",
+        seed: (_root, mp) => editManifest(mp, (m) => m.eventSheets.items.push("Event sheet 1")),
+      },
+    };
+
+    const observe = (seed: RemovalSeed) => {
+      const build = () => {
+        const c = copyFixture();
+        seed.seed(c.root, c.manifestPath);
+        return c;
+      };
+      const lines = (r: ReturnType<typeof runSync>) => r.changes.map((c) => `${c.action} ${c.detail}`);
+      const withheldRun = build();
+      const before = readFileSync(withheldRun.manifestPath, "utf8");
+      const dry = runSync(withheldRun.root, true, () => {}, seed.section, { prune: false });
+      const write = runSync(withheldRun.root, false, () => {}, seed.section, { prune: false });
+      const minus = write.changes.filter((c) => c.action === "-");
+      const pruned = build();
+      return {
+        wrote: write.wrote,
+        unchanged: readFileSync(withheldRun.manifestPath, "utf8") === before,
+        allMinusWithheld: minus.length > 0 && minus.every((c) => c.withheld === true),
+        listsEqual: JSON.stringify(lines(dry)) === JSON.stringify(lines(write)),
+        pruneWrote: runSync(pruned.root, false, () => {}, seed.section, { prune: true }).wrote,
+      };
+    };
+
+    const expected = { wrote: false, unchanged: true, allMinusWithheld: true, listsEqual: true, pruneWrote: true };
+    assert.deepEqual(
+      Object.fromEntries(Object.entries(seeds).map(([cls, s]) => [cls, observe(s)])),
+      Object.fromEntries(Object.keys(seeds).map((cls) => [cls, expected])),
+    );
+  });
+
+  it("SR346-R13: a present scripts/helper.js declared under script is kept (withheld) by default and removed with prune", () => {
+    const build = () => {
+      const c = copyFixture();
+      const m = readManifest(c.manifestPath);
+      m.rootFileFolders.script.items.push({
+        name: "helper.js",
+        type: "application/javascript",
+        sid: 311111111111111,
+        "script-info": { purpose: "none" },
+      });
+      writeManifest(c.manifestPath, m);
+      writeFileSync(path.join(c.root, "scripts", "helper.js"), "");
+      return c;
+    };
+    const has = (manifestPath: string) =>
+      readManifest(manifestPath).rootFileFolders.script.items.some((i: FileItem) => i.name === "helper.js");
+
+    const kept = build();
+    const keptResult = runSync(kept.root, false, () => {}, "script", { prune: false });
+    const removed = build();
+    runSync(removed.root, false, () => {}, "script", { prune: true });
+    assert.deepEqual(
+      {
+        keptDeclared: has(kept.manifestPath),
+        keptWithheld: keptResult.changes.map((c) => ({ detail: c.detail, withheld: c.withheld })),
+        prunedDeclared: has(removed.manifestPath),
+      },
+      {
+        keptDeclared: true,
+        keptWithheld: [{ detail: "helper.js", withheld: true }],
+        prunedDeclared: false,
+      },
     );
   });
 });
