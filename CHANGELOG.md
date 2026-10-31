@@ -50,7 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   barrel: `formatSyncReport`, the renderer both surfaces use for sync output;
   an optional `withhold` on `syncFileFolder` and `applyNameDrift` (default
   `false`); and optional `withheld`, `movedTo` and `movedFrom` fields on
-  `Change`. Known limitations:
+  `Change`. A direct `syncFileFolder` caller still gets removals applied by
+  default, but now also gets SID-keeping moves and one line per entry of a
+  removed subfolder. Known limitations:
   MCP `validate-project` still returns success alongside the text
   ([#349](https://github.com/GenvidTechnologies/construct3-chef/issues/349)),
   and a present non-`.ts` script is withheld rather than removed by default,
