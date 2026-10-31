@@ -575,3 +575,13 @@ See the [wiki index](../index.md) for the other sections.
   off-barrel `src/c3/pathSegments.ts`. An `extractedDir` naming a device falls
   back to `extracted` with a `[chefConfig]` warning
   ([#330](https://github.com/GenvidTechnologies/construct3-chef/issues/330))
+* [0065. sync withholds removals unless pruning is requested](0065-sync-withholds-removals-unless-pruning-is-requested.md) -
+  `runSync` applies additions only. Every removal (a file item, a subfolder
+  and each entry in it, an absent section directory, a name-section `missing`,
+  both halves of a move, `folder-missing`, a stale duplicate) is reported with
+  `[withheld]` and the manifest keeps the entry, until `sync-project --prune`
+  (MCP `prune: true`) applies it. The scaffold syncs never prune. A
+  file-section move keeps its SID, classified by c3source's `diffNameMaps`
+  over chef's own walk. `formatSyncReport` is the one renderer. A breaking
+  change of a public default, released as a major
+  ([#346](https://github.com/GenvidTechnologies/construct3-chef/issues/346))
