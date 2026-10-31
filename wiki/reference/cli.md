@@ -223,7 +223,7 @@ Replacements are sorted longest-first to prevent substring corruption.
 
 ## validate-project
 
-Dry-run check that `project.c3proj` matches files on disk. Exits with code 1 if drift is detected, or if `--fail-on-strays` is passed and any stray file is reported. Drift excludes the nameless timelines `transitions` container, which C3 always saves, so a missing directory for that container is never reported as drift ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310)).
+Dry-run check that `project.c3proj` matches files on disk. It runs the same default sync as `sync-project` without `--prune`, so a removal that sync would withhold still counts as drift: the CLI exits 1 for as long as any `[withheld]` entry remains. The MCP `validate-project` tool still returns success alongside the same text ([#349](https://github.com/GenvidTechnologies/construct3-chef/issues/349)). Exits with code 1 if drift is detected, or if `--fail-on-strays` is passed and any stray file is reported. Drift excludes the nameless timelines `transitions` container, which C3 always saves, so a missing directory for that container is never reported as drift ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310)).
 
 If `project.c3proj` is missing or fails to parse, `validate-project` no longer crashes with a raw stack trace: it prints a one-line error message to stderr and still emits the `[images]` and `[strays]` reports on stdout below, exiting 1. Those two reports never read `project.c3proj`, so they still run and are still worth reading on a project you're trying to fix.
 
@@ -252,15 +252,22 @@ npx construct3-chef validate-project [--section <section>] [--fail-on-strays] [-
 
 ## sync-project
 
-Write `project.c3proj` to match files on disk. Adds missing entries and removes stale ones.
+Write `project.c3proj` to match files on disk. By default it adds entries for files that are on disk and **withholds every removal**; pass `--prune` to apply the removals too ([#346](https://github.com/GenvidTechnologies/construct3-chef/issues/346)).
 
 ```bash
-npx construct3-chef sync-project [--section <section>] [--project-dir <path>]
+npx construct3-chef sync-project [--section <section>] [--prune] [--project-dir <path>]
 ```
 
 | Option | Description |
 | ------ | ----------- |
 | `--section <section>` | Only sync one section |
+| `--prune` | Also remove manifest entries whose files are missing on disk (default `false`). MCP: `prune: true` |
+
+**Removals are withheld unless `--prune` is passed.** A removal is any entry the manifest holds that disk no longer backs: a file entry whose file is gone, a missing subfolder and each entry inside it (listed one per line), a missing section directory, a name-section entry that is missing or moved, a missing folder, and a stale duplicate. Without `--prune` every one is still reported, with ` [withheld]` appended to its line, and its manifest entry is kept, so a file that is only temporarily absent (not yet checked out, mid-rename) cannot silently drop an entry and its SID. Run with `--prune` once the absence is intended. The summary reads `N change(s) found: A addition(s), R removal(s).`, and when any removal was withheld a final line gives the count and says how to apply it.
+
+A file moved between subfolders of the same section keeps its SID and its `*-info` entry. It is reported as two lines, `- a.gif (moved to sub/a.gif)` and `+ sub/a.gif (kept sid=…) (moved from a.gif)`. Without `--prune` both halves of a move are withheld, so the entry stays where it was.
+
+Known limitation: a script entry whose file is present but is not a `.ts` file is withheld by default rather than removed, and is still removed with `--prune` ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354)).
 
 Run this after adding or removing files in tracked C3 directories (event sheets, layouts, object types, scripts, etc.). It writes `project.c3proj` only when the synced manifest differs from the one it read. A run with nothing to change leaves the file's bytes alone and logs no `Updated` line, and the MCP `sync-project` tool bumps the project's `txId` only when it wrote ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310), ADR [`0061`](../decisions/0061-sync-treats-the-timelines-transitions-container-as-always-present.md)). Drift in the timelines section is resolved the way the manifest is laid out: the nameless direct child of the timelines root is the `transitions` container, and other nameless subfolders are transparent. A drift entry sync cannot resolve is an error, not a silent skip.
 
@@ -294,7 +301,7 @@ npx construct3-chef scaffold-layout \
 | `--event-sheet <name>` | yes | Event sheet name to associate with the new layout |
 | `--no-regenerate` | no | Skip regenerating `extracted/` after scaffolding (`--regenerate=false` is equivalent; default: regenerate) |
 
-After scaffolding, `project.c3proj` is automatically synced and `extracted/` is regenerated.
+After scaffolding, `project.c3proj` is automatically synced and `extracted/` is regenerated. That sync never prunes: it adds the new layout and prints the same lines as `sync-project`, including any `[withheld]` removals, which stay in the manifest.
 
 `scaffold-layout` needs `<extractedDir>/sid-registry.txt` to exist, because the new layout's SIDs are minted against it. When it is missing the command fails with `Error: SID registry not found: <extractedDir>/sid-registry.txt — run 'construct3-chef generate --only sid-registry' (MCP: the 'regenerate' tool) first` (the project-relative path, so `gen/sid-registry.txt` under `extractedDir: "gen"`), exit 1, nothing written. Run `generate` (or `generate --only sid-registry`) first. This is an error, rendered with the `Error:` prefix by the [CLI-wide error rendering](#errors-and-exit-codes), not one of the prefix-less input rejections below ([#316](https://github.com/GenvidTechnologies/construct3-chef/issues/316)).
 
@@ -329,7 +336,7 @@ The command:
 - Clones it with new SIDs and the next available imageSpriteId
 - Writes `objectTypes/<name>.json` (always at the flat root, whichever subfolder the source came from)
 - Copies the source objectType's own images into `images/`, as c3source's `deriveExpectedImages` derives them: one per animation frame, or the single image of a tiled background, 9-patch or tilemap. Each keeps its own extension from `fileType`; an image with no `fileType` is found by its stem and keeps its real extension; an expected image missing from `images/` is skipped. Each target is `<name>` lowercased plus the same remainder ([#262](https://github.com/GenvidTechnologies/construct3-chef/issues/262), ADR [0051](../decisions/0051-sprite-image-copies-are-derived-from-the-source-objecttype.md))
-- Syncs `project.c3proj`
+- Syncs `project.c3proj` without pruning: removals are reported as `[withheld]` and kept, as in `sync-project`
 - Regenerates `extracted/` (every generator, so the new objectType's SIDs reach `sid-registry.txt`) unless `--no-regenerate` is passed ([#256](https://github.com/GenvidTechnologies/construct3-chef/issues/256))
 
 `--source` and `--name` are objectType names under the same rule as a recipe `objectTypes` CREATE: one path segment that is not empty, contains no `/`, `\` or `:`, is not `.` or `..`, is not made only of dots and spaces, and is not a Windows reserved device name (`NUL`, `con.txt`, `COM1`, `CONIN$`; [ADR 0064](../decisions/0064-windows-reserved-device-names-are-refused-in-every-write-target-segment.md)). A rejected name exits 1 with nothing written, as `Invalid name '<raw>' — <reason>`. A name merely containing `..`, such as `a..b`, is accepted ([#267](https://github.com/GenvidTechnologies/construct3-chef/issues/267), ADR [0060](../decisions/0060-scaffold-sprite-shares-the-objecttype-name-rule.md)). A missing source prints `Source objectType not found: …`. `images/` is optional; with no images folder there are no image copies ([#259](https://github.com/GenvidTechnologies/construct3-chef/issues/259), ADR [0045](../decisions/0045-scaffold-plan-write-split-and-cli-path-containment.md)).

@@ -26,6 +26,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: `sync-project` withholds removals unless `--prune` is passed.**
+  It used to drop a manifest entry as soon as its file was missing from disk,
+  so a file that was only temporarily absent lost its entry and SID. It now
+  applies additions only. Every removal is still reported, with ` [withheld]`
+  appended to its line, and the entry stays in `project.c3proj`; pass `--prune`
+  (MCP: `prune: true`) to apply removals. This covers every kind of removal: a
+  file entry whose file is gone, a missing subfolder (each entry inside it now
+  listed on its own line), a missing section directory, a name-section entry
+  that is missing or moved, a missing folder, and a stale duplicate. The
+  summary reads `N change(s) found: A addition(s), R removal(s).`, and when any
+  removal was withheld a last line gives the count and how to apply it. A file
+  moved between subfolders of the same section now keeps its SID and `*-info`,
+  reported as `- a.gif (moved to sub/a.gif)` and `+ sub/a.gif (kept sid=…)
+  (moved from a.gif)`; without `--prune` both halves are withheld.
+  `validate-project` runs the same default sync, so on the CLI it exits 1 while
+  any withheld entry remains. The implicit syncs after `scaffold-layout` and
+  `scaffold-sprite` (CLI and MCP) never prune and print the same lines. The
+  barrel-exported `runSync` gains `opts.prune` (default `false`), so a library
+  caller that relied on removal must now pass `prune: true`. Also added to the
+  barrel: `formatSyncReport`, the renderer both surfaces use for sync output;
+  an optional `withhold` on `syncFileFolder` and `applyNameDrift` (default
+  `false`); and optional `withheld`, `movedTo` and `movedFrom` fields on
+  `Change`. Known limitations:
+  MCP `validate-project` still returns success alongside the text
+  ([#349](https://github.com/GenvidTechnologies/construct3-chef/issues/349)),
+  and a present non-`.ts` script is withheld rather than removed by default,
+  though still removed with prune
+  ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354))
+  ([#346](https://github.com/GenvidTechnologies/construct3-chef/issues/346)).
+
 ### Fixed
 
 - **Windows reserved device names are refused in every write target.** A path
