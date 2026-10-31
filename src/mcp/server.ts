@@ -1213,13 +1213,19 @@ regP(
   {
     title: "Sync project.c3proj",
     description:
-      "Sync project.c3proj to match files on disk. Adds missing entries and removes stale ones. Stray files — files under a section root that are neither .json section items nor editor-local (e.g. layouts/notes.txt) — are reported detection-only; sync never acts on them. Pass txId for optimistic concurrency. Returns output and new txId.",
+      "Sync project.c3proj to match files on disk. Adds entries for files on disk. Removals of entries whose files are missing are withheld (reported as [withheld], entry kept) unless prune: true. Stray files — files under a section root that are neither .json section items nor editor-local (e.g. layouts/notes.txt) — are reported detection-only; sync never acts on them. Pass txId for optimistic concurrency. Returns output and new txId.",
     annotations: MUTATE,
     inputSchema: {
       txId: z.string().optional().describe("Expected txId — if stale, sync is rejected"),
+      prune: z
+        .boolean()
+        .optional()
+        .describe(
+          "Remove manifest entries whose files are missing on disk. Omitted or false: removals are withheld (reported as [withheld], entry kept)",
+        ),
     },
   },
-  async (ctx, { txId: expectedTxId }) =>
+  async (ctx, { txId: expectedTxId, prune }) =>
     ctx.rwlock.write(
       withMcpErrors(
         async () => {
@@ -1230,7 +1236,7 @@ regP(
           // below only when runSync actually wrote (#310), like sync-addon-metadata.
           let wrote = false;
           await suppressSelfWrites(ctx.watcher, async (sw) => {
-            wrote = runSync(ctx.root, false, log, undefined, { beforeWrite: sw.before }).wrote;
+            wrote = runSync(ctx.root, false, log, undefined, { beforeWrite: sw.before, prune }).wrote;
           });
           if (wrote) ctx.watcher.bump();
           // Detection-only: images aren't a manifest section so sync can't act on

@@ -227,14 +227,21 @@ guardAllHandlers(yargs(hideBin(process.argv)))
     "sync-project",
     "Sync project.c3proj to match disk",
     (y) =>
-      y.option("section", {
-        type: "string",
-        choices: ALL_SECTION_KEYS,
-        describe: "Only sync one section",
-      }),
+      y
+        .option("section", {
+          type: "string",
+          choices: ALL_SECTION_KEYS,
+          describe: "Only sync one section",
+        })
+        .option("prune", {
+          type: "boolean",
+          default: false,
+          describe:
+            "Remove manifest entries whose files are missing on disk. Without it, removals are withheld: reported as [withheld] and kept",
+        }),
     (argv) => {
       const rootDir = resolveProjectDir(argv);
-      runSync(rootDir, false, console.log, argv.section);
+      runSync(rootDir, false, console.log, argv.section, { prune: argv.prune });
       // Images aren't a manifest section, so sync never acts on image drift — but
       // surface it (detection-only) so a direct sync, without a prior validate, still
       // shows it. Reported unconditionally, mirroring validate-project (#52).

@@ -734,7 +734,7 @@ describe("syncC3Proj", () => {
       manifest.eventSheets.items.push("SpuriousGhostSheet");
       writeFileSync(manifestPath, serializeProjectManifest(manifest));
 
-      const result = runSync(tmpDir, false, () => {});
+      const result = runSync(tmpDir, false, () => {}, undefined, { prune: true });
 
       assert.isAbove(result.changes.length, 0, "seeding bug: sync reported no changes");
       assert.equal(result.clean, false);
@@ -776,6 +776,7 @@ describe("syncC3Proj", () => {
       const seeded = readFileSync(manifestPath, "utf-8");
       const calls: Array<{ arg: string; bytes: string }> = [];
       runSync(tmpDir, false, () => {}, undefined, {
+        prune: true,
         beforeWrite: (p) => {
           calls.push({ arg: p, bytes: readFileSync(manifestPath, "utf-8") });
         },
@@ -823,7 +824,7 @@ describe("timelines transitions container (#310)", function () {
   /** Write-mode sync of one scenario's timelines, then re-read the tree and re-validate with a dry run. */
   function converge(name: Parameters<typeof buildScenario>[0]) {
     const { root, manifestPath } = buildScenario(name);
-    const changes = render(runSync(root, false, () => {}, "timelines").changes);
+    const changes = render(runSync(root, false, () => {}, "timelines", { prune: true }).changes);
     const timelines = JSON.parse(readFileSync(manifestPath, "utf8")).timelines as NameFolder;
     const revalidate = render(runSync(root, true, () => {}, "timelines").changes);
     return { changes, timelines, revalidate };
@@ -997,7 +998,7 @@ describe("timelines transitions container (#310)", function () {
     });
     writeFileSync(manifestPath, JSON.stringify(manifest, null, "\t"));
     const dry = render(runSync(root, true, () => {}, "eventSheets").changes);
-    const changes = render(runSync(root, false, () => {}, "eventSheets").changes);
+    const changes = render(runSync(root, false, () => {}, "eventSheets", { prune: true }).changes);
     const revalidate = render(runSync(root, true, () => {}, "eventSheets").changes);
     assert.deepEqual(
       { dry, changes, revalidate },
@@ -1067,7 +1068,7 @@ describe("repeated names converge under sync (#343)", function () {
     const { root, manifestPath } = seed((es) => {
       es.items.push("DupGhost", "DupGhost");
     });
-    const first = render(runSync(root, false, () => {}, "eventSheets").changes);
+    const first = render(runSync(root, false, () => {}, "eventSheets", { prune: true }).changes);
     const after = sheetsOf(manifestPath);
     const second = render(runSync(root, true, () => {}, "eventSheets").changes);
     assert.deepEqual(
@@ -1080,7 +1081,7 @@ describe("repeated names converge under sync (#343)", function () {
     const { root, manifestPath } = seed((es) => {
       es.items.push("Event sheet 1");
     });
-    const first = render(runSync(root, false, () => {}, "eventSheets").changes);
+    const first = render(runSync(root, false, () => {}, "eventSheets", { prune: true }).changes);
     const after = sheetsOf(manifestPath);
     const second = render(runSync(root, true, () => {}, "eventSheets").changes);
     assert.deepEqual(
@@ -1319,8 +1320,8 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
       const lines = (r: ReturnType<typeof runSync>) => r.changes.map((c) => `${c.action} ${c.detail}`);
       const withheldRun = build();
       const before = readFileSync(withheldRun.manifestPath, "utf8");
-      const dry = runSync(withheldRun.root, true, () => {}, seed.section, { prune: false });
-      const write = runSync(withheldRun.root, false, () => {}, seed.section, { prune: false });
+      const dry = runSync(withheldRun.root, true, () => {}, seed.section);
+      const write = runSync(withheldRun.root, false, () => {}, seed.section);
       const minus = write.changes.filter((c) => c.action === "-");
       const pruned = build();
       return {

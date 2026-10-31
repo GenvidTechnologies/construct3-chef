@@ -714,6 +714,15 @@ export function formatSyncReport(changes: Change[], sectionKeys: string[]): stri
   return lines;
 }
 
+/**
+ * Sync `project.c3proj` to match the files on disk, printing the report through `log`.
+ *
+ * **Additions are applied; removals are withheld by default (#346).** A manifest entry whose file is
+ * missing from disk is kept and reported as `- <name> [withheld]`, so a transient absence (a file not yet
+ * checked out, a mid-edit rename) cannot silently drop an entry and its SID. Pass `opts.prune: true` to
+ * apply the removals. A move (the same file found under another folder) keeps its SID either way.
+ * `dryRun` writes nothing regardless. `wrote` on the result says whether the manifest bytes changed.
+ */
 export function runSync(
   rootDir: string,
   dryRun: boolean,
@@ -721,8 +730,9 @@ export function runSync(
   section?: string,
   opts?: { beforeWrite?: (manifestPath: string) => void; prune?: boolean },
 ): SyncResult {
-  // Task 4 of #346: prune still defaults to true here; the default flips once the callers are wired.
-  const withhold = !(opts?.prune ?? true);
+  // Removals are withheld unless the caller passes prune: true (#346): a manifest entry whose file is
+  // missing is kept and reported, never silently dropped.
+  const withhold = opts?.prune !== true;
   const projectPath = path.join(rootDir, "project.c3proj");
 
   // readProjectManifest reads + parses + validates the manifest shape in one call.
