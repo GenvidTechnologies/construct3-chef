@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, afterEach } from "mocha";
 import { assert } from "chai";
 import tmp from "tmp";
-import { mkdirSync, writeFileSync, readFileSync, cpSync, utimesSync, statSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, cpSync, utimesSync, statSync, renameSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1101,6 +1101,122 @@ describe("repeated names converge under sync (#343)", function () {
     assert.deepEqual(
       { first, gameplayItems: after.subfolders.find((s) => s.name === "Gameplay")?.items },
       { first: [], gameplayItems: ["Event sheet 1", "Event sheet 1"] },
+    );
+  });
+});
+
+describe("sync-project file-section moves and subfolder contents (#346)", function () {
+  this.timeout(30_000);
+
+  const SAMPLE_SID = 542941095423235;
+
+  function copyFixture(): { root: string; manifestPath: string } {
+    const root = createTmpDir();
+    cpSync(sampleProjectDir, root, { recursive: true });
+    return { root, manifestPath: path.join(root, "project.c3proj") };
+  }
+  const readManifest = (manifestPath: string) => JSON.parse(readFileSync(manifestPath, "utf8"));
+  const writeManifest = (manifestPath: string, m: unknown) =>
+    writeFileSync(manifestPath, JSON.stringify(m, null, "\t"));
+  const general = (m: any): FileFolder => m.rootFileFolders.general;
+  const sub = (m: any, name: string): FileFolder | undefined => general(m).subfolders.find((s) => s.name === name);
+  const fileItem = (name: string, sid: number): FileItem => ({
+    name,
+    type: "application/octet-stream",
+    sid,
+    "file-info": { purpose: "none" },
+  });
+
+  it("SR346-R9: a declared subfolder with no directory on disk reports each contained entry and then itself, and write mode removes it", () => {
+    const { root, manifestPath } = copyFixture();
+    const m = readManifest(manifestPath);
+    general(m).subfolders.push({
+      name: "sub",
+      items: [fileItem("a.gif", 311111111111111), fileItem("b.gif", 322222222222222)],
+      subfolders: [],
+    });
+    writeManifest(manifestPath, m);
+
+    const dry = runSync(root, true, () => {}, "general");
+    assert.deepEqual(
+      { details: dry.changes.map((c) => `${c.action} ${c.detail}`), removed: dry.sections.general.removed },
+      { details: ["- sub/a.gif", "- sub/b.gif", "- sub/"], removed: 3 },
+    );
+
+    runSync(root, false, () => {}, "general");
+    assert.isUndefined(sub(readManifest(manifestPath), "sub"));
+  });
+
+  it("SR346-R11: a file moved into a new folder keeps its sid, type and file-info (a), and a file moved out of a vanished folder keeps its sid (c)", () => {
+    // (a) sample.gif moved into a new files/sub/
+    const a = copyFixture();
+    const seeded = general(readManifest(a.manifestPath)).items.find((i) => i.name === "sample.gif")!;
+    assert.equal(seeded.sid, SAMPLE_SID);
+    mkdirSync(path.join(a.root, "files", "sub"));
+    renameSync(path.join(a.root, "files", "sample.gif"), path.join(a.root, "files", "sub", "sample.gif"));
+    const resultA = runSync(a.root, false, () => {}, "general");
+    const afterA = readManifest(a.manifestPath);
+    assert.deepEqual(
+      {
+        moved: sub(afterA, "sub")?.items.find((i) => i.name === "sample.gif"),
+        rootHas: general(afterA).items.some((i) => i.name === "sample.gif"),
+        changes: resultA.changes.map((c) => ({ ...c })),
+      },
+      {
+        moved: seeded,
+        rootHas: false,
+        changes: [
+          { section: "general", action: "-", detail: "sample.gif", movedTo: "sub/sample.gif" },
+          { section: "general", action: "+", detail: "sub/ (new folder)" },
+          {
+            section: "general",
+            action: "+",
+            detail: `sub/sample.gif (kept sid=${SAMPLE_SID})`,
+            movedFrom: "sample.gif",
+          },
+        ],
+      },
+    );
+
+    // (c) manifest declares sub/sample.gif, the file is at the root and sub/ is gone
+    const c = copyFixture();
+    const mc = readManifest(c.manifestPath);
+    const idx = general(mc).items.findIndex((i) => i.name === "sample.gif");
+    const [item] = general(mc).items.splice(idx, 1);
+    general(mc).subfolders.push({ name: "sub", items: [item], subfolders: [] });
+    writeManifest(c.manifestPath, mc);
+    runSync(c.root, false, () => {}, "general");
+    const afterC = readManifest(c.manifestPath);
+    assert.deepEqual(
+      { root: general(afterC).items.find((i) => i.name === "sample.gif"), sub: sub(afterC, "sub") },
+      { root: item, sub: undefined },
+    );
+  });
+
+  it("SR346-R12: a name declared in two folders is never paired as a move; the new copy gets a fresh sid", () => {
+    const { root, manifestPath } = copyFixture();
+    const m = readManifest(manifestPath);
+    general(m).subfolders.push(
+      { name: "a", items: [fileItem("x.txt", 323456789012345)], subfolders: [] },
+      { name: "b", items: [fileItem("x.txt", 423456789012345)], subfolders: [] },
+    );
+    writeManifest(manifestPath, m);
+    mkdirSync(path.join(root, "files", "a"));
+    mkdirSync(path.join(root, "files", "c"));
+    writeFileSync(path.join(root, "files", "a", "x.txt"), "");
+    writeFileSync(path.join(root, "files", "c", "x.txt"), "");
+
+    const result = runSync(root, false, () => {}, "general");
+    const after = readManifest(manifestPath);
+    const fresh = sub(after, "c")?.items[0].sid;
+    assert.deepEqual(
+      {
+        paired: result.changes.some((c) => c.movedTo !== undefined || c.movedFrom !== undefined),
+        freshIsNew: fresh !== undefined && fresh !== 323456789012345 && fresh !== 423456789012345,
+        aKept: sub(after, "a")?.items[0].sid,
+        bGone: sub(after, "b"),
+      },
+      { paired: false, freshIsNew: true, aKept: 323456789012345, bGone: undefined },
     );
   });
 });
