@@ -720,7 +720,8 @@ export function formatSyncReport(changes: Change[], sectionKeys: string[]): stri
  * **Additions are applied; removals are withheld by default (#346).** A manifest entry whose file is
  * missing from disk is kept and reported as `- <name> [withheld]`, so a transient absence (a file not yet
  * checked out, a mid-edit rename) cannot silently drop an entry and its SID. Pass `opts.prune: true` to
- * apply the removals. A move (the same file found under another folder) keeps its SID either way.
+ * apply the removals. A move (the same file found under another folder) is withheld as a whole by default,
+ * leaving the entry where it was; with `prune: true` the entry moves and keeps its SID.
  * `dryRun` writes nothing regardless. `wrote` on the result says whether the manifest bytes changed.
  */
 export function runSync(
