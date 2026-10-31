@@ -70,6 +70,12 @@ export interface Change {
   section: string;
   action: "+" | "-";
   detail: string;
+  /** The change was reported but not applied to the manifest. */
+  withheld?: true;
+  /** On a move's `-` half: the destination display path. */
+  movedTo?: string;
+  /** On a move's `+` half: the source display path. */
+  movedFrom?: string;
 }
 
 export interface SectionSummary {
@@ -553,6 +559,36 @@ export function applyNameDrift(
 // Main sync entry point
 // ---------------------------------------------------------------------------
 
+/**
+ * Render a sync run's changes as the lines `runSync` logs: one line per change
+ * (grouped by section, in `sectionKeys` order), a `(no changes)` line for each
+ * empty section, then the summary. `Updated <path>` is not included; `runSync`
+ * logs it itself after the write.
+ *
+ * This is the single renderer both the CLI and MCP surfaces reach through
+ * `runSync`, so their output cannot drift.
+ */
+export function formatSyncReport(changes: Change[], sectionKeys: string[]): string[] {
+  const lines: string[] = [];
+  for (const key of sectionKeys) {
+    const sectionChanges = changes.filter((c) => c.section === key);
+    if (sectionChanges.length === 0) {
+      lines.push(`[${key}]`.padEnd(16) + "(no changes)");
+    } else {
+      for (const change of sectionChanges) {
+        lines.push(`[${change.section}]`.padEnd(16) + `${change.action} ${change.detail}`);
+      }
+    }
+  }
+
+  if (changes.length === 0) {
+    lines.push("\nAll sections in sync.");
+  } else {
+    lines.push(`\n${changes.length} change(s) found.`);
+  }
+  return lines;
+}
+
 export function runSync(
   rootDir: string,
   dryRun: boolean,
@@ -616,24 +652,9 @@ export function runSync(
 
   // Print results
   const sectionKeys = [...fileSections.map((s) => s.key), ...nameSections.map((s) => s.key)];
-  for (const key of sectionKeys) {
-    const sectionChanges = allChanges.filter((c) => c.section === key);
-    if (sectionChanges.length === 0) {
-      log(`[${key}]`.padEnd(16) + "(no changes)");
-    } else {
-      for (const change of sectionChanges) {
-        log(`[${change.section}]`.padEnd(16) + `${change.action} ${change.detail}`);
-      }
-    }
-  }
+  for (const line of formatSyncReport(allChanges, sectionKeys)) log(line);
 
   const totalChanges = allChanges.length;
-
-  if (totalChanges === 0) {
-    log("\nAll sections in sync.");
-  } else {
-    log(`\n${totalChanges} change(s) found.`);
-  }
 
   // Write updated project.c3proj
   // `project.c3proj` also has a second writer: `applyAddonMetadataSync` in
