@@ -26,6 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`sync-project` and `validate-project` sync the `video` file section**
+  (`videos/`, `.webm` and `.mp4`, `--section video`); every full report gains a
+  `[video]` line
+  ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358)).
+  Known limitation: c3source types every `.webm` as `audio/webm; codecs=opus`,
+  and the folder name and `file-info` key are not attested by an editor-saved
+  project
+  ([c3source#113](https://github.com/GenvidTechnologies/c3source/issues/113)).
+
 ### Changed
 
 - **Breaking: `sync-project` withholds removals unless `--prune` is passed.**
@@ -59,8 +70,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   though still removed with prune
   ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354))
   ([#346](https://github.com/GenvidTechnologies/construct3-chef/issues/346)).
+- **`@genvidtech/c3source` is updated to `^3.1.0`**
+  ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358)).
+  Its drift walk now descends into undeclared file subfolders and follows
+  links, so a link loop or a dangling link under `files/`, `scripts/` and the
+  other file folders would make it throw `ELOOP` or `ENOENT`. Sync keeps its own
+  file-section walk and does not run c3source's, so links there are still
+  skipped, as before (ADR 0066). Known limitation: a link loop under a
+  name-section folder still fails the run with `ELOOP`, as it did with 3.0.0
+  ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)).
 
 ### Fixed
+
+- **File-section sync skips editor-local files at every depth.** `uistate/`
+  and `ts-defs/` directories, `*.uistate.json` files and `tsconfig.json` were
+  added as members of every file section except at the `scripts/` root. They
+  are now skipped at every depth in every file section. A manifest entry
+  already declared with such a name is left alone while its folder stays; when
+  an ordinary subfolder is missing on disk, every entry inside it, editor-local
+  ones included, is reported as a withheld removal, and `--prune` removes them
+  with the folder. A manifest item whose only disk copy is under an
+  editor-local folder is now a withheld removal, not a withheld move
+  ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358),
+  ADR 0066). Known limitation: a present non-`.ts` script is still reported as
+  missing
+  ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354)).
 
 - **Windows reserved device names are refused in every write target.** A path
   segment that is a reserved device name (`NUL`, `con.txt`, `COM1`, `CONIN$`) is

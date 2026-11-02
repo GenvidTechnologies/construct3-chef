@@ -9,12 +9,14 @@ import {
   detectManifestDrift,
   detectStrayFiles,
   diffNameMaps,
+  C3_ROOT_FILE_FOLDERS,
   EXTENSION_FILE_TYPES,
   fileTypeForName,
   type DriftEntry,
   type StrayFile,
   TIMELINE_TRANSITIONS_FOLDER,
 } from "@genvidtech/c3source";
+import { hasEditorLocalSegment } from "./editorLocal.js";
 import { mintUniqueSid } from "./sidUtils.js";
 
 // ---------------------------------------------------------------------------
@@ -45,7 +47,15 @@ export interface FileSectionConfig {
   diskDir: string;
   infoKey: string;
   extensions?: string[];
+  /**
+   * Root-level file names `readDiskDir` skips. Inside `syncFileFolder` this is subsumed by editor-local
+   * classification at every depth (ADR 0066); `readDiskDir` still applies it as given.
+   */
   ignorePaths?: string[];
+  /**
+   * Root-level directory names `readDiskDir` skips. Inside `syncFileFolder` this is subsumed by editor-local
+   * classification at every depth (ADR 0066); `readDiskDir` still applies it as given.
+   */
   ignoreDirs?: string[];
 }
 
@@ -107,6 +117,10 @@ export const FILE_SECTIONS: FileSectionConfig[] = [
   },
   { key: "sound", diskDir: "sounds", infoKey: "file-info", extensions: [".webm"] },
   { key: "music", diskDir: "music", infoKey: "file-info", extensions: [".webm"] },
+  // The `videos` folder name, the `file-info` key and the `.webm` item type are not attested by an
+  // editor-saved project. The type comes from c3source's `fileTypeForName`, which gives every `.webm`
+  // `audio/webm; codecs=opus` (GenvidTechnologies/c3source#113).
+  { key: "video", diskDir: C3_ROOT_FILE_FOLDERS.video, infoKey: "file-info", extensions: [".webm", ".mp4"] },
   { key: "font", diskDir: "fonts", infoKey: "file-info", extensions: [".ttf"] },
   { key: "icon", diskDir: "icons", infoKey: "icon-info", extensions: [".png"] },
   { key: "general", diskDir: "files", infoKey: "file-info" }, // no extension filter — mixed types
@@ -218,14 +232,16 @@ export interface DiskTree {
  *    ["tsconfig.json"]` and `ignoreDirs: ["ts-defs"]` (both on the `script` entry of
  *    `FILE_SECTIONS`) ARE covered
  *    by c3source's `EDITOR_LOCAL_EXCLUSIONS`, but the `extensions` filters
- *    (`.ts` / `.webm` / `.ttf` / `.png`, on the `script`, `sound`, `music`, `font` and `icon` entries) encode
+ *    (`.ts` / `.webm` / `.mp4` / `.ttf` / `.png`, on the `script`, `sound`, `music`, `video`, `font` and `icon` entries) encode
  *    manifest-section MEMBERSHIP semantics, about which upstream has — and
  *    should have — no opinion.
  *
- * Consequence: delegating ONLY the ignore predicate would be a BEHAVIOUR CHANGE,
- * not a refactor. The exclusions would newly apply at every nesting level, and
- * `uistate` would newly be excluded from all six file sections. `sync-project`'s
- * output must not change inside a refactor PR.
+ * Consequence: delegating ONLY the ignore predicate would have been a BEHAVIOUR
+ * CHANGE, not a refactor, so `readDiskDir` keeps its own filters and its
+ * signature. The behaviour change was made later, deliberately, inside
+ * `syncFileFolder` rather than here: `planFileLevel` drops editor-local names at
+ * every depth, on the disk side and on the manifest side (ADR
+ * `wiki/decisions/0066`).
  *
  * Precedent: the same "owning the fact upstream isn't sufficient — the
  * primitive's SHAPE must fit the consuming operation" call was made for #42 (the
@@ -293,9 +309,12 @@ interface PlanContext {
 
 /** Add `folder`'s whole subtree (items and nested named folders) to the manifest list. */
 function collectManifestSubtree(folder: FileFolder, segs: string[], ctx: PlanContext): void {
-  for (const item of folder.items) ctx.manifest.push({ name: item.name, path: segs, item, owner: folder });
+  const keep = (n: string): boolean => !hasEditorLocalSegment([...segs, n].join("/"));
+  for (const item of folder.items) {
+    if (keep(item.name)) ctx.manifest.push({ name: item.name, path: segs, item, owner: folder });
+  }
   for (const sub of folder.subfolders) {
-    if (sub.name !== undefined) collectManifestSubtree(sub, [...segs, sub.name], ctx);
+    if (sub.name !== undefined && keep(sub.name)) collectManifestSubtree(sub, [...segs, sub.name], ctx);
   }
 }
 
@@ -313,7 +332,9 @@ function planFileLevel(
   parent: PlanNode | undefined,
   name: string | undefined,
 ): PlanNode {
-  const disk = readDiskDir(diskPath, config.extensions, config.ignorePaths, config.ignoreDirs);
+  const rawDisk = readDiskDir(diskPath, config.extensions, config.ignorePaths, config.ignoreDirs);
+  const keep = (n: string): boolean => !hasEditorLocalSegment([...segs, n].join("/"));
+  const disk: DiskTree = { files: rawDisk.files.filter(keep), dirs: rawDisk.dirs.filter(keep) };
   const node: PlanNode = {
     segs,
     target: folder,
@@ -325,7 +346,9 @@ function planFileLevel(
     removedSubs: [],
   };
   if (folder) {
-    for (const item of folder.items) ctx.manifest.push({ name: item.name, path: segs, item, owner: folder });
+    for (const item of folder.items) {
+      if (keep(item.name)) ctx.manifest.push({ name: item.name, path: segs, item, owner: folder });
+    }
   }
   for (const file of disk.files) ctx.diskList.push({ name: file, path: segs });
 
@@ -340,7 +363,7 @@ function planFileLevel(
   if (folder) {
     const diskDirSet = new Set(disk.dirs);
     for (const sub of folder.subfolders) {
-      if (sub.name !== undefined && !diskDirSet.has(sub.name)) {
+      if (sub.name !== undefined && keep(sub.name) && !diskDirSet.has(sub.name)) {
         node.removedSubs.push(sub);
         collectManifestSubtree(sub, [...segs, sub.name], ctx);
       }
@@ -777,7 +800,12 @@ export function runSync(
 
   // Sync name-based sections via detectManifestDrift + applyNameDrift
   const nameKeys = new Set(nameSections.map((c) => c.key));
-  const drift = detectManifestDrift(rootDir, project);
+  // chef syncs file sections with its own walk (ADR 0066) and discards upstream's file-section drift.
+  // Leaving rootFileFolders out of the view skips those walks: since c3source 3.1.0 they follow links
+  // (statSync), so a loop throws ELOOP and a dangling link throws ENOENT. The view is read-only:
+  // the write below still serializes `project` itself (identity rule, ADR 0024).
+  const { rootFileFolders: _fileSections, ...nameView } = project;
+  const drift = detectManifestDrift(rootDir, nameView);
   for (const s of drift.sections) {
     if (!nameKeys.has(s.section)) continue; // exclude rootFileFolders.*, models3d, containers, images
     const folder: NameFolder = project[s.section];

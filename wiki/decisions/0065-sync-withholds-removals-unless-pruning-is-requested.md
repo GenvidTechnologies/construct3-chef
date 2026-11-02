@@ -51,6 +51,8 @@ Two further gaps made the output unreliable as a warning:
 
 **ADR 0016 is not reopened.** Upstream's file-section drift does not fit, for two reasons: the undeclared-subdirectory blindness (probe P1 moved `files/sample.gif` into a new `files/sub/`, and c3source reported `missing` only, with no `moved` and no `untracked`; probe P3 declared `x.txt` in `a/` and `b/` but had it on disk in `a/` and a new `c/`, and c3source never saw `c/x.txt`), and the missing folder entries. The classifier does fit, because it takes two `{name, path}` lists and nothing else. The walk stays local for the same mismatches as before, and only the classifier is adopted. The upstream request is [c3source#110](https://github.com/GenvidTechnologies/c3source/issues/110): `rootFileFolders` drift misses files under undeclared subdirectories, so a move into a new folder reads as `missing`.
 
+**Amended by ADR [0066](0066-sync-keeps-its-own-file-section-walk-under-c3source-3-1-0.md) (2026-11-02):** c3source 3.1.0 discharged both reasons named above. ADR 0066 still declines upstream file-section drift, for two other reasons: extension filters are section membership (ADR 0016 mismatch 3), and the new walks follow links, so a loop throws `ELOOP` and a dangling link throws `ENOENT`.
+
 ## Alternatives considered
 
 - **Chosen: Option A: withhold every removal by default; removing needs an explicit `prune` (recommended).** It is the only option that keeps the SID of an absent file, which is the harm in the incident, and the only one that also covers the scaffold paths.

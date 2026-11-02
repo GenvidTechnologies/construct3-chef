@@ -274,9 +274,11 @@ describe("syncC3Proj", () => {
 
   describe("oracle — detectManifestDrift on construct3-chef-sample", () => {
     // Cross-check our sync against c3source's upstream drift detector for the
-    // sections it models the same way we do (the name-folder sections). The file
-    // sections (rootFileFolders.*) are deliberately excluded: c3source walks them
-    // shallowly and unfiltered, so scripts/*.ts + tsconfig.json would read as drift.
+    // sections it models the same way we do (the name-folder sections). chef
+    // discards upstream's file-section drift (rootFileFolders.*) and syncs the
+    // file sections with its own walk, so the oracle filters to the name sections
+    // for the assertions below. The I358-R7 test cross-checks the two file walks
+    // on one seeded undeclared subfolder.
     const NAME_FOLDER_SECTIONS = new Set([
       "layouts",
       "eventSheets",
@@ -292,6 +294,29 @@ describe("syncC3Proj", () => {
       for (const s of nameSections) {
         assert.deepEqual(s.entries, [], `${s.section}: unexpected drift`);
       }
+    });
+
+    it("I358-R7: upstream and chef both report a seeded undeclared files/ subfolder", () => {
+      const root = createTmpDir();
+      cpSync(sampleProjectDir, root, { recursive: true });
+      touchFile(root, "files", "undecl", "y.txt");
+
+      const general = detectManifestDrift(root).sections.find((s) => s.section === "rootFileFolders.general");
+      const upstream = (general?.entries ?? []).map((e) => ({ kind: e.kind, name: e.name, diskPath: e.diskPath }));
+      const chef = runSync(root, true, () => {})
+        .changes.filter((c) => c.section === "general")
+        .map((c) => c.detail.replace(/ \(.*$/, ""));
+
+      assert.deepEqual(
+        { upstream, chef },
+        {
+          upstream: [
+            { kind: "untracked", name: "y.txt", diskPath: ["undecl"] },
+            { kind: "folder-untracked", name: "undecl", diskPath: ["undecl"] },
+          ],
+          chef: ["undecl/", "undecl/y.txt"],
+        },
+      );
     });
 
     it("covers objectTypes-as-directories without drift", () => {

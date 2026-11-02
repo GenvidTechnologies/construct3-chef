@@ -54,6 +54,8 @@ Three independent shape mismatches, **any one sufficient**:
 
 The issue's fallback ("at minimum have the ignore logic delegate to `isEditorLocalPath`") is therefore a **behaviour change, not a refactor**: exclusions would newly apply at every nesting level, and `uistate` would newly be excluded from all six file sections. `sync-project`'s output must not change inside a refactor PR.
 
+**Amended by ADR [0066](0066-sync-keeps-its-own-file-section-walk-under-c3source-3-1-0.md) (2026-11-02):** the decline stands for the walk itself. Editor-local classification now applies at every depth inside `syncFileFolder`, on the disk side and the manifest side, in every file section. That is a deliberate behaviour change. `readDiskDir` keeps its signature and its filters.
+
 ### 3. DECLINE — `findJsonFiles` / `generateSidRegistry` (`src/c3/generators.ts`)
 
 It **buys nothing.** The editor-local *classification* is already delegated to c3source's `isEditorLocalPath` by `generateSidRegistry`'s post-hoc path-**segment** filter, which covers both the `uistate/` directory segment and the `*.uistate.json` basename. There is no duplicated rule to dedup — only a duplicated *walk*, and the walk is exactly where the tolerances differ.
