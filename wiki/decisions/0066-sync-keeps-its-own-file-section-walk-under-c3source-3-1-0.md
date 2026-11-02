@@ -1,6 +1,6 @@
 ---
 type: decision-record
-title: "0066. sync keeps its own file-section walk under c3source 3.1.0"
+title: "0066. sync keeps its own file-section walk under c3source 3.1.0 and adds the video section"
 description: >-
   c3source 3.1.0 walks undeclared file subfolders and reports folder entries, which discharges the two reasons ADR 0065 gave for not consuming upstream file drift. `runSync` still declines it: extension filters are section membership (ADR 0016 mismatch 3), and the new walks follow links, so a loop throws `ELOOP` and a dangling link throws `ENOENT`. `runSync` hides `rootFileFolders` from `detectManifestDrift`, classifies editor-local names at every depth in every file section, and syncs a `video` section
   ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358))
@@ -9,7 +9,7 @@ status: stable
 generated: { by: process:tech-writer, at: 2026-11-02T00:00:00Z }
 ---
 
-# 0066. sync keeps its own file-section walk under c3source 3.1.0
+# 0066. sync keeps its own file-section walk under c3source 3.1.0 and adds the video section
 
 - **Status:** Accepted
 - **Date:** 2026-11-02
@@ -30,12 +30,12 @@ Option A is chosen. 3.1.0 discharges ADR 0065's two reasons. It does not dischar
 
 ### Option A: keep chef's walk, skip upstream's file-section walks, and align editor-local classification (recommended)
 
-1. **`runSync` hides `rootFileFolders` from `detectManifestDrift`.** It passes a view of the manifest without that key (`nameView`), so upstream's file-section walks do not run. Name-section drift is unchanged. The write still serializes the manifest object itself (ADR 0024); the view is read-only. The view relies on c3source's `if (rff)` check in the drift loop. The test `I358-R2:` is the tripwire: it goes red if upstream starts walking file folders regardless.
+1. **`runSync` hides `rootFileFolders` from `detectManifestDrift`.** It passes a view of the manifest without that key (`nameView`), so upstream's file-section walks do not run. Name-section drift is unchanged. The write still serializes the manifest object itself (ADR 0024); the view is read-only. The view relies on c3source's `if (rff)` check in the drift loop. The test `I358-R2:` is the tripwire for one failure of that reliance: it goes red if upstream walks file folders regardless and the walk throws on its link loop. A file-folder walk that does not throw stays invisible, because chef discards its result.
    - Variants weighed. *Guard file sections only* (chosen). *Guard name sections too*: not available locally, because the only local mechanism is a try/catch around the whole call, which would hide real name-section failures. *Accept and record*: rejected, because the guard is two lines and removes the throw and the discarded walk together.
    - Side effect: `ManifestDrift.duplicates` no longer carries file-section entries in chef's runs ([#344](https://github.com/GenvidTechnologies/construct3-chef/issues/344)).
-2. **Editor-local classification applies at every depth, on both sides, in every file section.** The disk side and the manifest side both go through `src/c3/editorLocal.ts` (`hasEditorLocalSegment`). A declared entry or subfolder with an editor-local name is inert: sync never adds, removes or moves it. The maintainer chose this over filtering the disk side only, which would turn such an entry into a permanent withheld removal and fail `validate-project`.
+2. **Editor-local classification applies at every depth, on both sides, in every file section.** The disk side and the manifest side both go through `src/c3/editorLocal.ts` (`hasEditorLocalSegment`). A declared entry or subfolder with an editor-local name is inert while the folder that holds it stays: sync never adds, removes or moves it. The maintainer chose this over filtering the disk side only, which would turn such an entry into a permanent withheld removal and fail `validate-project`.
    - This is a deliberate behaviour change. It reverses ADR 0016 §2's stance that `sync-project`'s output must not change inside a refactor PR. `readDiskDir` keeps its signature and its filters.
-   - Edge cases. A manifest item whose only disk copy is under an editor-local folder was a withheld move and is now a withheld removal. When an ordinary subfolder is removed (with prune), the editor-local entries inside it go with it.
+   - Edge cases. A manifest item whose only disk copy is under an editor-local folder was a withheld move and is now a withheld removal. When an ordinary subfolder is missing on disk, sync reports every entry inside it, editor-local ones included, as a withheld removal, and a prune removes them with the folder.
    - Real-project impact is not measured. Whether C3 writes `uistate` files under file folders is unverified.
 3. **A `video` file section is added.** `FILE_SECTIONS` gains `video`: `C3_ROOT_FILE_FOLDERS.video` (`videos`), info key `file-info`, extensions `.webm` and `.mp4`. The maintainer chose to add it now, with c3source's current answers, over the alternative of splitting it out until an editor-saved project attests the section.
    - Types come from c3source's `fileTypeForName` with no local override. A video `.webm` is therefore registered as `audio/webm; codecs=opus`.

@@ -72,22 +72,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([#346](https://github.com/GenvidTechnologies/construct3-chef/issues/346)).
 - **`@genvidtech/c3source` is updated to `^3.1.0`**
   ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358)).
+  Its drift walk now descends into undeclared file subfolders and follows
+  links, so a link loop or a dangling link under `files/`, `scripts/` and the
+  other file folders would make it throw `ELOOP` or `ENOENT`. Sync keeps its own
+  file-section walk and does not run c3source's, so links there are still
+  skipped, as before (ADR 0066). Known limitation: a link loop under a
+  name-section folder still fails the run with `ELOOP`, as it did with 3.0.0
+  ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)).
 
 ### Fixed
 
-- **File-section sync no longer fails on a link loop or a dangling link, and
-  skips editor-local files at every depth.** c3source 3.1.0's drift walk
-  follows links and would have thrown `ELOOP` or `ENOENT` under `files/`,
-  `scripts/` and the other file folders, so chef keeps its own walk there.
-  Editor-local files are no longer added at any depth in any file section. A
-  manifest entry already declared with such a name is left alone. A manifest
-  item whose only disk copy is under an editor-local folder is now a withheld
-  removal, not a withheld move
+- **File-section sync skips editor-local files at every depth.** `uistate/`
+  and `ts-defs/` directories, `*.uistate.json` files and `tsconfig.json` were
+  added as members of every file section except at the `scripts/` root. They
+  are now skipped at every depth in every file section. A manifest entry
+  already declared with such a name is left alone while its folder stays; when
+  an ordinary subfolder is missing on disk, every entry inside it, editor-local
+  ones included, is reported as a withheld removal, and `--prune` removes them
+  with the folder. A manifest item whose only disk copy is under an
+  editor-local folder is now a withheld removal, not a withheld move
   ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358),
-  ADR 0066). Known limitations: a link loop under a name-section folder still
-  fails the run with `ELOOP`
-  ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)),
-  and a present non-`.ts` script is still reported as missing
+  ADR 0066). Known limitation: a present non-`.ts` script is still reported as
+  missing
   ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354)).
 
 - **Windows reserved device names are refused in every write target.** A path

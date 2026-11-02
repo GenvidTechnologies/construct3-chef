@@ -585,7 +585,7 @@ See the [wiki index](../index.md) for the other sections.
   over chef's own walk. `formatSyncReport` is the one renderer. A breaking
   change of a public default, released as a major
   ([#346](https://github.com/GenvidTechnologies/construct3-chef/issues/346))
-* [0066. sync keeps its own file-section walk under c3source 3.1.0](0066-sync-keeps-its-own-file-section-walk-under-c3source-3-1-0.md) -
+* [0066. sync keeps its own file-section walk under c3source 3.1.0 and adds the video section](0066-sync-keeps-its-own-file-section-walk-under-c3source-3-1-0.md) -
   c3source 3.1.0 walks undeclared file subfolders and reports folder entries,
   which discharges the two reasons ADR 0065 gave for not consuming upstream
   file drift. `runSync` still declines it: extension filters are section
