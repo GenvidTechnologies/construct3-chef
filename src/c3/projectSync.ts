@@ -15,6 +15,7 @@ import {
   type StrayFile,
   TIMELINE_TRANSITIONS_FOLDER,
 } from "@genvidtech/c3source";
+import { hasEditorLocalSegment } from "./editorLocal.js";
 import { mintUniqueSid } from "./sidUtils.js";
 
 // ---------------------------------------------------------------------------
@@ -45,7 +46,15 @@ export interface FileSectionConfig {
   diskDir: string;
   infoKey: string;
   extensions?: string[];
+  /**
+   * Root-level file names `readDiskDir` skips. Inside `syncFileFolder` this is subsumed by editor-local
+   * classification at every depth (ADR 0066); `readDiskDir` still applies it as given.
+   */
   ignorePaths?: string[];
+  /**
+   * Root-level directory names `readDiskDir` skips. Inside `syncFileFolder` this is subsumed by editor-local
+   * classification at every depth (ADR 0066); `readDiskDir` still applies it as given.
+   */
   ignoreDirs?: string[];
 }
 
@@ -222,10 +231,12 @@ export interface DiskTree {
  *    manifest-section MEMBERSHIP semantics, about which upstream has — and
  *    should have — no opinion.
  *
- * Consequence: delegating ONLY the ignore predicate would be a BEHAVIOUR CHANGE,
- * not a refactor. The exclusions would newly apply at every nesting level, and
- * `uistate` would newly be excluded from all six file sections. `sync-project`'s
- * output must not change inside a refactor PR.
+ * Consequence: delegating ONLY the ignore predicate would have been a BEHAVIOUR
+ * CHANGE, not a refactor, so `readDiskDir` keeps its own filters and its
+ * signature. The behaviour change was made later, deliberately, inside
+ * `syncFileFolder` rather than here: `planFileLevel` drops editor-local names at
+ * every depth, on the disk side and on the manifest side (ADR
+ * `wiki/decisions/0066`).
  *
  * Precedent: the same "owning the fact upstream isn't sufficient — the
  * primitive's SHAPE must fit the consuming operation" call was made for #42 (the
@@ -293,9 +304,12 @@ interface PlanContext {
 
 /** Add `folder`'s whole subtree (items and nested named folders) to the manifest list. */
 function collectManifestSubtree(folder: FileFolder, segs: string[], ctx: PlanContext): void {
-  for (const item of folder.items) ctx.manifest.push({ name: item.name, path: segs, item, owner: folder });
+  const keep = (n: string): boolean => !hasEditorLocalSegment([...segs, n].join("/"));
+  for (const item of folder.items) {
+    if (keep(item.name)) ctx.manifest.push({ name: item.name, path: segs, item, owner: folder });
+  }
   for (const sub of folder.subfolders) {
-    if (sub.name !== undefined) collectManifestSubtree(sub, [...segs, sub.name], ctx);
+    if (sub.name !== undefined && keep(sub.name)) collectManifestSubtree(sub, [...segs, sub.name], ctx);
   }
 }
 
@@ -313,7 +327,9 @@ function planFileLevel(
   parent: PlanNode | undefined,
   name: string | undefined,
 ): PlanNode {
-  const disk = readDiskDir(diskPath, config.extensions, config.ignorePaths, config.ignoreDirs);
+  const rawDisk = readDiskDir(diskPath, config.extensions, config.ignorePaths, config.ignoreDirs);
+  const keep = (n: string): boolean => !hasEditorLocalSegment([...segs, n].join("/"));
+  const disk: DiskTree = { files: rawDisk.files.filter(keep), dirs: rawDisk.dirs.filter(keep) };
   const node: PlanNode = {
     segs,
     target: folder,
@@ -325,7 +341,9 @@ function planFileLevel(
     removedSubs: [],
   };
   if (folder) {
-    for (const item of folder.items) ctx.manifest.push({ name: item.name, path: segs, item, owner: folder });
+    for (const item of folder.items) {
+      if (keep(item.name)) ctx.manifest.push({ name: item.name, path: segs, item, owner: folder });
+    }
   }
   for (const file of disk.files) ctx.diskList.push({ name: file, path: segs });
 
@@ -340,7 +358,7 @@ function planFileLevel(
   if (folder) {
     const diskDirSet = new Set(disk.dirs);
     for (const sub of folder.subfolders) {
-      if (sub.name !== undefined && !diskDirSet.has(sub.name)) {
+      if (sub.name !== undefined && keep(sub.name) && !diskDirSet.has(sub.name)) {
         node.removedSubs.push(sub);
         collectManifestSubtree(sub, [...segs, sub.name], ctx);
       }
