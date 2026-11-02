@@ -75,14 +75,15 @@ describe("sync file-section walk and links", function () {
     for (const l of links.splice(0)) {
       try {
         if (lstatSync(l).isSymbolicLink()) unlinkSync(l);
-      } catch {
-        // already gone
+      } catch (e) {
+        // A link that is already gone is fine; any other failure must stop before rmSync follows the link.
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
       }
     }
     for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
   });
 
-  const R23_MESSAGE =
+  const GUARD_MESSAGE =
     "runSync must keep c3source's file-section drift walks out of sync (the nameView in runSync, ADR 0066): since c3source 3.1.0 they follow links";
 
   it("I358-R2: a junction loop under undeclared files/undecl and scripts/undecl does not throw", () => {
@@ -92,7 +93,7 @@ describe("sync file-section walk and links", function () {
     seedFile(root, "files/undecl/y.txt", "y\n");
     seedLink(root, "files/undecl/loop", path.join(root, "files", "undecl"));
 
-    expect(dryRun(root), R23_MESSAGE).to.deep.equal({
+    expect(dryRun(root), GUARD_MESSAGE).to.deep.equal({
       threw: null,
       lines: [
         "[script]        + undecl/ (new folder)",
@@ -112,7 +113,7 @@ describe("sync file-section walk and links", function () {
     seedLink(root, "files/undecl/dead", gone);
     rmSync(gone, { recursive: true });
 
-    expect(dryRun(root), R23_MESSAGE).to.deep.equal({
+    expect(dryRun(root), GUARD_MESSAGE).to.deep.equal({
       threw: null,
       lines: [
         "[general]       + undecl/ (new folder)",
