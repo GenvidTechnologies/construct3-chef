@@ -10,6 +10,7 @@ import {
   lstatSync,
   unlinkSync,
   realpathSync,
+  readFileSync,
 } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -137,5 +138,92 @@ describe("sync file-section walk and links", function () {
       { threw },
       "a junction loop under a name-section folder still throws ELOOP; if this goes red, c3source fixed link handling: update ADR 0066 and the c3source 3.1.0 ledger entry",
     ).to.deep.equal({ threw: "ELOOP" });
+  });
+
+  const EDITOR_LOCAL_MESSAGE =
+    "editor-local files (uistate/, ts-defs/, *.uistate.json, tsconfig.json) are not file-section members at any depth (ADR 0066)";
+
+  it("I358-R5a: editor-local directories are not members at any depth; lookalike files are", () => {
+    const root = copy();
+    seedFile(root, "files/uistate/a.txt", "a\n");
+    seedFile(root, "files/ts-defs/z.txt", "z\n");
+    seedFile(root, "scripts/sub/ts-defs/y.ts", "export {};\n");
+    seedFile(root, "scripts/uistate/q.ts", "export {};\n");
+    seedFile(root, "icons/uistate/i.png", "i\n");
+    seedFile(root, "files/uistate.txt", "u\n");
+    seedFile(root, "files/keep.txt", "k\n");
+
+    expect(dryRun(root), EDITOR_LOCAL_MESSAGE).to.deep.equal({
+      threw: null,
+      lines: [
+        "[script]        + sub/ (new folder)",
+        "[general]       + keep.txt (new, sid=<SID>)",
+        "[general]       + uistate.txt (new, sid=<SID>)",
+        "\n3 change(s) found: 3 addition(s), 0 removal(s).",
+      ],
+    });
+  });
+
+  it("I358-R5b: a *.uistate.json file is not a member; a plain file beside it is", () => {
+    const root = copy();
+    seedFile(root, "files/x.uistate.json", "{}");
+    seedFile(root, "files/keep.txt", "k\n");
+
+    expect(dryRun(root), EDITOR_LOCAL_MESSAGE).to.deep.equal({
+      threw: null,
+      lines: ["[general]       + keep.txt (new, sid=<SID>)", "\n1 change(s) found: 1 addition(s), 0 removal(s)."],
+    });
+  });
+
+  it("I358-R5c: a nested tsconfig.json is not a member; its sibling and folder are", () => {
+    const root = copy();
+    seedFile(root, "files/sub/tsconfig.json", "{}");
+    seedFile(root, "files/sub/keep2.txt", "k\n");
+
+    expect(dryRun(root), EDITOR_LOCAL_MESSAGE).to.deep.equal({
+      threw: null,
+      lines: [
+        "[general]       + sub/ (new folder)",
+        "[general]       + sub/keep2.txt (new, sid=<SID>)",
+        "\n2 change(s) found: 2 addition(s), 0 removal(s).",
+      ],
+    });
+  });
+
+  it("I358-R6: declared editor-local manifest entries are inert", () => {
+    const root = copy();
+    const manifestPath = path.join(root, "project.c3proj");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    const general = manifest.rootFileFolders.general;
+    general.items.push({
+      name: "tsconfig.json",
+      type: "application/json",
+      sid: 111111111111111,
+      "file-info": { purpose: "none" },
+    });
+    general.subfolders.push({
+      name: "uistate",
+      items: [{ name: "a.txt", type: "text/plain", sid: 222222222222222, "file-info": { purpose: "none" } }],
+      subfolders: [],
+    });
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, "\t"));
+    seedFile(root, "files/tsconfig.json", "{}");
+    seedFile(root, "files/uistate/a.txt", "a\n");
+
+    const dry = dryRun(root);
+    let pruneWrote: boolean | null = null;
+    try {
+      pruneWrote = runSync(root, false, () => {}, undefined, { prune: true }).wrote;
+    } catch {
+      pruneWrote = null;
+    }
+
+    expect(
+      { dryLines: dry.lines, pruneWrote },
+      "a declared manifest entry with an editor-local name is inert: never added, removed or moved (ADR 0066)",
+    ).to.deep.equal({
+      dryLines: ["\nAll sections in sync."],
+      pruneWrote: false,
+    });
   });
 });
