@@ -82,6 +82,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **MCP `scaffold-layout` detects a stale `sid-registry.txt`.** The tool now
+  compares the registry's mtime with the source JSON before its `txId` check,
+  as `apply-recipe` does. When a source file is newer, it marks `extracted/`
+  stale and bumps `txId`, so a call that passes its previous `txId` is
+  rejected. A call without a `txId` still scaffolds against the registry as
+  it is. The CLI `scaffold-layout` has no freshness check
+  ([#337](https://github.com/GenvidTechnologies/construct3-chef/issues/337)).
+
 - **File-section sync skips editor-local files at every depth.** `uistate/`
   and `ts-defs/` directories, `*.uistate.json` files and `tsconfig.json` were
   added as members of every file section except at the `scripts/` root. They
