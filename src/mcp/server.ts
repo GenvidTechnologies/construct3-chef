@@ -1619,8 +1619,8 @@ regP(
       withMcpErrors(
         async () => {
           // Refresh ctx.extractedDirty before the txId check, as apply-recipe does — catches
-          // external edits the watcher may have missed, so a stale registry doesn't seed the
-          // scaffold's SID minting with SIDs that already exist on disk.
+          // external edits the watcher may have missed, so a caller holding a pre-stale txId is
+          // rejected. Detection only: a call without a txId still seeds from the registry as it is.
           checkDerivedFreshness(ctx, path.join(ctx.extractedDir, "sid-registry.txt"));
           const shouldRegenerate = regenerate !== false;
           const totalSteps = shouldRegenerate ? 8 : 2; // clone + sync + 6 generators
