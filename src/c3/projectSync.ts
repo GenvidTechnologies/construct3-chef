@@ -8,6 +8,7 @@ import {
   detectImageDrift,
   detectManifestDrift,
   detectStrayFiles,
+  diffNameMaps,
   EXTENSION_FILE_TYPES,
   fileTypeForName,
   type DriftEntry,
@@ -70,6 +71,12 @@ export interface Change {
   section: string;
   action: "+" | "-";
   detail: string;
+  /** The change was reported but not applied to the manifest. */
+  withheld?: true;
+  /** On a move's `-` half: the destination display path. */
+  movedTo?: string;
+  /** On a move's `+` half: the source display path. */
+  movedFrom?: string;
 }
 
 export interface SectionSummary {
@@ -196,21 +203,22 @@ export interface DiskTree {
  *
  * 1. IT RETURNS DIRECTORIES. `syncFileFolder` mirrors the disk folder tree into
  *    `rootFileFolders[].subfolders[]` and emits `+ foo/ (new folder)` / `- foo/`
- *    change lines from `DiskTree.dirs` (:311-:344). A flat, files-only primitive
+ *    change lines from `DiskTree.dirs` (`planFileLevel` and the emit step). A flat, files-only primitive
  *    structurally CANNOT report an empty disk directory that must nonetheless
  *    become a manifest subfolder.
  *
  * 2. IT MUST BE PER-LEVEL, NOT RECURSIVE. `syncFileFolder` owns the recursion so
  *    it can descend in lockstep with the manifest folder object it mutates
- *    (:346-:374), and it deliberately DROPS the root-level `ignorePaths` /
- *    `ignoreDirs` at depth >= 1 (:356, :367). A self-recursing walk owns the
+ *    (`planFileLevel`'s recursion), and it deliberately DROPS the root-level `ignorePaths` /
+ *    `ignoreDirs` at depth >= 1 (the `subConfig` in `planFileLevel`). A self-recursing walk owns the
  *    traversal, so it can neither be stepped alongside the manifest tree nor
  *    vary its filter by depth.
  *
  * 3. THE IGNORE RULES ARE NOT ALL EDITOR-LOCAL CLASSIFICATION. `ignorePaths:
- *    ["tsconfig.json"]` (:84) and `ignoreDirs: ["ts-defs"]` (:85) ARE covered
+ *    ["tsconfig.json"]` and `ignoreDirs: ["ts-defs"]` (both on the `script` entry of
+ *    `FILE_SECTIONS`) ARE covered
  *    by c3source's `EDITOR_LOCAL_EXCLUSIONS`, but the `extensions` filters
- *    (`.ts` / `.webm` / `.ttf` / `.png`, :83 and :87-:90) encode
+ *    (`.ts` / `.webm` / `.ttf` / `.png`, on the `script`, `sound`, `music`, `font` and `icon` entries) encode
  *    manifest-section MEMBERSHIP semantics, about which upstream has — and
  *    should have — no opinion.
  *
@@ -256,6 +264,107 @@ export function readDiskDir(
 // File-based section sync
 // ---------------------------------------------------------------------------
 
+/** A manifest-side occurrence in the plan: the item, the folder that holds it, and its section-relative folder path. */
+interface PlanManifestEntry {
+  name: string;
+  path: string[];
+  item: FileItem;
+  owner: FileFolder;
+}
+
+/** One disk directory level of the plan, paired with the manifest folder that mirrors it (absent when the folder is new). */
+interface PlanNode {
+  segs: string[];
+  /** The manifest folder at this level; set for a new folder only once the apply step creates it. */
+  target: FileFolder | undefined;
+  parent: PlanNode | undefined;
+  name: string | undefined;
+  isNew: boolean;
+  disk: DiskTree;
+  children: PlanNode[];
+  /** Named manifest subfolders with no disk directory. */
+  removedSubs: FileFolder[];
+}
+
+interface PlanContext {
+  manifest: PlanManifestEntry[];
+  diskList: Array<{ name: string; path: string[] }>;
+}
+
+/** Add `folder`'s whole subtree (items and nested named folders) to the manifest list. */
+function collectManifestSubtree(folder: FileFolder, segs: string[], ctx: PlanContext): void {
+  for (const item of folder.items) ctx.manifest.push({ name: item.name, path: segs, item, owner: folder });
+  for (const sub of folder.subfolders) {
+    if (sub.name !== undefined) collectManifestSubtree(sub, [...segs, sub.name], ctx);
+  }
+}
+
+/**
+ * The plan step of {@link syncFileFolder}: a lockstep walk of one disk directory and its manifest folder
+ * (readDiskDir per level, root-only ignores, named subfolders only). A manifest subfolder with no disk
+ * directory contributes its whole subtree to the manifest list.
+ */
+function planFileLevel(
+  folder: FileFolder | undefined,
+  diskPath: string,
+  segs: string[],
+  config: FileSectionConfig,
+  ctx: PlanContext,
+  parent: PlanNode | undefined,
+  name: string | undefined,
+): PlanNode {
+  const disk = readDiskDir(diskPath, config.extensions, config.ignorePaths, config.ignoreDirs);
+  const node: PlanNode = {
+    segs,
+    target: folder,
+    parent,
+    name,
+    isNew: folder === undefined,
+    disk,
+    children: [],
+    removedSubs: [],
+  };
+  if (folder) {
+    for (const item of folder.items) ctx.manifest.push({ name: item.name, path: segs, item, owner: folder });
+  }
+  for (const file of disk.files) ctx.diskList.push({ name: file, path: segs });
+
+  // For subdirectories, don't apply root-level ignorePaths/ignoreDirs
+  const subConfig = { ...config, ignorePaths: undefined, ignoreDirs: undefined };
+  for (const dirName of disk.dirs) {
+    const existing = folder?.subfolders.find((s) => s.name === dirName);
+    node.children.push(
+      planFileLevel(existing, path.join(diskPath, dirName), [...segs, dirName], subConfig, ctx, node, dirName),
+    );
+  }
+  if (folder) {
+    const diskDirSet = new Set(disk.dirs);
+    for (const sub of folder.subfolders) {
+      if (sub.name !== undefined && !diskDirSet.has(sub.name)) {
+        node.removedSubs.push(sub);
+        collectManifestSubtree(sub, [...segs, sub.name], ctx);
+      }
+    }
+  }
+  return node;
+}
+
+interface SyncFileOps {
+  folderAdds: PlanNode[];
+  moves: Array<{ owner: FileFolder; item: FileItem; dest: PlanNode }>;
+  adds: Array<{ dest: PlanNode; item: FileItem }>;
+  removes: Array<{ owner: FileFolder; item: FileItem }>;
+  folderRemoves: Array<{ node: PlanNode; sub: FileFolder }>;
+}
+
+/**
+ * Sync one file section's folder tree to `diskPath`: mirror the disk's files and subdirectories into
+ * `folder`, reporting each difference in `changes` (and applying it unless `dryRun`).
+ *
+ * Plan (walk both trees), classify (c3source's `diffNameMaps`, the rule name sections use: a name occurring
+ * exactly once on each side at different paths is a move, so the entry keeps its sid), then emit changes in
+ * walk order and, in write mode, apply them: folder adds, moves, item adds, item removes, folder removes.
+ */
 export function syncFileFolder(
   folder: FileFolder,
   diskPath: string,
@@ -264,132 +373,129 @@ export function syncFileFolder(
   existingSids: Set<number>,
   changes: Change[],
   dryRun: boolean,
+  opts?: { withhold?: boolean },
 ): void {
-  const disk = readDiskDir(diskPath, config.extensions, config.ignorePaths, config.ignoreDirs);
+  const withhold = opts?.withhold === true;
+  const ctx: PlanContext = { manifest: [], diskList: [] };
+  const root = planFileLevel(folder, diskPath, [], config, ctx, undefined, undefined);
 
-  // Build lookup of existing items by name
-  const existingItemMap = new Map<string, FileItem>();
-  for (const item of folder.items) {
-    existingItemMap.set(item.name, item);
-  }
-
-  // Build lookup of existing subfolders by name
-  const existingSubfolderMap = new Map<string, FileFolder>();
-  for (const sub of folder.subfolders) {
-    if (sub.name !== undefined) {
-      existingSubfolderMap.set(sub.name, sub);
+  // Classify
+  const keyOf = (name: string, segs: string[]): string => JSON.stringify([segs.join("/"), name]);
+  const missing = new Set<string>();
+  const untracked = new Set<string>();
+  const movedFrom = new Map<string, { diskPath: string[] }>();
+  const movedTo = new Map<string, { manifestPath: string[]; item: FileItem; owner: FileFolder }>();
+  const manifestByKey = new Map<string, PlanManifestEntry>();
+  for (const m of ctx.manifest) manifestByKey.set(keyOf(m.name, m.path), m);
+  for (const entry of diffNameMaps(ctx.manifest, ctx.diskList)) {
+    if (entry.kind === "missing") missing.add(keyOf(entry.name, entry.manifestPath ?? []));
+    else if (entry.kind === "untracked") untracked.add(keyOf(entry.name, entry.diskPath ?? []));
+    else if (entry.kind === "moved") {
+      const from = entry.manifestPath ?? [];
+      const to = entry.diskPath ?? [];
+      const src = manifestByKey.get(keyOf(entry.name, from));
+      if (!src) continue;
+      movedFrom.set(keyOf(entry.name, from), { diskPath: to });
+      movedTo.set(keyOf(entry.name, to), { manifestPath: from, item: src.item, owner: src.owner });
     }
   }
 
-  // Files on disk but not in project -> ADD
-  const toAdd: string[] = [];
-  for (const file of disk.files) {
-    if (!existingItemMap.has(file)) {
-      toAdd.push(file);
-    }
-  }
+  const display = (segs: string[], name: string): string =>
+    [relativePath, ...segs, name].filter((s) => s !== "").join("/");
+  const ops: SyncFileOps = { folderAdds: [], moves: [], adds: [], removes: [], folderRemoves: [] };
 
-  // Files in project but not on disk -> REMOVE
-  const diskFileSet = new Set(disk.files);
-  const toRemove: string[] = [];
-  for (const item of folder.items) {
-    if (!diskFileSet.has(item.name)) {
-      toRemove.push(item.name);
-    }
-  }
+  /** A manifest item's `-` change: a move-from half when classified moved, else a plain removal. */
+  const removalChange = (item: FileItem, segs: string[]): Change => {
+    const moved = movedFrom.get(keyOf(item.name, segs));
+    const change: Change = { section: config.key, action: "-", detail: display(segs, item.name) };
+    if (moved) change.movedTo = display(moved.diskPath, item.name);
+    if (withhold) change.withheld = true;
+    return change;
+  };
 
-  // Apply file removals
-  if (toRemove.length > 0) {
-    for (const name of toRemove) {
-      const display = relativePath ? `${relativePath}/${name}` : name;
-      changes.push({ section: config.key, action: "-", detail: display });
-    }
-    if (!dryRun) {
-      const removeSet = new Set(toRemove);
-      folder.items = folder.items.filter((item) => !removeSet.has(item.name));
-    }
-  }
+  const folderRemovalChange = (detail: string): Change => {
+    const change: Change = { section: config.key, action: "-", detail };
+    if (withhold) change.withheld = true;
+    return change;
+  };
 
-  // Apply file additions
-  for (const name of toAdd) {
-    const sid = generateSid(existingSids);
-    const display = relativePath ? `${relativePath}/${name}` : name;
-    changes.push({ section: config.key, action: "+", detail: `${display} (new, sid=${sid})` });
-    if (!dryRun) {
-      const newItem: FileItem = {
-        name,
-        type: inferMimeType(name),
-        sid,
-        [config.infoKey]: { purpose: "none" },
-      };
-      folder.items.push(newItem);
+  /** Everything inside a removed subfolder, depth-first: items before nested folders, each folder after its contents. */
+  const emitRemovedContents = (sub: FileFolder, segs: string[]): void => {
+    for (const item of sub.items) changes.push(removalChange(item, segs));
+    for (const nested of sub.subfolders) {
+      if (nested.name === undefined) continue;
+      const nestedSegs = [...segs, nested.name];
+      emitRemovedContents(nested, nestedSegs);
+      changes.push(folderRemovalChange(`${display(segs, nested.name)}/`));
     }
-  }
+  };
 
-  // Folders on disk but not in project -> ADD
-  const diskDirSet = new Set(disk.dirs);
-  const existingNamedSubfolderNames = new Set<string>();
-  for (const sub of folder.subfolders) {
-    if (sub.name !== undefined) {
-      existingNamedSubfolderNames.add(sub.name);
-    }
-  }
-
-  for (const dirName of disk.dirs) {
-    if (!existingNamedSubfolderNames.has(dirName)) {
-      const display = relativePath ? `${relativePath}/${dirName}/` : `${dirName}/`;
-      changes.push({ section: config.key, action: "+", detail: `${display} (new folder)` });
-      if (!dryRun) {
-        const newSubfolder: FileFolder = { items: [], subfolders: [], name: dirName };
-        folder.subfolders.push(newSubfolder);
-        existingSubfolderMap.set(dirName, newSubfolder);
+  const emit = (node: PlanNode): void => {
+    // Item removals (including move-from halves)
+    for (const item of node.target?.items ?? []) {
+      const key = keyOf(item.name, node.segs);
+      if (movedFrom.has(key) || missing.has(key)) {
+        changes.push(removalChange(item, node.segs));
+        if (!movedFrom.has(key) && !withhold) ops.removes.push({ owner: node.target!, item });
       }
     }
-  }
-
-  // Folders in project but not on disk -> REMOVE
-  const subfoldersToRemove: string[] = [];
-  for (const sub of folder.subfolders) {
-    if (sub.name !== undefined && !diskDirSet.has(sub.name)) {
-      subfoldersToRemove.push(sub.name);
-      const display = relativePath ? `${relativePath}/${sub.name}/` : `${sub.name}/`;
-      changes.push({ section: config.key, action: "-", detail: display });
+    // Item additions (including move-to halves)
+    for (const file of node.disk.files) {
+      const key = keyOf(file, node.segs);
+      const moved = movedTo.get(key);
+      if (moved) {
+        // Both halves of a move are withheld as a unit: the item stays put and nothing lands at the destination.
+        const addHalf: Change = {
+          section: config.key,
+          action: "+",
+          detail: `${display(node.segs, file)} (kept sid=${moved.item.sid})`,
+          movedFrom: display(moved.manifestPath, file),
+        };
+        if (withhold) addHalf.withheld = true;
+        changes.push(addHalf);
+        if (!withhold) ops.moves.push({ owner: moved.owner, item: moved.item, dest: node });
+      } else if (untracked.has(key)) {
+        const sid = generateSid(existingSids);
+        changes.push({ section: config.key, action: "+", detail: `${display(node.segs, file)} (new, sid=${sid})` });
+        ops.adds.push({
+          dest: node,
+          item: { name: file, type: inferMimeType(file), sid, [config.infoKey]: { purpose: "none" } },
+        });
+      }
     }
-  }
-  if (subfoldersToRemove.length > 0 && !dryRun) {
-    const removeSet = new Set(subfoldersToRemove);
-    folder.subfolders = folder.subfolders.filter((sub) => sub.name === undefined || !removeSet.has(sub.name));
-  }
-
-  // Recurse into existing and newly added subfolders
-  for (const dirName of disk.dirs) {
-    const sub = dryRun ? existingSubfolderMap.get(dirName) : folder.subfolders.find((s) => s.name === dirName);
-    if (!sub) {
-      // In dry-run mode, we may not have added it to the folder, so create a temp one for recursion
-      const tempSub: FileFolder = { items: [], subfolders: [], name: dirName };
-      syncFileFolder(
-        tempSub,
-        path.join(diskPath, dirName),
-        relativePath ? `${relativePath}/${dirName}` : dirName,
-        // For subdirectories, don't apply root-level ignorePaths/ignoreDirs
-        { ...config, ignorePaths: undefined, ignoreDirs: undefined },
-        existingSids,
-        changes,
-        dryRun,
-      );
-    } else {
-      syncFileFolder(
-        sub,
-        path.join(diskPath, dirName),
-        relativePath ? `${relativePath}/${dirName}` : dirName,
-        // For subdirectories, don't apply root-level ignorePaths/ignoreDirs
-        { ...config, ignorePaths: undefined, ignoreDirs: undefined },
-        existingSids,
-        changes,
-        dryRun,
-      );
+    // New folders
+    for (const child of node.children) {
+      if (child.isNew) {
+        changes.push({ section: config.key, action: "+", detail: `${display(node.segs, child.name!)}/ (new folder)` });
+        ops.folderAdds.push(child);
+      }
     }
+    // Removed folders: contained entries first, then the folder itself
+    for (const sub of node.removedSubs) {
+      emitRemovedContents(sub, [...node.segs, sub.name!]);
+      changes.push(folderRemovalChange(`${display(node.segs, sub.name!)}/`));
+      if (!withhold) ops.folderRemoves.push({ node, sub });
+    }
+    for (const child of node.children) emit(child);
+  };
+  emit(root);
+
+  if (dryRun) return;
+
+  // Apply: folder adds -> moves -> item adds -> item removes -> folder removes
+  for (const child of ops.folderAdds) {
+    const created: FileFolder = { items: [], subfolders: [], name: child.name };
+    child.target = created;
+    child.parent!.target!.subfolders.push(created);
   }
+  for (const mv of ops.moves) {
+    mv.owner.items = mv.owner.items.filter((i) => i !== mv.item);
+    mv.dest.target!.items.push(mv.item);
+  }
+  for (const add of ops.adds) add.dest.target!.items.push(add.item);
+  for (const rm of ops.removes) rm.owner.items = rm.owner.items.filter((i) => i !== rm.item);
+  for (const fr of ops.folderRemoves)
+    fr.node.target!.subfolders = fr.node.target!.subfolders.filter((s) => s !== fr.sub);
 }
 
 // ---------------------------------------------------------------------------
@@ -485,7 +591,11 @@ export function applyNameDrift(
   sectionKey: string,
   changes: Change[],
   dryRun: boolean,
+  opts?: { withhold?: boolean },
 ): void {
+  const withhold = opts?.withhold === true;
+  // A withheld removal is reported but never applied; a move is withheld as a unit (both halves).
+  const mutate = !dryRun && !withhold;
   for (const entry of entries) {
     switch (entry.kind) {
       case "untracked": {
@@ -501,11 +611,18 @@ export function applyNameDrift(
           f.items.includes(entry.name),
         );
         if (!target) throw unresolvable(sectionKey, entry);
-        if (!dryRun) target.items = target.items.filter((n) => n !== entry.name);
-        changes.push({ section: sectionKey, action: "-", detail: itemDisplay(entry.manifestPath ?? [], entry.name) });
+        if (mutate) target.items = target.items.filter((n) => n !== entry.name);
+        const fromDisplay = itemDisplay(entry.manifestPath ?? [], entry.name);
+        const removal: Change = { section: sectionKey, action: "-", detail: fromDisplay };
+        if (withhold) removal.withheld = true;
+        changes.push(removal);
         if (entry.kind === "moved") {
-          if (!dryRun) ensureFolder(folder, entry.diskPath ?? [], sectionKey).items.push(entry.name);
-          changes.push({ section: sectionKey, action: "+", detail: itemDisplay(entry.diskPath ?? [], entry.name) });
+          if (mutate) ensureFolder(folder, entry.diskPath ?? [], sectionKey).items.push(entry.name);
+          const toDisplay = itemDisplay(entry.diskPath ?? [], entry.name);
+          removal.movedTo = toDisplay;
+          const addHalf: Change = { section: sectionKey, action: "+", detail: toDisplay, movedFrom: fromDisplay };
+          if (withhold) addHalf.withheld = true;
+          changes.push(addHalf);
         }
         break;
       }
@@ -538,8 +655,10 @@ export function applyNameDrift(
         }
         if (!hit) throw unresolvable(sectionKey, entry);
         const { parent, child } = hit;
-        if (!dryRun) parent.subfolders = parent.subfolders.filter((s) => s !== child);
-        changes.push({ section: sectionKey, action: "-", detail: folderDisplay(pathSegs) });
+        if (mutate) parent.subfolders = parent.subfolders.filter((s) => s !== child);
+        const folderRemoval: Change = { section: sectionKey, action: "-", detail: folderDisplay(pathSegs) };
+        if (withhold) folderRemoval.withheld = true;
+        changes.push(folderRemoval);
         break;
       }
       case "dangling-ref":
@@ -553,13 +672,68 @@ export function applyNameDrift(
 // Main sync entry point
 // ---------------------------------------------------------------------------
 
+/**
+ * Render a sync run's changes as the lines `runSync` logs: one line per change
+ * (grouped by section, in `sectionKeys` order), a `(no changes)` line for each
+ * empty section, then the summary. `Updated <path>` is not included; `runSync`
+ * logs it itself after the write.
+ *
+ * This is the single renderer both the CLI and MCP surfaces reach through
+ * `runSync`, so their output cannot drift.
+ */
+export function formatSyncReport(changes: Change[], sectionKeys: string[]): string[] {
+  const lines: string[] = [];
+  for (const key of sectionKeys) {
+    const sectionChanges = changes.filter((c) => c.section === key);
+    if (sectionChanges.length === 0) {
+      lines.push(`[${key}]`.padEnd(16) + "(no changes)");
+    } else {
+      for (const change of sectionChanges) {
+        let line = `[${change.section}]`.padEnd(16) + `${change.action} ${change.detail}`;
+        if (change.movedTo !== undefined) line += ` (moved to ${change.movedTo})`;
+        else if (change.movedFrom !== undefined) line += ` (moved from ${change.movedFrom})`;
+        if (change.withheld) line += " [withheld]";
+        lines.push(line);
+      }
+    }
+  }
+
+  if (changes.length === 0) {
+    lines.push("\nAll sections in sync.");
+  } else {
+    const additions = changes.filter((c) => c.action === "+").length;
+    const removals = changes.filter((c) => c.action === "-").length;
+    lines.push(`\n${changes.length} change(s) found: ${additions} addition(s), ${removals} removal(s).`);
+    const withheld = changes.filter((c) => c.action === "-" && c.withheld).length;
+    if (withheld > 0) {
+      lines.push(
+        `${withheld} removal(s) withheld: sync-project applies a removal only with prune (CLI --prune, MCP prune: true). Restore the missing files, or sync with prune to remove the entries.`,
+      );
+    }
+  }
+  return lines;
+}
+
+/**
+ * Sync `project.c3proj` to match the files on disk, printing the report through `log`.
+ *
+ * **Additions are applied; removals are withheld by default (#346).** A manifest entry whose file is
+ * missing from disk is kept and reported as `- <name> [withheld]`, so a transient absence (a file not yet
+ * checked out, a mid-edit rename) cannot silently drop an entry and its SID. Pass `opts.prune: true` to
+ * apply the removals. A move (the same file found under another folder) is withheld as a whole by default,
+ * leaving the entry where it was; with `prune: true` the entry moves and keeps its SID.
+ * `dryRun` writes nothing regardless. `wrote` on the result says whether the manifest bytes changed.
+ */
 export function runSync(
   rootDir: string,
   dryRun: boolean,
   log: Logger = console.log,
   section?: string,
-  opts?: { beforeWrite?: (manifestPath: string) => void },
+  opts?: { beforeWrite?: (manifestPath: string) => void; prune?: boolean },
 ): SyncResult {
+  // Removals are withheld unless the caller passes prune: true (#346): a manifest entry whose file is
+  // missing is kept and reported, never silently dropped.
+  const withhold = opts?.prune !== true;
   const projectPath = path.join(rootDir, "project.c3proj");
 
   // readProjectManifest reads + parses + validates the manifest shape in one call.
@@ -598,7 +772,7 @@ export function runSync(
       continue;
     }
     const diskPath = path.join(rootDir, config.diskDir);
-    syncFileFolder(folder, diskPath, "", config, existingSids, allChanges, dryRun);
+    syncFileFolder(folder, diskPath, "", config, existingSids, allChanges, dryRun, { withhold });
   }
 
   // Sync name-based sections via detectManifestDrift + applyNameDrift
@@ -611,29 +785,14 @@ export function runSync(
       log(`Warning: ${s.section} not found in project.c3proj`);
       continue;
     }
-    applyNameDrift(folder, s.entries, s.section, allChanges, dryRun);
+    applyNameDrift(folder, s.entries, s.section, allChanges, dryRun, { withhold });
   }
 
   // Print results
   const sectionKeys = [...fileSections.map((s) => s.key), ...nameSections.map((s) => s.key)];
-  for (const key of sectionKeys) {
-    const sectionChanges = allChanges.filter((c) => c.section === key);
-    if (sectionChanges.length === 0) {
-      log(`[${key}]`.padEnd(16) + "(no changes)");
-    } else {
-      for (const change of sectionChanges) {
-        log(`[${change.section}]`.padEnd(16) + `${change.action} ${change.detail}`);
-      }
-    }
-  }
+  for (const line of formatSyncReport(allChanges, sectionKeys)) log(line);
 
   const totalChanges = allChanges.length;
-
-  if (totalChanges === 0) {
-    log("\nAll sections in sync.");
-  } else {
-    log(`\n${totalChanges} change(s) found.`);
-  }
 
   // Write updated project.c3proj
   // `project.c3proj` also has a second writer: `applyAddonMetadataSync` in

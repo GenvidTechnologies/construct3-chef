@@ -24,6 +24,7 @@ import { reportStrayFiles, runSync } from "../../src/c3/projectSync.js";
 import { buildScenario, cleanupScenarios } from "../helpers/syncScenarios.js";
 import { seedManifestDrift } from "../helpers/seedManifestDrift.js";
 import { runCli } from "../helpers/runCli.js";
+import { seedAbsentFile } from "../helpers/seedAbsentFile.js";
 import {
   snapshotTree,
   plantBrokenSheet,
@@ -1653,6 +1654,127 @@ describe("MCP server handler response shaping", () => {
         path.join(tmp, "objectTypes", "H5bSprite.json"),
         manifestOf(),
       ]);
+    });
+  });
+
+  // ── sync removals are withheld unless prune (#346) ────────────────────────
+
+  describe("sync removals are withheld unless prune (#346)", () => {
+    const manifestPath = (root: string): string => path.join(root, "project.c3proj");
+    const sampleGifIn = (root: string): unknown =>
+      JSON.parse(fs.readFileSync(manifestPath(root), "utf8")).rootFileFolders.general.items.find(
+        (i: { name: string }) => i.name === "sample.gif",
+      );
+    const textOf = (result: any): string => result.content[0].text;
+
+    it("SR346-R4: MCP scaffold-layout and scaffold-sprite keep the entry of a missing file and report it withheld", async () => {
+      const seededEntry = sampleGifIn(FIXTURE_DIR);
+      expect(seededEntry, "precondition: the fixture declares sample.gif").to.exist;
+      seedAbsentFile(tmp);
+
+      const layout = (await __getHandler("scaffold-layout")!(
+        {
+          source: "Gameplay/Main Layout.json",
+          name: "SR346R4Layout",
+          path: "SR346R4Layout.json",
+          eventSheet: "Event sheet 1",
+          regenerate: false,
+        },
+        makeExtra(),
+      )) as any;
+      const afterLayout = {
+        isError: layout.isError,
+        withheld: textOf(layout).includes("- sample.gif [withheld]"),
+        entry: sampleGifIn(tmp),
+      };
+
+      // Restore the declared-but-absent seed so the sprite call is judged on its own sync.
+      fs.copyFileSync(manifestPath(FIXTURE_DIR), manifestPath(tmp));
+      const sprite = (await __getHandler("scaffold-sprite")!(
+        { source: "Text", name: "SR346R4Sprite", regenerate: false },
+        makeExtra(),
+      )) as any;
+      const afterSprite = {
+        isError: sprite.isError,
+        withheld: textOf(sprite).includes("- sample.gif [withheld]"),
+        entry: sampleGifIn(tmp),
+      };
+
+      expect({ afterLayout, afterSprite }).to.deep.equal({
+        afterLayout: { isError: undefined, withheld: true, entry: seededEntry },
+        afterSprite: { isError: undefined, withheld: true, entry: seededEntry },
+      });
+    });
+
+    it("SR346-R5: MCP sync-project keeps a missing file's entry, and removes it only with prune: true", async () => {
+      const seededEntry = sampleGifIn(FIXTURE_DIR);
+      seedAbsentFile(tmp);
+
+      const syncDefault = (await __getHandler("sync-project")!({}, makeExtra())) as any;
+      const entryAfterDefault = sampleGifIn(tmp);
+      const validateWithheld = (await __getHandler("validate-project")!({}, makeExtra())) as any;
+      const syncPrune = (await __getHandler("sync-project")!({ prune: true }, makeExtra())) as any;
+      const entryAfterPrune = sampleGifIn(tmp);
+      const validatePruned = (await __getHandler("validate-project")!({}, makeExtra())) as any;
+
+      expect({
+        errors: [syncDefault.isError, syncPrune.isError],
+        entryAfterDefault,
+        validateWithheld: textOf(validateWithheld).includes("- sample.gif [withheld]"),
+        entryAfterPrune,
+        validatePruned: textOf(validatePruned).includes("All sections in sync."),
+      }).to.deep.equal({
+        errors: [undefined, undefined],
+        entryAfterDefault: seededEntry,
+        validateWithheld: true,
+        entryAfterPrune: undefined,
+        validatePruned: true,
+      });
+    });
+
+    it("SR346-R7: the CLI and the MCP sync-project render the same lines for the same seed", async () => {
+      const seed = (root: string): void => {
+        seedAbsentFile(root);
+        fs.writeFileSync(path.join(root, "scripts", "newScript.ts"), "export {};\n");
+      };
+      const cliRoot = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "c3chef-sr346-r7-"));
+      try {
+        fs.cpSync(FIXTURE_DIR, cliRoot, { recursive: true });
+        seed(cliRoot);
+        seed(tmp);
+
+        const cli = runCli(["sync-project", "--project-dir", cliRoot]);
+        const mcp = (await __getHandler("sync-project")!({}, makeExtra())) as any;
+
+        // Compare the sync report only: stop at the first [images] line, drop the manifest-write line,
+        // and mask the freshly minted SID of an added file (random per run).
+        const reportLines = (out: string): string[] => {
+          const lines = out.split("\n");
+          const end = lines.findIndex((l) => l.startsWith("[images]"));
+          return lines
+            .slice(0, end === -1 ? lines.length : end)
+            .filter((l) => !l.startsWith("Updated "))
+            .map((l) => l.replace(/sid=\d+/g, "sid=N"));
+        };
+        const cliLines = reportLines(cli.stdout);
+        const mcpLines = reportLines(textOf(mcp));
+
+        expect({
+          equal: cliLines.join("\n") === mcpLines.join("\n"),
+          cliHasAddition: cliLines.some((l) => /\] +\+ /.test(l)),
+          cliHasWithheld: cliLines.some((l) => l.includes("[withheld]")),
+          mcpHasAddition: mcpLines.some((l) => /\] +\+ /.test(l)),
+          mcpHasWithheld: mcpLines.some((l) => l.includes("[withheld]")),
+        }).to.deep.equal({
+          equal: true,
+          cliHasAddition: true,
+          cliHasWithheld: true,
+          mcpHasAddition: true,
+          mcpHasWithheld: true,
+        });
+      } finally {
+        fs.rmSync(cliRoot, { recursive: true, force: true });
+      }
     });
   });
 

@@ -50,7 +50,7 @@ If you install globally or add to `package.json` scripts, you can omit `npx`.
 | `apply-recipe <file>` | Apply an event sheet mutation recipe |
 | `rename-symbol <from> <to>` | Rename a symbol across all event sheet scripts |
 | `validate-project` | Dry-run: check that `project.c3proj` matches files on disk |
-| `sync-project` | Write `project.c3proj` to match files on disk |
+| `sync-project` | Write `project.c3proj` to match files on disk; removals are withheld unless `--prune` |
 | `scaffold-layout` | Clone a layout with remapped UIDs/SIDs |
 | `scaffold-sprite` | Clone a sprite objectType with remapped SIDs and copied images |
 | `remove-layer` | Remove a layer from a layout |
@@ -166,7 +166,7 @@ The server can host more than one C3 project root at once (see [Multi-project su
 | Tool | Description |
 | ---- | ----------- |
 | `apply-recipe` | Apply a recipe JSON string, optionally regenerate extracted/ |
-| `sync-project` | Sync project.c3proj to match disk |
+| `sync-project` | Sync project.c3proj to match disk; removals are withheld unless `prune: true` |
 | `scaffold-layout` | Clone a layout with new UIDs/SIDs |
 | `scaffold-sprite` | Clone a sprite objectType with new SIDs and copied images |
 | `remove-layer` | Remove a layer from a layout; strict by default, with `cascade` / `removeInstances` overrides |

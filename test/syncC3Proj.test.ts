@@ -1,12 +1,13 @@
 import { describe, it, beforeEach, afterEach } from "mocha";
 import { assert } from "chai";
 import tmp from "tmp";
-import { mkdirSync, writeFileSync, readFileSync, cpSync, utimesSync, statSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, cpSync, utimesSync, statSync, renameSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildScenario, cleanupScenarios } from "./helpers/syncScenarios.js";
 import { runCli } from "./helpers/runCli.js";
+import { seedAbsentFile } from "./helpers/seedAbsentFile.js";
 import {
   detectManifestDrift,
   detectImageDrift,
@@ -24,6 +25,7 @@ import {
   applyNameDrift,
   reportImageDrift,
   runSync,
+  formatSyncReport,
   type FileItem,
   type FileFolder,
   type NameFolder,
@@ -732,7 +734,7 @@ describe("syncC3Proj", () => {
       manifest.eventSheets.items.push("SpuriousGhostSheet");
       writeFileSync(manifestPath, serializeProjectManifest(manifest));
 
-      const result = runSync(tmpDir, false, () => {});
+      const result = runSync(tmpDir, false, () => {}, undefined, { prune: true });
 
       assert.isAbove(result.changes.length, 0, "seeding bug: sync reported no changes");
       assert.equal(result.clean, false);
@@ -774,6 +776,7 @@ describe("syncC3Proj", () => {
       const seeded = readFileSync(manifestPath, "utf-8");
       const calls: Array<{ arg: string; bytes: string }> = [];
       runSync(tmpDir, false, () => {}, undefined, {
+        prune: true,
         beforeWrite: (p) => {
           calls.push({ arg: p, bytes: readFileSync(manifestPath, "utf-8") });
         },
@@ -821,7 +824,7 @@ describe("timelines transitions container (#310)", function () {
   /** Write-mode sync of one scenario's timelines, then re-read the tree and re-validate with a dry run. */
   function converge(name: Parameters<typeof buildScenario>[0]) {
     const { root, manifestPath } = buildScenario(name);
-    const changes = render(runSync(root, false, () => {}, "timelines").changes);
+    const changes = render(runSync(root, false, () => {}, "timelines", { prune: true }).changes);
     const timelines = JSON.parse(readFileSync(manifestPath, "utf8")).timelines as NameFolder;
     const revalidate = render(runSync(root, true, () => {}, "timelines").changes);
     return { changes, timelines, revalidate };
@@ -995,7 +998,7 @@ describe("timelines transitions container (#310)", function () {
     });
     writeFileSync(manifestPath, JSON.stringify(manifest, null, "\t"));
     const dry = render(runSync(root, true, () => {}, "eventSheets").changes);
-    const changes = render(runSync(root, false, () => {}, "eventSheets").changes);
+    const changes = render(runSync(root, false, () => {}, "eventSheets", { prune: true }).changes);
     const revalidate = render(runSync(root, true, () => {}, "eventSheets").changes);
     assert.deepEqual(
       { dry, changes, revalidate },
@@ -1065,7 +1068,7 @@ describe("repeated names converge under sync (#343)", function () {
     const { root, manifestPath } = seed((es) => {
       es.items.push("DupGhost", "DupGhost");
     });
-    const first = render(runSync(root, false, () => {}, "eventSheets").changes);
+    const first = render(runSync(root, false, () => {}, "eventSheets", { prune: true }).changes);
     const after = sheetsOf(manifestPath);
     const second = render(runSync(root, true, () => {}, "eventSheets").changes);
     assert.deepEqual(
@@ -1078,7 +1081,7 @@ describe("repeated names converge under sync (#343)", function () {
     const { root, manifestPath } = seed((es) => {
       es.items.push("Event sheet 1");
     });
-    const first = render(runSync(root, false, () => {}, "eventSheets").changes);
+    const first = render(runSync(root, false, () => {}, "eventSheets", { prune: true }).changes);
     const after = sheetsOf(manifestPath);
     const second = render(runSync(root, true, () => {}, "eventSheets").changes);
     assert.deepEqual(
@@ -1101,6 +1104,282 @@ describe("repeated names converge under sync (#343)", function () {
     assert.deepEqual(
       { first, gameplayItems: after.subfolders.find((s) => s.name === "Gameplay")?.items },
       { first: [], gameplayItems: ["Event sheet 1", "Event sheet 1"] },
+    );
+  });
+});
+
+describe("sync-project file-section moves and subfolder contents (#346)", function () {
+  this.timeout(30_000);
+
+  const SAMPLE_SID = 542941095423235;
+
+  function copyFixture(): { root: string; manifestPath: string } {
+    const root = createTmpDir();
+    cpSync(sampleProjectDir, root, { recursive: true });
+    return { root, manifestPath: path.join(root, "project.c3proj") };
+  }
+  const readManifest = (manifestPath: string) => JSON.parse(readFileSync(manifestPath, "utf8"));
+  const writeManifest = (manifestPath: string, m: unknown) =>
+    writeFileSync(manifestPath, JSON.stringify(m, null, "\t"));
+  const general = (m: any): FileFolder => m.rootFileFolders.general;
+  const sub = (m: any, name: string): FileFolder | undefined => general(m).subfolders.find((s) => s.name === name);
+  const fileItem = (name: string, sid: number): FileItem => ({
+    name,
+    type: "application/octet-stream",
+    sid,
+    "file-info": { purpose: "none" },
+  });
+
+  it("SR346-R6: formatSyncReport renders moves, withheld removals, the counts and the advisory", () => {
+    const changes: Change[] = [
+      { section: "general", action: "+", detail: "new.gif" },
+      { section: "general", action: "-", detail: "gone.gif", withheld: true },
+      { section: "general", action: "-", detail: "old.gif" },
+      { section: "eventSheets", action: "-", detail: "A/Sheet", movedTo: "B/Sheet" },
+      { section: "eventSheets", action: "+", detail: "B/Sheet", movedFrom: "A/Sheet" },
+    ];
+    assert.deepEqual(formatSyncReport(changes, ["general", "eventSheets", "layouts"]), [
+      "[general]       + new.gif",
+      "[general]       - gone.gif [withheld]",
+      "[general]       - old.gif",
+      "[eventSheets]   - A/Sheet (moved to B/Sheet)",
+      "[eventSheets]   + B/Sheet (moved from A/Sheet)",
+      "[layouts]       (no changes)",
+      "\n5 change(s) found: 2 addition(s), 3 removal(s).",
+      "1 removal(s) withheld: sync-project applies a removal only with prune (CLI --prune, MCP prune: true). Restore the missing files, or sync with prune to remove the entries.",
+    ]);
+  });
+
+  it("SR346-R9: a declared subfolder with no directory on disk reports each contained entry and then itself, and write mode removes it", () => {
+    const { root, manifestPath } = copyFixture();
+    const m = readManifest(manifestPath);
+    general(m).subfolders.push({
+      name: "sub",
+      items: [fileItem("a.gif", 311111111111111), fileItem("b.gif", 322222222222222)],
+      subfolders: [],
+    });
+    writeManifest(manifestPath, m);
+
+    const summarize = (r: ReturnType<typeof runSync>) => ({
+      details: r.changes.map((c) => `${c.action} ${c.detail}`),
+      withheld: r.changes.map((c) => c.withheld === true),
+      removed: r.sections.general.removed,
+    });
+    const listed = ["- sub/a.gif", "- sub/b.gif", "- sub/"];
+    assert.deepEqual(summarize(runSync(root, true, () => {}, "general", { prune: true })), {
+      details: listed,
+      withheld: [false, false, false],
+      removed: 3,
+    });
+    assert.deepEqual(summarize(runSync(root, true, () => {}, "general", { prune: false })), {
+      details: listed,
+      withheld: [true, true, true],
+      removed: 3,
+    });
+
+    runSync(root, false, () => {}, "general", { prune: true });
+    assert.isUndefined(sub(readManifest(manifestPath), "sub"));
+  });
+
+  it("SR346-R11: a file moved into a new folder keeps its sid, type and file-info (a), and a file moved out of a vanished folder keeps its sid (c)", () => {
+    // (a) sample.gif moved into a new files/sub/
+    const a = copyFixture();
+    const seeded = general(readManifest(a.manifestPath)).items.find((i) => i.name === "sample.gif")!;
+    assert.equal(seeded.sid, SAMPLE_SID);
+    mkdirSync(path.join(a.root, "files", "sub"));
+    renameSync(path.join(a.root, "files", "sample.gif"), path.join(a.root, "files", "sub", "sample.gif"));
+    const aBefore = readFileSync(a.manifestPath, "utf8");
+    // (b) without prune the move is withheld as a unit; only the empty new folder lands
+    const withheldB = runSync(a.root, false, () => {}, "general", { prune: false });
+    const afterB = readManifest(a.manifestPath);
+    assert.deepEqual(
+      {
+        rootItem: general(afterB).items.find((i) => i.name === "sample.gif"),
+        subItems: sub(afterB, "sub")?.items,
+        minusWithheld: withheldB.changes.filter((c) => c.action === "-").every((c) => c.withheld === true),
+        plusHalf: withheldB.changes
+          .filter((c) => c.movedFrom !== undefined)
+          .map((c) => ({ detail: c.detail, withheld: c.withheld })),
+      },
+      {
+        rootItem: seeded,
+        subItems: [],
+        minusWithheld: true,
+        plusHalf: [{ detail: `sub/sample.gif (kept sid=${SAMPLE_SID})`, withheld: true }],
+      },
+    );
+    writeFileSync(a.manifestPath, aBefore);
+
+    const resultA = runSync(a.root, false, () => {}, "general", { prune: true });
+    const afterA = readManifest(a.manifestPath);
+    assert.deepEqual(
+      {
+        moved: sub(afterA, "sub")?.items.find((i) => i.name === "sample.gif"),
+        rootHas: general(afterA).items.some((i) => i.name === "sample.gif"),
+        changes: resultA.changes.map((c) => ({ ...c })),
+      },
+      {
+        moved: seeded,
+        rootHas: false,
+        changes: [
+          { section: "general", action: "-", detail: "sample.gif", movedTo: "sub/sample.gif" },
+          { section: "general", action: "+", detail: "sub/ (new folder)" },
+          {
+            section: "general",
+            action: "+",
+            detail: `sub/sample.gif (kept sid=${SAMPLE_SID})`,
+            movedFrom: "sample.gif",
+          },
+        ],
+      },
+    );
+
+    // (c) manifest declares sub/sample.gif, the file is at the root and sub/ is gone
+    const c = copyFixture();
+    const mc = readManifest(c.manifestPath);
+    const idx = general(mc).items.findIndex((i) => i.name === "sample.gif");
+    const [item] = general(mc).items.splice(idx, 1);
+    general(mc).subfolders.push({ name: "sub", items: [item], subfolders: [] });
+    writeManifest(c.manifestPath, mc);
+    runSync(c.root, false, () => {}, "general", { prune: true });
+    const afterC = readManifest(c.manifestPath);
+    assert.deepEqual(
+      { root: general(afterC).items.find((i) => i.name === "sample.gif"), sub: sub(afterC, "sub") },
+      { root: item, sub: undefined },
+    );
+  });
+
+  it("SR346-R12: a name declared in two folders is never paired as a move; the new copy gets a fresh sid", () => {
+    const { root, manifestPath } = copyFixture();
+    const m = readManifest(manifestPath);
+    general(m).subfolders.push(
+      { name: "a", items: [fileItem("x.txt", 323456789012345)], subfolders: [] },
+      { name: "b", items: [fileItem("x.txt", 423456789012345)], subfolders: [] },
+    );
+    writeManifest(manifestPath, m);
+    mkdirSync(path.join(root, "files", "a"));
+    mkdirSync(path.join(root, "files", "c"));
+    writeFileSync(path.join(root, "files", "a", "x.txt"), "");
+    writeFileSync(path.join(root, "files", "c", "x.txt"), "");
+
+    const result = runSync(root, false, () => {}, "general", { prune: true });
+    const after = readManifest(manifestPath);
+    const fresh = sub(after, "c")?.items[0].sid;
+    assert.deepEqual(
+      {
+        paired: result.changes.some((c) => c.movedTo !== undefined || c.movedFrom !== undefined),
+        freshIsNew: fresh !== undefined && fresh !== 323456789012345 && fresh !== 423456789012345,
+        aKept: sub(after, "a")?.items[0].sid,
+        bGone: sub(after, "b"),
+      },
+      { paired: false, freshIsNew: true, aKept: 323456789012345, bGone: undefined },
+    );
+  });
+
+  it("SR346-R10: every removal class is withheld without prune (nothing written, equal dry and write lists) and applied with prune", () => {
+    const editManifest = (manifestPath: string, edit: (m: any) => void): void => {
+      const m = readManifest(manifestPath);
+      edit(m);
+      writeManifest(manifestPath, m);
+    };
+    interface RemovalSeed {
+      section: string;
+      seed: (root: string, manifestPath: string) => void;
+    }
+    const seeds: Record<string, RemovalSeed> = {
+      fileItem: { section: "general", seed: (root) => seedAbsentFile(root) },
+      fileSubfolder: {
+        section: "general",
+        seed: (_root, mp) =>
+          editManifest(mp, (m) =>
+            general(m).subfolders.push({ name: "sub", items: [fileItem("a.gif", 311111111111111)], subfolders: [] }),
+          ),
+      },
+      absentSectionDir: { section: "general", seed: (root) => rmSync(path.join(root, "files"), { recursive: true }) },
+      nameMissing: {
+        section: "eventSheets",
+        seed: (_root, mp) => editManifest(mp, (m) => m.eventSheets.items.push("Ghost")),
+      },
+      nameMoved: {
+        section: "eventSheets",
+        seed: (_root, mp) =>
+          editManifest(mp, (m) => {
+            const ui = m.eventSheets.subfolders.find((s: NameFolder) => s.name === "UI");
+            m.eventSheets.items.push(...ui.items.splice(0));
+          }),
+      },
+      folderMissing: {
+        section: "eventSheets",
+        seed: (_root, mp) =>
+          editManifest(mp, (m) => m.eventSheets.subfolders.push({ name: "Empty", items: [], subfolders: [] })),
+      },
+      staleDuplicate: {
+        section: "eventSheets",
+        seed: (_root, mp) => editManifest(mp, (m) => m.eventSheets.items.push("Event sheet 1")),
+      },
+    };
+
+    const observe = (seed: RemovalSeed) => {
+      const build = () => {
+        const c = copyFixture();
+        seed.seed(c.root, c.manifestPath);
+        return c;
+      };
+      const lines = (r: ReturnType<typeof runSync>) => r.changes.map((c) => `${c.action} ${c.detail}`);
+      const withheldRun = build();
+      const before = readFileSync(withheldRun.manifestPath, "utf8");
+      const dry = runSync(withheldRun.root, true, () => {}, seed.section);
+      const write = runSync(withheldRun.root, false, () => {}, seed.section);
+      const minus = write.changes.filter((c) => c.action === "-");
+      const pruned = build();
+      return {
+        wrote: write.wrote,
+        unchanged: readFileSync(withheldRun.manifestPath, "utf8") === before,
+        allMinusWithheld: minus.length > 0 && minus.every((c) => c.withheld === true),
+        listsEqual: JSON.stringify(lines(dry)) === JSON.stringify(lines(write)),
+        pruneWrote: runSync(pruned.root, false, () => {}, seed.section, { prune: true }).wrote,
+      };
+    };
+
+    const expected = { wrote: false, unchanged: true, allMinusWithheld: true, listsEqual: true, pruneWrote: true };
+    assert.deepEqual(
+      Object.fromEntries(Object.entries(seeds).map(([cls, s]) => [cls, observe(s)])),
+      Object.fromEntries(Object.keys(seeds).map((cls) => [cls, expected])),
+    );
+  });
+
+  it("SR346-R13: a present scripts/helper.js declared under script is kept (withheld) by default and removed with prune", () => {
+    const build = () => {
+      const c = copyFixture();
+      const m = readManifest(c.manifestPath);
+      m.rootFileFolders.script.items.push({
+        name: "helper.js",
+        type: "application/javascript",
+        sid: 311111111111111,
+        "script-info": { purpose: "none" },
+      });
+      writeManifest(c.manifestPath, m);
+      writeFileSync(path.join(c.root, "scripts", "helper.js"), "");
+      return c;
+    };
+    const has = (manifestPath: string) =>
+      readManifest(manifestPath).rootFileFolders.script.items.some((i: FileItem) => i.name === "helper.js");
+
+    const kept = build();
+    const keptResult = runSync(kept.root, false, () => {}, "script", { prune: false });
+    const removed = build();
+    runSync(removed.root, false, () => {}, "script", { prune: true });
+    assert.deepEqual(
+      {
+        keptDeclared: has(kept.manifestPath),
+        keptWithheld: keptResult.changes.map((c) => ({ detail: c.detail, withheld: c.withheld })),
+        prunedDeclared: has(removed.manifestPath),
+      },
+      {
+        keptDeclared: true,
+        keptWithheld: [{ detail: "helper.js", withheld: true }],
+        prunedDeclared: false,
+      },
     );
   });
 });
