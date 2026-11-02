@@ -26,6 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`sync-project` and `validate-project` sync the `video` file section**
+  (`videos/`, `.webm` and `.mp4`, `--section video`); every full report gains a
+  `[video]` line
+  ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358)).
+  Known limitation: c3source types every `.webm` as `audio/webm; codecs=opus`,
+  and the folder name and `file-info` key are not attested by an editor-saved
+  project
+  ([c3source#113](https://github.com/GenvidTechnologies/c3source/issues/113)).
+
 ### Changed
 
 - **Breaking: `sync-project` withholds removals unless `--prune` is passed.**
@@ -59,8 +70,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   though still removed with prune
   ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354))
   ([#346](https://github.com/GenvidTechnologies/construct3-chef/issues/346)).
+- **`@genvidtech/c3source` is updated to `^3.1.0`**
+  ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358)).
 
 ### Fixed
+
+- **File-section sync no longer fails on a link loop or a dangling link, and
+  skips editor-local files at every depth.** c3source 3.1.0's drift walk
+  follows links and would have thrown `ELOOP` or `ENOENT` under `files/`,
+  `scripts/` and the other file folders, so chef keeps its own walk there.
+  Editor-local files are no longer added at any depth in any file section. A
+  manifest entry already declared with such a name is left alone. A manifest
+  item whose only disk copy is under an editor-local folder is now a withheld
+  removal, not a withheld move
+  ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358),
+  ADR 0066). Known limitations: a link loop under a name-section folder still
+  fails the run with `ELOOP`
+  ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)),
+  and a present non-`.ts` script is still reported as missing
+  ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354)).
 
 - **Windows reserved device names are refused in every write target.** A path
   segment that is a reserved device name (`NUL`, `con.txt`, `COM1`, `CONIN$`) is
