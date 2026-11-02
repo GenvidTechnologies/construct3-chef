@@ -2811,3 +2811,143 @@ describe("scaffold-layout with a missing SID registry (#316)", function () {
     expect(fs.existsSync(path.join(root, "layouts", "I316", "I316Layout.json"))).to.equal(true);
   });
 });
+
+// ── #337: scaffold-layout checks sid-registry freshness ──────────────────────
+
+describe("scaffold-layout checks sid-registry freshness (#337)", function () {
+  this.timeout(30_000);
+  const BASELINE = new Date("2026-01-01T00:00:00Z");
+  const NEWER = new Date(BASELINE.getTime() + 100_000);
+  let tmp: string | undefined;
+  let watcher: FakeWatcher;
+
+  beforeEach(() => {
+    watcher = makeFakeWatcher(5);
+  });
+
+  afterEach(() => {
+    if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+    tmp = undefined;
+    __resetTestState();
+  });
+
+  /** relPath -> sha256 of every file under root, extracted/ included. */
+  function snapshotWholeRoot(root: string): Map<string, string> {
+    const out = new Map<string, string>();
+    const walk = (d: string): void => {
+      for (const name of fs.readdirSync(d)) {
+        const full = path.join(d, name);
+        if (fs.statSync(full).isDirectory()) walk(full);
+        else
+          out.set(
+            path.relative(root, full).split(path.sep).join("/"),
+            createHash("sha256").update(fs.readFileSync(full)).digest("hex"),
+          );
+      }
+    };
+    walk(root);
+    return out;
+  }
+
+  /**
+   * Fresh fixture copy with every source dir and extracted/ at BASELINE. A stale
+   * project has one real layout newer than the registry. The dirty flag is set
+   * to false last, so staleness can only come from the mtime scan.
+   */
+  function project(stale: boolean): string {
+    tmp = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "c3chef-i337-"));
+    fs.cpSync(FIXTURE_DIR, tmp, { recursive: true });
+    __setProjectRoot(tmp);
+    __setTestWatcher(watcher as any);
+    for (const d of SID_SOURCE_DIRS) {
+      const dir = path.join(tmp, d);
+      if (fs.existsSync(dir)) setAllMtimesRecursive(dir, BASELINE);
+    }
+    setAllMtimesRecursive(path.join(tmp, "extracted"), BASELINE);
+    if (stale) fs.utimesSync(path.join(tmp, "layouts", "Gameplay", "Main Layout.json"), NEWER, NEWER);
+    __setExtractedDirty(false);
+    expect(__getExtractedDirty(), "dirty flag must be clear before the call").to.equal(false);
+    return tmp;
+  }
+
+  const callScaffold = async (txId?: string): Promise<any> =>
+    __getHandler("scaffold-layout")!(
+      {
+        source: "Gameplay/Main Layout.json",
+        name: "I337Layout",
+        path: "I337/I337Layout.json",
+        eventSheet: "Event sheet 1",
+        regenerate: false,
+        ...(txId === undefined ? {} : { txId }),
+      },
+      makeExtra(),
+    );
+
+  const callApply = async (): Promise<any> =>
+    __getHandler("apply-recipe")!({ recipe: VALID_RECIPE, txId: "default:5", regenerate: false }, makeExtra());
+
+  function observe(result: any, root: string, before: Map<string, string>) {
+    const lines: string[] = result.content
+      .map((b: any) => b.text)
+      .join("\n")
+      .split("\n");
+    const token = lines.pop();
+    return {
+      isError: result.isError,
+      message: lines.join("\n"),
+      token,
+      bumped: watcher.bumped,
+      dirty: __getExtractedDirty(),
+      treeUnchanged: JSON.stringify([...snapshotWholeRoot(root)]) === JSON.stringify([...before]),
+    };
+  }
+
+  it("I337-R1: stale registry rejects scaffold-layout called with the current txId", async () => {
+    const root = project(true);
+    const before = snapshotWholeRoot(root);
+    const result = await callScaffold("default:5");
+    expect(observe(result, root, before)).to.deep.equal({
+      isError: true,
+      message: "State changed (expected default:5, got default:6) — re-validate before scaffolding",
+      token: "txId: default:6",
+      bumped: 1,
+      dirty: true,
+      treeUnchanged: true,
+    });
+  });
+
+  it("I337-R1: stale registry rejects apply-recipe called with the current txId the same way", async () => {
+    const root = project(true);
+    const before = snapshotWholeRoot(root);
+    const result = await callApply();
+    expect(observe(result, root, before)).to.deep.equal({
+      isError: true,
+      message: "State changed (expected default:5, got default:6) — re-validate before applying",
+      token: "txId: default:6",
+      bumped: 1,
+      dirty: true,
+      treeUnchanged: true,
+    });
+  });
+
+  it("I337-R3: registry not stale, scaffold-layout with the current txId succeeds and writes the layout", async () => {
+    const root = project(false);
+    const result = await callScaffold("default:5");
+    expect({
+      isError: result.isError,
+      written: fs.existsSync(path.join(root, "layouts", "I337", "I337Layout.json")),
+      bumped: watcher.bumped,
+    }).to.deep.equal({ isError: undefined, written: true, bumped: 1 });
+  });
+
+  it("I337-R4: stale registry with no txId still scaffolds (detect only), bumping on detection and on write", async () => {
+    const root = project(true);
+    const result = await callScaffold();
+    expect({
+      isError: result.isError,
+      written: fs.existsSync(path.join(root, "layouts", "I337", "I337Layout.json")),
+      bumped: watcher.bumped,
+      dirty: __getExtractedDirty(),
+    }).to.deep.equal({ isError: undefined, written: true, bumped: 2, dirty: true });
+  });
+});

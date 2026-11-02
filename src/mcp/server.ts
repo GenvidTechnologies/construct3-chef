@@ -1618,6 +1618,10 @@ regP(
     return ctx.rwlock.write(
       withMcpErrors(
         async () => {
+          // Refresh ctx.extractedDirty before the txId check, as apply-recipe does — catches
+          // external edits the watcher may have missed, so a stale registry doesn't seed the
+          // scaffold's SID minting with SIDs that already exist on disk.
+          checkDerivedFreshness(ctx, path.join(ctx.extractedDir, "sid-registry.txt"));
           const shouldRegenerate = regenerate !== false;
           const totalSteps = shouldRegenerate ? 8 : 2; // clone + sync + 6 generators
           const { log, text } = bufferingLogger();
