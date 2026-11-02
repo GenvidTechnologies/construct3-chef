@@ -9,6 +9,7 @@ import {
   detectManifestDrift,
   detectStrayFiles,
   diffNameMaps,
+  C3_ROOT_FILE_FOLDERS,
   EXTENSION_FILE_TYPES,
   fileTypeForName,
   type DriftEntry,
@@ -116,6 +117,10 @@ export const FILE_SECTIONS: FileSectionConfig[] = [
   },
   { key: "sound", diskDir: "sounds", infoKey: "file-info", extensions: [".webm"] },
   { key: "music", diskDir: "music", infoKey: "file-info", extensions: [".webm"] },
+  // The `videos` folder name, the `file-info` key and the `.webm` item type are not attested by an
+  // editor-saved project. The type comes from c3source's `fileTypeForName`, which gives every `.webm`
+  // `audio/webm; codecs=opus` (GenvidTechnologies/c3source#113).
+  { key: "video", diskDir: C3_ROOT_FILE_FOLDERS.video, infoKey: "file-info", extensions: [".webm", ".mp4"] },
   { key: "font", diskDir: "fonts", infoKey: "file-info", extensions: [".ttf"] },
   { key: "icon", diskDir: "icons", infoKey: "icon-info", extensions: [".png"] },
   { key: "general", diskDir: "files", infoKey: "file-info" }, // no extension filter — mixed types
@@ -227,7 +232,7 @@ export interface DiskTree {
  *    ["tsconfig.json"]` and `ignoreDirs: ["ts-defs"]` (both on the `script` entry of
  *    `FILE_SECTIONS`) ARE covered
  *    by c3source's `EDITOR_LOCAL_EXCLUSIONS`, but the `extensions` filters
- *    (`.ts` / `.webm` / `.ttf` / `.png`, on the `script`, `sound`, `music`, `font` and `icon` entries) encode
+ *    (`.ts` / `.webm` / `.mp4` / `.ttf` / `.png`, on the `script`, `sound`, `music`, `video`, `font` and `icon` entries) encode
  *    manifest-section MEMBERSHIP semantics, about which upstream has — and
  *    should have — no opinion.
  *
