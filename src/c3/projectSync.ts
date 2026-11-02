@@ -777,7 +777,12 @@ export function runSync(
 
   // Sync name-based sections via detectManifestDrift + applyNameDrift
   const nameKeys = new Set(nameSections.map((c) => c.key));
-  const drift = detectManifestDrift(rootDir, project);
+  // chef syncs file sections with its own walk (ADR 0066) and discards upstream's file-section drift.
+  // Leaving rootFileFolders out of the view skips those walks: since c3source 3.1.0 they follow links
+  // (statSync), so a loop throws ELOOP and a dangling link throws ENOENT. The view is read-only:
+  // the write below still serializes `project` itself (identity rule, ADR 0024).
+  const { rootFileFolders: _fileSections, ...nameView } = project;
+  const drift = detectManifestDrift(rootDir, nameView);
   for (const s of drift.sections) {
     if (!nameKeys.has(s.section)) continue; // exclude rootFileFolders.*, models3d, containers, images
     const folder: NameFolder = project[s.section];
