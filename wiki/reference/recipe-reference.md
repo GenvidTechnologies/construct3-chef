@@ -753,6 +753,9 @@ Its `params` are keyed `first-value`, `comparison` (the integer above), and `sec
     "params": [ { "name": "p1", "type": "string", "initialValue": "" } ],
     "returnType": "none",
     "async": false,
+    "copyPicked": false,
+    "description": "What the function does",
+    "category": "CategoryName",
     "actions": [...],
     "children": [...]
   }
@@ -762,6 +765,11 @@ Its `params` are keyed `first-value`, `comparison` (the integer above), and `sec
     "object": "ObjectClass",
     "aceType": "action",
     "params": [ { "name": "p1", "type": "string" } ],
+    "returnType": "none",
+    "async": false,
+    "copyPicked": false,
+    "description": "What the ACE does",
+    "category": "CategoryName",
     "actions": [...],
     "children": [...]
   }
@@ -772,6 +780,19 @@ Its `params` are keyed `first-value`, `comparison` (the integer above), and `sec
 ```
 
 The `function-block` shorthand accepts `"actions": [...]` directly at the top level — no nested child block needed.
+
+The optional keys below are all accepted by `custom-ace-block`, and all except `aceType` by `function-block`. The builder writes an omitted key with its default:
+
+| Shorthand key | On-disk field | Default when omitted | Applies to |
+| ------------- | ------------- | -------------------- | ---------- |
+| `description` | `functionDescription` | `""` | both |
+| `category` | `functionCategory` | `""` | both |
+| `returnType` | `functionReturnType` | `"none"` | both |
+| `async` | `functionIsAsync` | `false` | both |
+| `copyPicked` | `functionCopyPicked` | `false` | both |
+| `aceType` | `aceType` | `"action"` | `custom-ace-block` only |
+
+Set `category` and `description` in the recipe. Do not patch them into the event-sheet JSON after the apply.
 
 ---
 
