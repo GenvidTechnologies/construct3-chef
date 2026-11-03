@@ -1068,8 +1068,9 @@ async function applyRecipeWithConcurrency(
     withMcpErrors(
       async () => {
         // Refresh ctx.extractedDirty before the txId check — catches external edits the
-        // file ctx.watcher may have missed, so a stale registry doesn't seed `mintUniqueSid`
-        // with SIDs that already exist on disk.
+        // file ctx.watcher may have missed, so a caller holding a pre-stale txId is rejected.
+        // Detection only: a call without a txId still seeds `mintUniqueSid` from the registry
+        // as it is, plus the on-disk SIDs of the recipe's target layouts (`seedLayoutSids`).
         checkDerivedFreshness(ctx, path.join(ctx.extractedDir, "sid-registry.txt"));
         const shouldRegenerate = opts.regenerate !== false;
         const totalSteps = shouldRegenerate ? 7 : 1; // apply + 6 generators
