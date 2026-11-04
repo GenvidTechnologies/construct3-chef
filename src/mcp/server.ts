@@ -162,7 +162,10 @@ const PROJECT_PARAM = {
  */
 function regP(
   name: string,
-  config: Record<string, unknown> & { inputSchema?: Record<string, import("zod").ZodTypeAny> },
+  config: Record<string, unknown> & {
+    inputSchema?: Record<string, import("zod").ZodTypeAny>;
+    outputSchema?: Record<string, import("zod").ZodTypeAny>;
+  },
   handler: (ctx: ProjectContext, args: any, extra: Extra) => Promise<CallToolResult>,
 ): void {
   reg(
