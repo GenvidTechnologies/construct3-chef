@@ -5,6 +5,7 @@
  * key-identity fixes #252 and #273, not published API.
  */
 import path from "node:path";
+import { objectClassNameIssue, objectClassNameIssueText } from "./c3NameRules.js";
 import { nameSegmentIssueText, segmentIssueText, segmentsIssue, type SegmentIssue } from "./pathSegments.js";
 
 /** The two recipe sections whose keys name a JSON file under a fixed top-level project folder. */
@@ -124,6 +125,8 @@ export function objectTypeEntryIssue(name: string, folder: string | undefined): 
       }
     }
   }
+  const classNameIssue = objectClassNameIssue(name);
+  if (classNameIssue !== undefined) return `"name" ${objectClassNameIssueText(classNameIssue)}`;
   if (folder === undefined) return undefined;
   if (folder === "") return '"folder" must not be empty (omit it for the objectTypes root)';
   const slashed = toSlashes(folder);

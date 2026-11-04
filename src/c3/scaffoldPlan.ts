@@ -16,7 +16,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "nod
 import * as path from "node:path";
 import { find_all_objectTypes_path, isSectionItemName } from "@genvidtech/c3source";
 import { resolveWithin } from "@genvidtech/mcp-utils";
-import { layoutNameIssue, layoutNameIssueText } from "./c3NameRules.js";
+import { layoutNameIssue, layoutNameIssueText, objectClassNameIssue, objectClassNameIssueText } from "./c3NameRules.js";
 import { cloneLayout, collectAllUids } from "./layoutScaffold.js";
 import { lookupObjectTypeByName } from "./objectTypeIdentity.js";
 import { findLayoutScaffoldConflicts, findSpriteScaffoldConflicts, formatScaffoldRefusal } from "./scaffoldGuard.js";
@@ -251,6 +251,15 @@ export function planSpriteScaffold(opts: SpriteScaffoldPlanOptions): SpriteScaff
     if (objectTypeNameIssue(val) !== undefined) {
       return { ok: false, kind: "invalid-name", message: formatScaffoldNameRejection(label, val) };
     }
+  }
+  // Only the new name is held to C3's reserved-word and normalizer rules; `source` is read, never created.
+  const classNameIssue = objectClassNameIssue(name);
+  if (classNameIssue !== undefined) {
+    return {
+      ok: false,
+      kind: "invalid-name",
+      message: `Invalid name '${name}' — ${objectClassNameIssueText(classNameIssue)}`,
+    };
   }
 
   const listing = existsSync(objectTypesDir) ? find_all_objectTypes_path(objectTypesDir) : [];

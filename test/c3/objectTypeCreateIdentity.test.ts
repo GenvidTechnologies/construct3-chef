@@ -73,9 +73,17 @@ describe("objectType create identity (#274)", () => {
       assert.isUndefined(objectTypeEntryIssue("Widget", "a/b c/d"));
       assert.isUndefined(objectTypeEntryIssue("Widget", "sub/"), "a trailing slash is tolerated");
       assert.isUndefined(objectTypeEntryIssue("Widget", "a//b"), "an interior // is tolerated");
-      assert.isUndefined(objectTypeEntryIssue("My.Widget v2", "a.b"));
+      // C3 loads these as 'MyWidgetV2' and 'FooBar', so they are refused as new names (#260); the folder is not checked.
+      assert.equal(
+        objectTypeEntryIssue("My.Widget v2", "a.b"),
+        `"name" must be a name C3 keeps as written: C3 would load it as 'MyWidgetV2'`,
+      );
       // An interior ".." inside one name is a filename, not a path segment, so it cannot escape (#274 R1 amendment).
-      assert.isUndefined(objectTypeEntryIssue("Foo..Bar", undefined));
+      assert.equal(
+        objectTypeEntryIssue("Foo..Bar", undefined),
+        `"name" must be a name C3 keeps as written: C3 would load it as 'FooBar'`,
+      );
+      assert.isUndefined(objectTypeEntryIssue("Foo_Bar", undefined));
     });
 
     it("OT274-R1: refuses bad names", () => {
@@ -194,6 +202,35 @@ describe("objectType create identity (#274)", () => {
       const errors = validateRecipe({ objectTypes: [{ name: "", plugin: "Json" }] } as unknown as Recipe);
       assert.lengthOf(errors, 1);
       assert.match(errors[0]!, /^objectTypes\[0\]: /);
+    });
+
+    it("I260-RC3: validateRecipe refuses reserved and rewritten objectType names with the name wording", () => {
+      const keeps = (to: string): string =>
+        `objectTypes[0]: "name" must be a name C3 keeps as written: C3 would load it as ${to}`;
+      const reserved = (n: string): string =>
+        `objectTypes[0]: "name" must not be '${n}': C3 reserves it (self, true, false and system, letter case ignored)`;
+      const want: Record<string, string[]> = {
+        self: [reserved("self")],
+        System: [reserved("System")],
+        "My Sprite": [keeps("'MySprite'")],
+        "a..b": [keeps("'ab'")],
+        "123": [keeps("an empty name")],
+      };
+      const got: Record<string, string[]> = {};
+      for (const n of Object.keys(want)) {
+        got[n] = validateRecipe({ objectTypes: [{ name: n, plugin: "Json" }] } as unknown as Recipe);
+      }
+      assert.deepEqual(got, want);
+    });
+
+    it("I260-RC4: validateRecipe accepts selfish, 9patch and Sprite_2 as objectType names", () => {
+      const got: Record<string, string[]> = {};
+      const want: Record<string, string[]> = {};
+      for (const n of ["selfish", "9patch", "Sprite_2"]) {
+        got[n] = validateRecipe({ objectTypes: [{ name: n, plugin: "Json" }] } as unknown as Recipe);
+        want[n] = [];
+      }
+      assert.deepEqual(got, want);
     });
 
     it("DN330-R7: a reserved-name objectType CREATE is refused before any write", () => {

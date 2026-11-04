@@ -1686,7 +1686,11 @@ regP(
       source: z
         .string()
         .describe("Source objectType name (e.g. 'StoryBookIcon'), looked up in every objectTypes/ subfolder"),
-      name: z.string().describe("Target objectType name (e.g. 'VideosIcon')"),
+      name: z
+        .string()
+        .describe(
+          "Target objectType name (e.g. 'VideosIcon'). Must be a name C3 keeps as written (no spaces or punctuation C3 would strip) and not a reserved word (self, true, false, system)",
+        ),
       txId: z.string().optional().describe("Expected txId — if stale, scaffold is rejected"),
       regenerate: z.boolean().optional().describe("Regenerate extracted/ files after scaffolding (default: true)"),
     },

@@ -516,9 +516,55 @@ describe("scaffoldPlan (T26, #259)", function () {
       expect(s.message).to.equal("Invalid source 'a:b' — must not contain ':' (host-dependent on Windows)");
     });
 
-    it("SI267-R3: accept control — name 'a..b' plans successfully", () => {
-      const r = planSpriteScaffold(spriteOpts({ name: "a..b" }));
-      expect(r.ok).to.equal(true);
+    it("SI267-R3: name 'a..b' is refused because C3 would load it as 'ab'; accept control 'a_b' plans", () => {
+      // C3 loads 'a..b' as 'ab', so it is refused; 'a_b' is the name C3 keeps as written.
+      const r = planSpriteScaffold(spriteOpts({ name: "a..b" })) as ScaffoldRejection;
+      expect(r.ok).to.equal(false);
+      expect(r.kind).to.equal("invalid-name");
+      expect(r.message).to.equal("Invalid name 'a..b' — must be a name C3 keeps as written: C3 would load it as 'ab'");
+      expect(planSpriteScaffold(spriteOpts({ name: "a_b" })).ok).to.equal(true);
+    });
+
+    it("I260-S1: sprite --name that C3 reserves or rewrites is invalid-name with the Invalid name wording", () => {
+      const before = snapshotTree(tmp);
+      const keeps = (n: string): string =>
+        `Invalid name '${n}' — must be a name C3 keeps as written: C3 would load it as`;
+      const reserved = (n: string): string =>
+        `Invalid name '${n}' — must not be '${n}': C3 reserves it (self, true, false and system, letter case ignored)`;
+      const want: Record<string, { ok: boolean; kind: string; message: string }> = {
+        self: { ok: false, kind: "invalid-name", message: reserved("self") },
+        System: { ok: false, kind: "invalid-name", message: reserved("System") },
+        "My Sprite": { ok: false, kind: "invalid-name", message: `${keeps("My Sprite")} 'MySprite'` },
+        "a..b": { ok: false, kind: "invalid-name", message: `${keeps("a..b")} 'ab'` },
+        "123": { ok: false, kind: "invalid-name", message: `${keeps("123")} an empty name` },
+      };
+      const got: typeof want = {};
+      for (const n of Object.keys(want)) {
+        const r = planSpriteScaffold(spriteOpts({ name: n })) as ScaffoldRejection;
+        got[n] = { ok: r.ok, kind: r.kind, message: r.message };
+      }
+      expect(got).to.deep.equal(want);
+      expect(snapshotTree(tmp)).to.deep.equal(before);
+    });
+
+    it("I260-S2: sprite names Sprite_2 and TextFamily2 plan; a source named 'My Sprite' still plans", () => {
+      writeFileSync(
+        path.join(tmp, "objectTypes", "My Sprite.json"),
+        JSON.stringify({ name: "My Sprite", "plugin-id": "Sprite", sid: 1 }),
+      );
+      const got: Record<string, boolean> = {};
+      for (const [source, name] of [
+        ["Text", "Sprite_2"],
+        ["Text", "TextFamily2"],
+        ["My Sprite", "FromSpaced"],
+      ]) {
+        got[`${source} -> ${name}`] = planSpriteScaffold(spriteOpts({ source, name })).ok;
+      }
+      expect(got).to.deep.equal({
+        "Text -> Sprite_2": true,
+        "Text -> TextFamily2": true,
+        "My Sprite -> FromSpaced": true,
+      });
     });
 
     it("when both source and name are bad, the message is about source", () => {
