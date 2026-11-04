@@ -128,8 +128,8 @@ describe("scaffoldPlan (T26, #259)", function () {
         it(`${pathBase} base: ${which} name merely starting with '..' is not an invalid-path`, () => {
           const value = prefix + "..cache.json";
           const r = planLayoutScaffold(layoutOpts(pathBase, { [key]: value }));
-          // Contained, so it gets past the path check: an output is not an invalid-path (its stem
-          // '..cache' is then refused as a layout name, which the next row pins), and a
+          // Contained, so it gets past the path check: an output is not an invalid-path (it is then
+          // refused because the layout name differs from the output file name '..cache'), and a
           // source (no such file in the fixture) reaches the existence check.
           if (which === "output") expect(r.ok ? "ok" : r.kind, JSON.stringify(r)).to.equal("invalid-name");
           else expect(r.ok ? "ok" : r.kind).to.equal("source-not-found");

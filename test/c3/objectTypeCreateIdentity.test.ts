@@ -495,6 +495,10 @@ describe("objectType create identity (#274)", () => {
       const familyOnly = { objectTypes: [], families: ["families/Sub/Deep.json"] };
       const objectTypeOnly = { objectTypes: ["objectTypes/Sprite.json", "objectTypes/Sub/Sprite.json"], families: [] };
       const lone = { objectTypes: ["objectTypes/Sprite.json"], families: ["families/TextFamily.json"] };
+      // The kind check is part of the contract: a lone match at the target path that is listed under the
+      // other kind refuses rather than skips. Real listings never share a path across kinds, so only a
+      // listing built this way can tell the kind check apart from the path check.
+      const otherKindAtTarget = { objectTypes: [], families: ["objectTypes/Sprite.json"] };
       assert.deepEqual(
         {
           objectTypeWithSameNamedFamily: decideObjectClassCreate(
@@ -517,6 +521,12 @@ describe("objectType create identity (#274)", () => {
           ),
           letterCaseVariant: decideObjectClassCreate(lone, "objectType", "objectTypes/sprite.json", "sprite"),
           none: decideObjectClassCreate(lone, "family", "families/Fresh.json", "Fresh"),
+          otherKindAtTarget: decideObjectClassCreate(
+            otherKindAtTarget,
+            "objectType",
+            "objectTypes/Sprite.json",
+            "Sprite",
+          ),
         },
         {
           objectTypeWithSameNamedFamily: {
@@ -538,6 +548,7 @@ describe("objectType create identity (#274)", () => {
           },
           letterCaseVariant: { kind: "refuse", onDisk: ["objectTypes/Sprite.json"] },
           none: { kind: "create" },
+          otherKindAtTarget: { kind: "refuse", onDisk: ["objectTypes/Sprite.json"] },
         },
       );
     });
