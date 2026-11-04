@@ -54,3 +54,5 @@ ADR 0046 §4 refuses a case-only match rather than resolving it, and ADR 0056 de
 - A folder with a `.` segment, a trailing `/` or an interior `//` is tolerated by validation and POSIX-normalized before the comparison, so `folder: "images/."` re-declares `objectTypes/images/Sprite.json` as a `SKIP`. The `SKIP` line still prints the path as the recipe spelled it.
 - A name present in two or more `objectTypes/` files is refused for every entry naming it, including one at an exact path, until the extras are renamed or removed.
 - Whether C3 itself forbids same-named objectTypes in different subfolders is unverified (as ADR 0056 notes). The refusal does not depend on it.
+
+**Amended by ADR [0067](0067-scaffold-and-objecttype-names-follow-c3s-name-rules.md) (2026-11-04):** the CREATE identity now spans `families/` as well as `objectTypes/` (C3 gives both one object-class namespace), and a new name must follow C3's reserved-word and name-normalizer rules.

@@ -91,6 +91,7 @@ describe("scaffoldPlan (T26, #259)", function () {
     return {
       rootDir: tmp,
       objectTypesDir: path.join(tmp, "objectTypes"),
+      familiesDir: path.join(tmp, "families"),
       imagesDir: path.join(tmp, "images"),
       source: "Text",
       name: "PlanFresh",
@@ -127,16 +128,17 @@ describe("scaffoldPlan (T26, #259)", function () {
         it(`${pathBase} base: ${which} name merely starting with '..' is not an invalid-path`, () => {
           const value = prefix + "..cache.json";
           const r = planLayoutScaffold(layoutOpts(pathBase, { [key]: value }));
-          // Contained, so it gets past the path check: an output is accepted outright, and a
+          // Contained, so it gets past the path check: an output is not an invalid-path (it is then
+          // refused because the layout name differs from the output file name '..cache'), and a
           // source (no such file in the fixture) reaches the existence check.
-          if (which === "output") expect(r.ok, JSON.stringify(r)).to.equal(true);
+          if (which === "output") expect(r.ok ? "ok" : r.kind, JSON.stringify(r)).to.equal("invalid-name");
           else expect(r.ok ? "ok" : r.kind).to.equal("source-not-found");
         });
       }
 
       it(`${pathBase} base: absolute output path inside layouts/ is accepted`, () => {
         const abs = path.join(layoutsDir(), "Gameplay", "PlanAbs.json");
-        const r = planLayoutScaffold(layoutOpts(pathBase, { out: abs }));
+        const r = planLayoutScaffold(layoutOpts(pathBase, { out: abs, name: "PlanAbs" }));
         expect(r.ok).to.equal(true);
         if (r.ok) expect(r.outPath).to.equal(abs);
       });
@@ -154,14 +156,46 @@ describe("scaffoldPlan (T26, #259)", function () {
       });
     }
 
-    it("'..cache.json' under the layouts base resolves to a file inside layouts/", () => {
-      const r = planLayoutScaffold(layoutOpts("layouts", { out: "..cache.json" }));
-      expect(r.ok).to.equal(true);
-      if (r.ok) expect(r.outPath).to.equal(path.join(layoutsDir(), "..cache.json"));
+    it("'..cache.json' under the layouts base is refused by the layout name rule, not by the path check", () => {
+      const r = planLayoutScaffold(
+        layoutOpts("layouts", { out: "..cache.json", name: "..cache" }),
+      ) as ScaffoldRejection;
+      expect(r.ok).to.equal(false);
+      expect(r.kind).to.equal("invalid-name");
+      expect(r.message).to.include("Invalid name '..cache'");
+    });
+
+    it("a '..cache' folder under the layouts base resolves to a folder inside layouts/", () => {
+      // A segment that merely starts with '..' is a name, not a parent reference. The file name
+      // itself can no longer start with '.', so the containment check is pinned on a folder segment.
+      const r = planLayoutScaffold(layoutOpts("layouts", { out: "..cache/New.json", name: "New" }));
+      expect(r.ok, JSON.stringify(r)).to.equal(true);
+      if (r.ok) expect(r.outPath).to.equal(path.join(layoutsDir(), "..cache", "New.json"));
     });
   });
 
   describe("input guards (#267)", () => {
+    it("I260-L4: a name with '~' is rejected with the layout-name reason on both path bases", () => {
+      for (const pathBase of ["layouts", "project-root"] as const) {
+        const snap = snapshotTree(tmp);
+        const r = planLayoutScaffold(layoutOpts(pathBase, { name: "a~b" })) as ScaffoldRejection;
+        expect(r.ok, pathBase).to.equal(false);
+        expect(r.kind, pathBase).to.equal("invalid-name");
+        expect(r.message, pathBase).to.equal("Invalid name 'a~b' — must not contain '~'");
+        expect(snapshotTree(tmp)).to.deep.equal(snap);
+      }
+    });
+
+    it("I260-L5: the names Selfie and self plan on both path bases", () => {
+      for (const pathBase of ["layouts", "project-root"] as const) {
+        const prefix = pathBase === "layouts" ? "" : "layouts/";
+        for (const name of ["Selfie", "self"]) {
+          const r = planLayoutScaffold(layoutOpts(pathBase, { name, out: `${prefix}Gameplay/${name}.json` }));
+          expect(r.ok, `${pathBase} ${name}`).to.equal(true);
+        }
+      }
+    });
+
     for (const pathBase of ["layouts", "project-root"] as const) {
       const prefix = pathBase === "layouts" ? "" : "layouts/";
       const before = (): Map<string, string> => snapshotTree(tmp);
@@ -197,7 +231,7 @@ describe("scaffoldPlan (T26, #259)", function () {
       }
 
       it(`SI267-R6: ${pathBase} base: accept control: output '${prefix}Foo.json' plans`, () => {
-        const r = planLayoutScaffold(layoutOpts(pathBase, { out: prefix + "Foo.json" }));
+        const r = planLayoutScaffold(layoutOpts(pathBase, { out: prefix + "Foo.json", name: "Foo" }));
         expect(r.ok, JSON.stringify(r)).to.equal(true);
       });
 
@@ -240,8 +274,8 @@ describe("scaffoldPlan (T26, #259)", function () {
 
       it(`DN330-R18: ${pathBase} base: out accept controls plan ok`, () => {
         for (const rel of ["CONSOLE.json", "NUL_x.json", "COM0.json"]) {
-          const r = planLayoutScaffold(layoutOpts(pathBase, { out: prefix + rel }));
-          expect(r.ok, `${rel}: ${JSON.stringify(r)}`).to.equal(true);
+          const r = planLayoutScaffold(layoutOpts(pathBase, { out: prefix + rel, name: rel.replace(/\.json$/, "") }));
+          expect(r.ok, `${rel}:${JSON.stringify(r)}`).to.equal(true);
         }
       });
 
@@ -482,9 +516,55 @@ describe("scaffoldPlan (T26, #259)", function () {
       expect(s.message).to.equal("Invalid source 'a:b' — must not contain ':' (host-dependent on Windows)");
     });
 
-    it("SI267-R3: accept control — name 'a..b' plans successfully", () => {
-      const r = planSpriteScaffold(spriteOpts({ name: "a..b" }));
-      expect(r.ok).to.equal(true);
+    it("SI267-R3: name 'a..b' is refused because C3 would load it as 'ab'; accept control 'a_b' plans", () => {
+      // C3 loads 'a..b' as 'ab', so it is refused; 'a_b' is the name C3 keeps as written.
+      const r = planSpriteScaffold(spriteOpts({ name: "a..b" })) as ScaffoldRejection;
+      expect(r.ok).to.equal(false);
+      expect(r.kind).to.equal("invalid-name");
+      expect(r.message).to.equal("Invalid name 'a..b' — must be a name C3 keeps as written: C3 would load it as 'ab'");
+      expect(planSpriteScaffold(spriteOpts({ name: "a_b" })).ok).to.equal(true);
+    });
+
+    it("I260-S1: sprite --name that C3 reserves or rewrites is invalid-name with the Invalid name wording", () => {
+      const before = snapshotTree(tmp);
+      const keeps = (n: string): string =>
+        `Invalid name '${n}' — must be a name C3 keeps as written: C3 would load it as`;
+      const reserved = (n: string): string =>
+        `Invalid name '${n}' — must not be '${n}': C3 reserves it (self, true, false and system, letter case ignored)`;
+      const want: Record<string, { ok: boolean; kind: string; message: string }> = {
+        self: { ok: false, kind: "invalid-name", message: reserved("self") },
+        System: { ok: false, kind: "invalid-name", message: reserved("System") },
+        "My Sprite": { ok: false, kind: "invalid-name", message: `${keeps("My Sprite")} 'MySprite'` },
+        "a..b": { ok: false, kind: "invalid-name", message: `${keeps("a..b")} 'ab'` },
+        "123": { ok: false, kind: "invalid-name", message: `${keeps("123")} an empty name` },
+      };
+      const got: typeof want = {};
+      for (const n of Object.keys(want)) {
+        const r = planSpriteScaffold(spriteOpts({ name: n })) as ScaffoldRejection;
+        got[n] = { ok: r.ok, kind: r.kind, message: r.message };
+      }
+      expect(got).to.deep.equal(want);
+      expect(snapshotTree(tmp)).to.deep.equal(before);
+    });
+
+    it("I260-S2: sprite names Sprite_2 and TextFamily2 plan; a source named 'My Sprite' still plans", () => {
+      writeFileSync(
+        path.join(tmp, "objectTypes", "My Sprite.json"),
+        JSON.stringify({ name: "My Sprite", "plugin-id": "Sprite", sid: 1 }),
+      );
+      const got: Record<string, boolean> = {};
+      for (const [source, name] of [
+        ["Text", "Sprite_2"],
+        ["Text", "TextFamily2"],
+        ["My Sprite", "FromSpaced"],
+      ]) {
+        got[`${source} -> ${name}`] = planSpriteScaffold(spriteOpts({ source, name })).ok;
+      }
+      expect(got).to.deep.equal({
+        "Text -> Sprite_2": true,
+        "Text -> TextFamily2": true,
+        "My Sprite -> FromSpaced": true,
+      });
     });
 
     it("when both source and name are bad, the message is about source", () => {
@@ -603,7 +683,7 @@ describe("scaffoldPlan (T26, #259)", function () {
     });
 
     it("planLayoutScaffold into a not-yet-existing directory creates no directory", () => {
-      const r = planLayoutScaffold(layoutOpts("layouts", { out: "NewDir/PlanY.json" }));
+      const r = planLayoutScaffold(layoutOpts("layouts", { out: "NewDir/PlanY.json", name: "PlanY" }));
       expect(r.ok).to.equal(true);
       expect(existsSync(path.join(layoutsDir(), "NewDir"))).to.equal(false);
     });
@@ -675,6 +755,43 @@ describe("scaffoldPlan (T26, #259)", function () {
       const r = planLayoutScaffold(layoutOpts("layouts", { out: SOURCE_REL }));
       expect(r.ok).to.equal(false);
       expect(r.ok === false ? r.kind : undefined).to.equal("conflict");
+    });
+  });
+
+  describe("layout name equals the output file name (#260)", () => {
+    it("I260-L1: a name that differs from the output file name is invalid-name, on both path bases", () => {
+      for (const pathBase of ["layouts", "project-root"] as const) {
+        const prefix = pathBase === "layouts" ? "" : "layouts/";
+        for (const name of ["Main Layout", "new"]) {
+          const r = planLayoutScaffold(layoutOpts(pathBase, { out: prefix + "New.json", name })) as ScaffoldRejection;
+          expect(r.ok, `${pathBase} ${name}`).to.equal(false);
+          expect(r.kind).to.equal("invalid-name");
+          expect(r.message).to.equal(
+            `Invalid name '${name}' — must equal the output file name 'New' (layouts/New.json), because C3 names a layout by its JSON name and the project lists it by file name`,
+          );
+        }
+      }
+    });
+
+    it("I260-L2: a name equal to the output file name is accepted in a subfolder", () => {
+      const r = planLayoutScaffold(layoutOpts("layouts", { out: "Sub/New.json", name: "New" }));
+      expect(r.ok).to.equal(true);
+    });
+
+    it("I260-L3: an existing output with a mismatched name is a conflict; a mismatch with no registry is returned, not thrown", () => {
+      rmSync(path.join(tmp, "extracted", "sid-registry.txt"));
+      const conflict = planLayoutScaffold(layoutOpts("layouts", { out: SOURCE_REL, name: "Other" }));
+      expect(conflict.ok === false ? conflict.kind : undefined).to.equal("conflict");
+
+      let thrown: unknown;
+      let r: ReturnType<typeof planLayoutScaffold> | undefined;
+      try {
+        r = planLayoutScaffold(layoutOpts("layouts", { out: "New.json", name: "Other" }));
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).to.equal(undefined);
+      expect(r !== undefined && r.ok === false ? r.kind : undefined).to.equal("invalid-name");
     });
   });
 

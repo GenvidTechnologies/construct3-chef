@@ -45,7 +45,9 @@ import {
   formatScaffoldSourceCaseMismatch,
   formatScaffoldSourceAmbiguous,
   formatScaffoldRegistryMissing,
+  formatScaffoldLayoutNameMismatch,
 } from "../../src/c3/scaffoldPlan.js";
+import { layoutNameIssue, layoutNameIssueText } from "../../src/c3/c3NameRules.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = path.join(__dirname, "..", "fixtures", "construct3-chef-sample");
@@ -438,6 +440,42 @@ describe("MCP server handler response shaping", () => {
       const r = runCli(["apply-recipe", recipeFile, "--project-dir", tmp, "--dry-run"]);
       expect({ exitCode: r.exitCode, hasLine: r.stderr.includes(LINE) }).to.deep.equal({ exitCode: 1, hasLine: true });
       expect(fs.readFileSync(sheet).equals(before)).to.be.true;
+    } finally {
+      fs.rmSync(recipeDir, { recursive: true, force: true });
+    }
+  });
+
+  // #260: an objectTypes entry named like an existing family is refused on every surface with the same line.
+  it("I260-B3: validate-recipe, apply-recipe and the CLI refuse an objectType named like a family, no bump", async () => {
+    const LINE = "  - objectTypes/TextFamily.json (on disk: families/TextFamily.json)";
+    const recipe = JSON.stringify({ objectTypes: [{ name: "TextFamily", plugin: "Json" }] });
+    const family = path.join(tmp, "families", "TextFamily.json");
+    const before = fs.readFileSync(family);
+
+    const validated = (await __getHandler("validate-recipe")!({ recipe }, makeExtra())) as any;
+    const validatedText = validated.content.map((b: any) => b.text).join("\n");
+    expect(validated.isError, validatedText).to.be.true;
+    expect(validatedText).to.include(LINE);
+
+    const applied = (await __getHandler("apply-recipe")!(
+      { recipe, txId: "default:5", regenerate: false },
+      makeExtra(),
+    )) as any;
+    const appliedText = applied.content.map((b: any) => b.text).join("\n");
+    expect(applied.isError, appliedText).to.be.true;
+    expect(appliedText).to.include(LINE);
+    expect(watcher.bumped).to.equal(0);
+    expect(fs.existsSync(path.join(tmp, "objectTypes", "TextFamily.json"))).to.be.false;
+    expect(fs.readFileSync(family).equals(before)).to.be.true;
+    expect(__getExtractedDirty()).to.be.false;
+
+    const recipeDir = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "c3chef-i260-cli-"));
+    try {
+      const recipeFile = path.join(recipeDir, "recipe.json");
+      fs.writeFileSync(recipeFile, recipe);
+      const r = runCli(["apply-recipe", recipeFile, "--project-dir", tmp, "--dry-run"]);
+      expect({ exitCode: r.exitCode, hasLine: r.stderr.includes(LINE) }).to.deep.equal({ exitCode: 1, hasLine: true });
+      expect(fs.existsSync(path.join(tmp, "objectTypes", "TextFamily.json"))).to.be.false;
     } finally {
       fs.rmSync(recipeDir, { recursive: true, force: true });
     }
@@ -2044,6 +2082,131 @@ describe("MCP server handler response shaping", () => {
       expect(cli.exitCode).to.equal(1);
       expect(cli.stderr.trimEnd()).to.equal(mcpMessage);
       expect(mcpMessage).to.equal(expected);
+    });
+
+    it("I260-B1: scaffold-sprite named like an existing family is refused alike on CLI and MCP, nothing written", async function () {
+      this.timeout(60_000);
+      const handler = __getHandler("scaffold-sprite")!;
+      expect(fs.existsSync(path.join(tmp, "families", "TextFamily.json"))).to.be.true;
+      __setExtractedDirty(false);
+      const before = snapshotTree(tmp);
+
+      const mcp = (await handler({ source: "Text", name: "TextFamily" }, makeExtra())) as any;
+      expect(mcp.isError).to.be.true;
+      const lines = textOf(mcp).split("\n");
+      const txLine = lines.pop();
+      const mcpMessage = lines.join("\n");
+      const cli = runCli(["scaffold-sprite", "--project-dir", tmp, "--source", "Text", "--name", "TextFamily"]);
+
+      expect({
+        txLine,
+        mcpMessage,
+        cliExit: cli.exitCode,
+        cliStderr: cli.stderr.trimEnd(),
+        bumped: watcher.bumped,
+        dirty: __getExtractedDirty(),
+        tree: snapshotTree(tmp),
+      }).to.deep.equal({
+        txLine: "txId: default:5",
+        mcpMessage: formatScaffoldRefusal("scaffold-sprite", [
+          { relPath: "families/TextFamily.json", reason: "family-name" },
+        ]),
+        cliExit: 1,
+        cliStderr: formatScaffoldRefusal("scaffold-sprite", [
+          { relPath: "families/TextFamily.json", reason: "family-name" },
+        ]),
+        bumped: 0,
+        dirty: false,
+        tree: before,
+      });
+    });
+
+    it("I260-B2: scaffold-layout JSON-name conflict, name mismatch and a~b name rule are refused alike on CLI and MCP, nothing written", async function () {
+      this.timeout(120_000);
+      const handler = __getHandler("scaffold-layout")!;
+      fs.writeFileSync(path.join(tmp, "layouts", "Other.json"), JSON.stringify({ name: "Renamed", layers: [] }));
+      __setExtractedDirty(false);
+      const before = snapshotTree(tmp);
+      const nameRuleIssue = layoutNameIssue("a~b")!;
+
+      const cases = [
+        {
+          out: "Renamed",
+          name: "Renamed",
+          expected: formatScaffoldRefusal("scaffold-layout", [
+            { relPath: "layouts/Other.json", reason: "layout-json-name" },
+          ]),
+        },
+        {
+          out: "New",
+          name: "Elsewhere",
+          expected: formatScaffoldLayoutNameMismatch("Elsewhere", "New", "layouts/New.json"),
+        },
+        {
+          out: "PlanB",
+          name: "a~b",
+          expected: `Invalid name 'a~b' — ${layoutNameIssueText(nameRuleIssue)}`,
+        },
+      ];
+      for (const c of cases) {
+        const mcp = (await handler(
+          {
+            source: "Gameplay/Main Layout.json",
+            name: c.name,
+            path: `${c.out}.json`,
+            eventSheet: "Event sheet 1",
+            regenerate: false,
+          },
+          makeExtra(),
+        )) as any;
+        expect(mcp.isError, c.out).to.be.true;
+        const lines = textOf(mcp).split("\n");
+        const txLine = lines.pop();
+        const mcpMessage = lines.join("\n");
+        const cli = runCli([
+          "scaffold-layout",
+          "--project-dir",
+          tmp,
+          "--source",
+          "layouts/Gameplay/Main Layout.json",
+          "--out",
+          `layouts/${c.out}.json`,
+          "--name",
+          c.name,
+          "--event-sheet",
+          "Event sheet 1",
+          "--regenerate=false",
+        ]);
+
+        expect({
+          txLine,
+          mcpMessage,
+          cliExit: cli.exitCode,
+          cliStderr: cli.stderr.trimEnd(),
+          bumped: watcher.bumped,
+          dirty: __getExtractedDirty(),
+          tree: snapshotTree(tmp),
+        }).to.deep.equal({
+          txLine: "txId: default:5",
+          mcpMessage: c.expected,
+          cliExit: 1,
+          cliStderr: c.expected,
+          bumped: 0,
+          dirty: false,
+          tree: before,
+        });
+      }
+    });
+
+    it("I260-B4: scaffold-sprite with a name next to an existing family's name succeeds and bumps once", async () => {
+      const result = (await __getHandler("scaffold-sprite")!(
+        { source: "Text", name: "TextFamily2", regenerate: false },
+        makeExtra(),
+      )) as any;
+
+      expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+      expect(fs.existsSync(path.join(tmp, "objectTypes", "TextFamily2.json"))).to.be.true;
+      expect(watcher.bumped).to.equal(1);
     });
 
     it("SR13: scaffold-sprite finds a source that the fixture keeps in a subfolder and writes the clone flat", async () => {

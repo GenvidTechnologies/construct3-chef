@@ -4,7 +4,8 @@ title: "0060. scaffold-sprite shares the objectType name rule"
 description: >-
   `scaffold-sprite --source/--name` now use the same label-agnostic name rule as
   a recipe `objectTypes` CREATE (`objectTypeNameIssue`): empty, `/`, `\`, `:`,
-  `.`/`..` and only-dots-and-spaces are refused, and `a..b` is accepted.
+  `.`/`..` and only-dots-and-spaces are refused, and `a..b` is accepted
+  (refused since ADR 0067, because C3 would load it as `ab`).
   `scaffold-layout` also refuses empty inputs, a non-`.json` output and a
   directory source before any write
   ([#267](https://github.com/GenvidTechnologies/construct3-chef/issues/267))
@@ -44,3 +45,5 @@ Two rules guarded the same `objectTypes/<name>.json` file, and each was strict w
 - **The layout `.json` check is case-sensitive,** because `isSectionItemName` is, by upstream design: `Foo.JSON` is refused too. Aligning it would be an upstream request, not a local predicate.
 
 **Amended by ADR [0064](0064-windows-reserved-device-names-are-refused-in-every-write-target-segment.md):** the shared objectType name rule refuses reserved device names, and `scaffold-layout`'s output path gains the shared segment rule.
+
+**Amended by ADR [0067](0067-scaffold-and-objecttype-names-follow-c3s-name-rules.md) (2026-11-04):** the scaffold-sprite name rule adds C3's reserved-word and name-normalizer rules. `a..b`, recorded above as accepted, is now refused.

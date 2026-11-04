@@ -77,6 +77,10 @@ The intervening **c3source 1.2.0** added an `isEventVarReference`/`getEventVarRe
 
 **Still open from the 3.0.0 entry:** `find_all_files_path` (`dist/layouts.js`) is byte-identical to 3.0.0, so the `findJsonFiles` decline (ADR [`0021`](../decisions/0021-section-item-axis-does-not-reopen-walk-declines.md)) stands. The next-bump check is unchanged: an upstream walk carrying `walkFiles`' error tolerances. **Correction to the 3.0.0 entry:** its sentence "Chef's barrel re-exports no c3source symbol" was wrong. `src/c3/sidUtils.ts` re-exports `collectSids`, and `src/c3/eventSheetMutator.ts` re-exports the types `ScriptAction`, `IncludeEvent` and `CommentEvent`. **Residual:** the `video` section's facts (the folder name is inferred upstream, the `file-info` key is unattested, and a `.webm` is typed as audio) are requested in [c3source#113](https://github.com/GenvidTechnologies/c3source/issues/113).
 
+### Pending: exported name validators
+
+[c3source#123](https://github.com/GenvidTechnologies/c3source/issues/123) requests exported validators for C3's name rules. Chef keeps a local copy of the C3 editor r495-2 rules in `src/c3/c3NameRules.ts` for scaffold names and new objectType names (ADR [`0067`](../decisions/0067-scaffold-and-objecttype-names-follow-c3s-name-rules.md)). **Check at the next c3source bump** whether the validators are exported. The `I260-T1` tripwire test goes red when they ship. On adoption, retire `src/c3/c3NameRules.ts` with its call sites and the tripwire, and keep the name-rule tests green.
+
 ## @genvidtech/mcp-utils
 
 ### 0.3.0

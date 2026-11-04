@@ -66,6 +66,8 @@ on a second surface that decision did not reach.
 
 **Amended by ADR [0046](0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md):** layout and objectType name conflicts are now compared with letter case ignored and report the on-disk spelling, and `output-exists` is decided by the exact basename in the directory listing.
 
+**Amended by ADR [0067](0067-scaffold-and-objecttype-names-follow-c3s-name-rules.md) (2026-11-04):** the scaffold refusals now also cover another layout's JSON name, a layout `name` that differs from the output file name, and a family name.
+
 ## Rejected alternatives
 
 - **Export the guard from the `src/index.ts` barrel.** Every barrel export is

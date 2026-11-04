@@ -16,6 +16,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "nod
 import * as path from "node:path";
 import { find_all_objectTypes_path, isSectionItemName } from "@genvidtech/c3source";
 import { resolveWithin } from "@genvidtech/mcp-utils";
+import { layoutNameIssue, layoutNameIssueText, objectClassNameIssue, objectClassNameIssueText } from "./c3NameRules.js";
 import { cloneLayout, collectAllUids } from "./layoutScaffold.js";
 import { lookupObjectTypeByName } from "./objectTypeIdentity.js";
 import { findLayoutScaffoldConflicts, findSpriteScaffoldConflicts, formatScaffoldRefusal } from "./scaffoldGuard.js";
@@ -77,6 +78,11 @@ export function formatScaffoldOutputNotJson(relPosix: string): string {
 /** `rel` is the resolved output, project-relative with `/` separators, like `formatScaffoldOutputNotJson`'s. */
 export function formatScaffoldOutputSegmentRejection(rel: string, i: SegmentIssue): string {
   return `Invalid output path '${rel}' — ${segmentIssueText(i)}`;
+}
+
+/** `relPosix` is the resolved output, project-relative with `/` separators, never the caller's raw argument. */
+export function formatScaffoldLayoutNameMismatch(name: string, stem: string, relPosix: string): string {
+  return `Invalid name '${name}' — must equal the output file name '${stem}' (${relPosix}), because C3 names a layout by its JSON name and the project lists it by file name`;
 }
 
 export function formatScaffoldSourceNotFile(relPosix: string): string {
@@ -160,6 +166,10 @@ export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaff
   if (name === "") {
     return { ok: false, kind: "invalid-name", message: formatScaffoldEmptyInput("name") };
   }
+  const nameIssue = layoutNameIssue(name);
+  if (nameIssue !== undefined) {
+    return { ok: false, kind: "invalid-name", message: `Invalid name '${name}' — ${layoutNameIssueText(nameIssue)}` };
+  }
   if (eventSheet === "") {
     return { ok: false, kind: "invalid-name", message: formatScaffoldEmptyInput("event sheet") };
   }
@@ -194,6 +204,15 @@ export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaff
     return { ok: false, kind: "conflict", message: formatScaffoldRefusal("scaffold-layout", conflicts) };
   }
 
+  const stem = path.basename(outPath, ".json");
+  if (name !== stem) {
+    return {
+      ok: false,
+      kind: "invalid-name",
+      message: formatScaffoldLayoutNameMismatch(name, stem, relPosix(rootDir, outPath)),
+    };
+  }
+
   const sourceLayout = JSON.parse(readFileSync(sourcePath, "utf-8")) as Record<string, unknown>;
 
   // Seeding existingSids from the project registry prevents cloned SIDs from colliding with
@@ -215,6 +234,7 @@ export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaff
 export interface SpriteScaffoldPlanOptions {
   rootDir: string;
   objectTypesDir: string;
+  familiesDir: string;
   imagesDir: string;
   source: string;
   name: string;
@@ -222,7 +242,7 @@ export interface SpriteScaffoldPlanOptions {
 
 /** Validate and build a sprite scaffold. Never writes. */
 export function planSpriteScaffold(opts: SpriteScaffoldPlanOptions): SpriteScaffoldPlan | ScaffoldRejection {
-  const { rootDir, objectTypesDir, imagesDir, source, name } = opts;
+  const { rootDir, objectTypesDir, familiesDir, imagesDir, source, name } = opts;
 
   for (const [label, val] of [
     ["source", source],
@@ -231,6 +251,15 @@ export function planSpriteScaffold(opts: SpriteScaffoldPlanOptions): SpriteScaff
     if (objectTypeNameIssue(val) !== undefined) {
       return { ok: false, kind: "invalid-name", message: formatScaffoldNameRejection(label, val) };
     }
+  }
+  // Only the new name is held to C3's reserved-word and normalizer rules; `source` is read, never created.
+  const classNameIssue = objectClassNameIssue(name);
+  if (classNameIssue !== undefined) {
+    return {
+      ok: false,
+      kind: "invalid-name",
+      message: `Invalid name '${name}' — ${objectClassNameIssueText(classNameIssue)}`,
+    };
   }
 
   const listing = existsSync(objectTypesDir) ? find_all_objectTypes_path(objectTypesDir) : [];
@@ -266,7 +295,7 @@ export function planSpriteScaffold(opts: SpriteScaffoldPlanOptions): SpriteScaff
 
   const sourceObj = JSON.parse(readFileSync(sourceFile, "utf-8")) as Record<string, unknown>;
 
-  const conflicts = findSpriteScaffoldConflicts(rootDir, objectTypesDir, imagesDir, sourceObj, name);
+  const conflicts = findSpriteScaffoldConflicts(rootDir, objectTypesDir, familiesDir, imagesDir, sourceObj, name);
   if (conflicts.length > 0) {
     return { ok: false, kind: "conflict", message: formatScaffoldRefusal("scaffold-sprite", conflicts) };
   }

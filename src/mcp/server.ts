@@ -1597,17 +1597,17 @@ regP(
   {
     title: "Scaffold Layout",
     description:
-      "Clone an existing layout to create a new one; never overwrites existing files. Requires sid-registry.txt in the extracted directory (run regenerate first). Remaps all UIDs and SIDs for uniqueness, sets the layout name and event sheet, writes the new layout JSON, and syncs project.c3proj. Optionally regenerates extracted/ files.",
+      "Clone an existing layout to create a new one; never overwrites existing files. Requires sid-registry.txt in the extracted directory (run regenerate first). Remaps all UIDs and SIDs for uniqueness, sets the layout name (which must equal the output file name without '.json') and event sheet, writes the new layout JSON, and syncs project.c3proj. Optionally regenerates extracted/ files.",
     annotations: MUTATE,
     inputSchema: {
       source: z
         .string()
         .describe("Relative path to the source layout JSON within layouts/ (e.g. 'Heroes/HeroesLayout.json')"),
-      name: z.string().describe("Name for the new layout"),
+      name: z.string().describe("Name for the new layout; must equal the output file name without '.json'"),
       path: z
         .string()
         .describe(
-          "Relative output path within layouts/ for the new layout JSON; must be a .json file (e.g. 'NewFeature/NewLayout.json')",
+          "Relative output path within layouts/ for the new layout JSON; must be a .json file named after the layout (e.g. 'NewFeature/NewLayout.json' for name 'NewLayout')",
         ),
       eventSheet: z.string().describe("Event sheet name for the new layout"),
       txId: z.string().optional().describe("Expected txId — if stale, scaffold is rejected"),
@@ -1686,7 +1686,11 @@ regP(
       source: z
         .string()
         .describe("Source objectType name (e.g. 'StoryBookIcon'), looked up in every objectTypes/ subfolder"),
-      name: z.string().describe("Target objectType name (e.g. 'VideosIcon')"),
+      name: z
+        .string()
+        .describe(
+          "Target objectType name (e.g. 'VideosIcon'). Must be a name C3 keeps as written (no spaces or punctuation C3 would strip) and not a reserved word (self, true, false, system)",
+        ),
       txId: z.string().optional().describe("Expected txId — if stale, scaffold is rejected"),
       regenerate: z.boolean().optional().describe("Regenerate extracted/ files after scaffolding (default: true)"),
     },
@@ -1705,6 +1709,7 @@ regP(
           const plan = planSpriteScaffold({
             rootDir: ctx.root,
             objectTypesDir: ctx.project.objectTypesDir,
+            familiesDir: ctx.project.familiesDir,
             imagesDir: ctx.project.imagesDir,
             source,
             name: targetName,

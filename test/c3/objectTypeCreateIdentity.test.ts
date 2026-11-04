@@ -8,7 +8,7 @@ import { applyParsed, findObjectTypeFile } from "../../src/c3/recipeApplier.js";
 import { validateRecipe } from "../../src/c3/recipeInterpreter.js";
 import type { Recipe } from "../../src/c3/recipeInterpreter.js";
 import { objectTypeEntryIssue } from "../../src/c3/recipeKeys.js";
-import { decideObjectTypeCreate } from "../../src/c3/objectTypeIdentity.js";
+import { decideObjectClassCreate, decideObjectTypeCreate } from "../../src/c3/objectTypeIdentity.js";
 import { snapshotTree } from "../helpers/applyFixtures.js";
 import { runCli } from "../helpers/runCli.js";
 
@@ -73,9 +73,17 @@ describe("objectType create identity (#274)", () => {
       assert.isUndefined(objectTypeEntryIssue("Widget", "a/b c/d"));
       assert.isUndefined(objectTypeEntryIssue("Widget", "sub/"), "a trailing slash is tolerated");
       assert.isUndefined(objectTypeEntryIssue("Widget", "a//b"), "an interior // is tolerated");
-      assert.isUndefined(objectTypeEntryIssue("My.Widget v2", "a.b"));
+      // C3 loads these as 'MyWidgetV2' and 'FooBar', so they are refused as new names (#260); the folder is not checked.
+      assert.equal(
+        objectTypeEntryIssue("My.Widget v2", "a.b"),
+        `"name" must be a name C3 keeps as written: C3 would load it as 'MyWidgetV2'`,
+      );
       // An interior ".." inside one name is a filename, not a path segment, so it cannot escape (#274 R1 amendment).
-      assert.isUndefined(objectTypeEntryIssue("Foo..Bar", undefined));
+      assert.equal(
+        objectTypeEntryIssue("Foo..Bar", undefined),
+        `"name" must be a name C3 keeps as written: C3 would load it as 'FooBar'`,
+      );
+      assert.isUndefined(objectTypeEntryIssue("Foo_Bar", undefined));
     });
 
     it("OT274-R1: refuses bad names", () => {
@@ -194,6 +202,35 @@ describe("objectType create identity (#274)", () => {
       const errors = validateRecipe({ objectTypes: [{ name: "", plugin: "Json" }] } as unknown as Recipe);
       assert.lengthOf(errors, 1);
       assert.match(errors[0]!, /^objectTypes\[0\]: /);
+    });
+
+    it("I260-RC3: validateRecipe refuses reserved and rewritten objectType names with the name wording", () => {
+      const keeps = (to: string): string =>
+        `objectTypes[0]: "name" must be a name C3 keeps as written: C3 would load it as ${to}`;
+      const reserved = (n: string): string =>
+        `objectTypes[0]: "name" must not be '${n}': C3 reserves it (self, true, false and system, letter case ignored)`;
+      const want: Record<string, string[]> = {
+        self: [reserved("self")],
+        System: [reserved("System")],
+        "My Sprite": [keeps("'MySprite'")],
+        "a..b": [keeps("'ab'")],
+        "123": [keeps("an empty name")],
+      };
+      const got: Record<string, string[]> = {};
+      for (const n of Object.keys(want)) {
+        got[n] = validateRecipe({ objectTypes: [{ name: n, plugin: "Json" }] } as unknown as Recipe);
+      }
+      assert.deepEqual(got, want);
+    });
+
+    it("I260-RC4: validateRecipe accepts selfish, 9patch and Sprite_2 as objectType names", () => {
+      const got: Record<string, string[]> = {};
+      const want: Record<string, string[]> = {};
+      for (const n of ["selfish", "9patch", "Sprite_2"]) {
+        got[n] = validateRecipe({ objectTypes: [{ name: n, plugin: "Json" }] } as unknown as Recipe);
+        want[n] = [];
+      }
+      assert.deepEqual(got, want);
     });
 
     it("DN330-R7: a reserved-name objectType CREATE is refused before any write", () => {
@@ -452,8 +489,95 @@ describe("objectType create identity (#274)", () => {
     });
   });
 
+  describe("decideObjectClassCreate", () => {
+    it("I260-H2: an object type and a family share one name; only an exact same-kind lone match skips", () => {
+      const withBoth = { objectTypes: ["objectTypes/Sprite.json"], families: ["families/Sprite.json"] };
+      const familyOnly = { objectTypes: [], families: ["families/Sub/Deep.json"] };
+      const objectTypeOnly = { objectTypes: ["objectTypes/Sprite.json", "objectTypes/Sub/Sprite.json"], families: [] };
+      const lone = { objectTypes: ["objectTypes/Sprite.json"], families: ["families/TextFamily.json"] };
+      // The kind check is part of the contract: a lone match at the target path that is listed under the
+      // other kind refuses rather than skips. Real listings never share a path across kinds, so only a
+      // listing built this way can tell the kind check apart from the path check.
+      const otherKindAtTarget = { objectTypes: [], families: ["objectTypes/Sprite.json"] };
+      assert.deepEqual(
+        {
+          objectTypeWithSameNamedFamily: decideObjectClassCreate(
+            withBoth,
+            "objectType",
+            "objectTypes/Sprite.json",
+            "Sprite",
+          ),
+          familyWithSameNamedObjectType: decideObjectClassCreate(withBoth, "family", "families/Sprite.json", "Sprite"),
+          objectTypeOverFamilyAlone: decideObjectClassCreate(familyOnly, "objectType", "objectTypes/Deep.json", "Deep"),
+          familyAtItsOwnPath: decideObjectClassCreate(familyOnly, "family", "families/Sub/Deep.json", "Deep"),
+          familyAtOtherFolder: decideObjectClassCreate(familyOnly, "family", "families/Deep.json", "Deep"),
+          familyOverObjectTypeAlone: decideObjectClassCreate(lone, "family", "families/Sprite.json", "Sprite"),
+          objectTypeNoFamilyMatch: decideObjectClassCreate(lone, "objectType", "objectTypes/Sprite.json", "Sprite"),
+          objectTypeTwoMatches: decideObjectClassCreate(
+            objectTypeOnly,
+            "objectType",
+            "objectTypes/Sprite.json",
+            "Sprite",
+          ),
+          letterCaseVariant: decideObjectClassCreate(lone, "objectType", "objectTypes/sprite.json", "sprite"),
+          none: decideObjectClassCreate(lone, "family", "families/Fresh.json", "Fresh"),
+          otherKindAtTarget: decideObjectClassCreate(
+            otherKindAtTarget,
+            "objectType",
+            "objectTypes/Sprite.json",
+            "Sprite",
+          ),
+        },
+        {
+          objectTypeWithSameNamedFamily: {
+            kind: "refuse",
+            onDisk: ["objectTypes/Sprite.json", "families/Sprite.json"],
+          },
+          familyWithSameNamedObjectType: {
+            kind: "refuse",
+            onDisk: ["objectTypes/Sprite.json", "families/Sprite.json"],
+          },
+          objectTypeOverFamilyAlone: { kind: "refuse", onDisk: ["families/Sub/Deep.json"] },
+          familyAtItsOwnPath: { kind: "skip", path: "families/Sub/Deep.json" },
+          familyAtOtherFolder: { kind: "refuse", onDisk: ["families/Sub/Deep.json"] },
+          familyOverObjectTypeAlone: { kind: "refuse", onDisk: ["objectTypes/Sprite.json"] },
+          objectTypeNoFamilyMatch: { kind: "skip", path: "objectTypes/Sprite.json" },
+          objectTypeTwoMatches: {
+            kind: "refuse",
+            onDisk: ["objectTypes/Sprite.json", "objectTypes/Sub/Sprite.json"],
+          },
+          letterCaseVariant: { kind: "refuse", onDisk: ["objectTypes/Sprite.json"] },
+          none: { kind: "create" },
+          otherKindAtTarget: { kind: "refuse", onDisk: ["objectTypes/Sprite.json"] },
+        },
+      );
+    });
+  });
+
+  describe("recipe objectTypes against families", () => {
+    it("I260-RC1: TextFamily is refused in dry-run and apply, naming the family file, tree byte-identical", () => {
+      const recipe = { objectTypes: [{ name: "TextFamily", plugin: "Json" }] };
+      assertRefused(recipe, ["objectTypes/TextFamily.json", "on disk: families/TextFamily.json", "families/"]);
+    });
+
+    it("I260-RC2: TextFamily2 is accepted, and a project without families/ still creates", () => {
+      const recipe = { objectTypes: [{ name: "TextFamily2", plugin: "Json" }] };
+      assert.isUndefined(run(tmp, recipe, true), "dry-run refused TextFamily2");
+      assert.isUndefined(run(tmp, recipe, false), "apply refused TextFamily2");
+
+      const bare = path.join(parent, "nofamilies");
+      cpSync(FIXTURE_ROOT, bare, { recursive: true });
+      rmSync(path.join(bare, "families"), { recursive: true, force: true });
+      assert.isUndefined(run(bare, { objectTypes: [{ name: "Fresh", plugin: "Json" }] }, false), "no-families create");
+      assert.isTrue(snapshotTree(bare).has("objectTypes/Fresh.json"));
+    });
+  });
+
   describe("decideObjectTypeCreate", () => {
-    const listing = ["objectTypes/NavButton.json", "objectTypes/images/Sprite.json", "objectTypes/tiles/Sprite.json"];
+    const listing = {
+      objectTypes: ["objectTypes/NavButton.json", "objectTypes/images/Sprite.json", "objectTypes/tiles/Sprite.json"],
+      families: [],
+    };
 
     it("OT274-R5: create, skip and refuse", () => {
       assert.deepEqual(decideObjectTypeCreate(listing, "objectTypes/Fresh.json", "Fresh"), { kind: "create" });

@@ -82,6 +82,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Scaffolded layout names and new objectType names follow C3's name rules.**
+  C3 takes a layout's identity from its JSON name and keeps object types and
+  families in one name namespace. A duplicate name makes the editor's project
+  loader throw (read from the editor code, not run), and a name the editor rewrites, or a layout whose name
+  differs from its file name, ends up with two identities. These inputs are now
+  refused, and some were accepted before:
+  - `scaffold-layout` (CLI `--name`, MCP `name`) refuses a name that differs
+    from the output file name without `.json`, letter case included. A call
+    such as `--out Level2.json --name "Level 2"` is now refused: pass
+    `--name Level2`, or name the file to match. The message reads `Invalid name
+    '<name>' — must equal the output file name '<stem>' (<path>)`, followed by
+    the reason.
+  - `scaffold-layout` refuses a name that matches another layout's JSON `name`,
+    letter case ignored (`a layout with this JSON name already exists`).
+  - `scaffold-layout` refuses a layout name that breaks C3's layout-name rule:
+    one of `\ / : * ? " < > | ~`, a leading or trailing `.` or space, 200 or
+    more characters, or a Windows reserved device name.
+  - `scaffold-sprite` and recipe `objectTypes` CREATE (dry-run, `--preview`,
+    `validate-recipe` and apply) refuse a name that matches an existing family
+    in any `families/` folder (`a family with this name already exists`).
+  - New objectType names, on both surfaces, refuse the C3 reserved words
+    `self`, `true`, `false` and `system`, letter case ignored. They also refuse
+    a name the C3 editor rewrites on load, such as `My Sprite`
+    (`must be a name C3 keeps as written: C3 would load it as 'MySprite'`).
+    Names accepted before and now refused include `a..b`, `Foo..Bar` and
+    `My.Widget v2`. The rules apply to the new name only, never to `--source`.
+
+  Known limitations: C3 also reserves System expression names, which are not
+  refused yet
+  ([#365](https://github.com/GenvidTechnologies/construct3-chef/issues/365));
+  event-sheet names created by recipe `files` entries are not checked
+  ([#366](https://github.com/GenvidTechnologies/construct3-chef/issues/366));
+  `--out` folder segments are not checked against C3's folder rule
+  ([#367](https://github.com/GenvidTechnologies/construct3-chef/issues/367));
+  existing projects with such names are not reported
+  ([#368](https://github.com/GenvidTechnologies/construct3-chef/issues/368))
+  (#260, GenvidTechnologies/c3source#123).
+
 - **MCP `scaffold-layout` detects a stale `sid-registry.txt`.** The tool now
   compares the registry's mtime with the source JSON before its `txId` check,
   as `apply-recipe` does. When a source file is newer, it marks `extracted/`
