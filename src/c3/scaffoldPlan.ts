@@ -16,6 +16,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "nod
 import * as path from "node:path";
 import { find_all_objectTypes_path, isSectionItemName } from "@genvidtech/c3source";
 import { resolveWithin } from "@genvidtech/mcp-utils";
+import { layoutNameIssue, layoutNameIssueText } from "./c3NameRules.js";
 import { cloneLayout, collectAllUids } from "./layoutScaffold.js";
 import { lookupObjectTypeByName } from "./objectTypeIdentity.js";
 import { findLayoutScaffoldConflicts, findSpriteScaffoldConflicts, formatScaffoldRefusal } from "./scaffoldGuard.js";
@@ -159,6 +160,10 @@ export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaff
   // then the source on disk (exists, is a file), then conflicts.
   if (name === "") {
     return { ok: false, kind: "invalid-name", message: formatScaffoldEmptyInput("name") };
+  }
+  const nameIssue = layoutNameIssue(name);
+  if (nameIssue !== undefined) {
+    return { ok: false, kind: "invalid-name", message: `Invalid name '${name}' — ${layoutNameIssueText(nameIssue)}` };
   }
   if (eventSheet === "") {
     return { ok: false, kind: "invalid-name", message: formatScaffoldEmptyInput("event sheet") };

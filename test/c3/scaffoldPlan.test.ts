@@ -163,6 +163,27 @@ describe("scaffoldPlan (T26, #259)", function () {
   });
 
   describe("input guards (#267)", () => {
+    it("I260-L4: a name with '~' is rejected with the layout-name reason on both path bases", () => {
+      for (const pathBase of ["layouts", "project-root"] as const) {
+        const snap = snapshotTree(tmp);
+        const r = planLayoutScaffold(layoutOpts(pathBase, { name: "a~b" })) as ScaffoldRejection;
+        expect(r.ok, pathBase).to.equal(false);
+        expect(r.kind, pathBase).to.equal("invalid-name");
+        expect(r.message, pathBase).to.equal("Invalid name 'a~b' — must not contain '~'");
+        expect(snapshotTree(tmp)).to.deep.equal(snap);
+      }
+    });
+
+    it("I260-L5: the names Selfie and self plan on both path bases", () => {
+      for (const pathBase of ["layouts", "project-root"] as const) {
+        const prefix = pathBase === "layouts" ? "" : "layouts/";
+        for (const name of ["Selfie", "self"]) {
+          const r = planLayoutScaffold(layoutOpts(pathBase, { name, out: `${prefix}Gameplay/${name}.json` }));
+          expect(r.ok, `${pathBase} ${name}`).to.equal(true);
+        }
+      }
+    });
+
     for (const pathBase of ["layouts", "project-root"] as const) {
       const prefix = pathBase === "layouts" ? "" : "layouts/";
       const before = (): Map<string, string> => snapshotTree(tmp);
