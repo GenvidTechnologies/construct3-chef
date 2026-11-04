@@ -1,7 +1,9 @@
 /**
  * Pure objectType name identity over an injected listing, so the scaffold guard and the
  * scaffold-sprite source lookup share one rule: an objectType's identity is its file basename
- * `<name>.json` with letter case ignored (ADR `wiki/decisions/0046` §2). Same pure-over-a-listing
+ * `<name>.json` with letter case ignored (ADR `wiki/decisions/0046` §2). A family's identity is the
+ * same, and C3 keeps object types and families in one name namespace, so a create is decided over
+ * both sections (`decideObjectClassCreate`, ADR `wiki/decisions/0067`). Same pure-over-a-listing
  * shape as `findSpellingMismatches` in `recipeKeys.ts`.
  *
  * Off-barrel deliberately: not re-exported from `src/index.ts`.

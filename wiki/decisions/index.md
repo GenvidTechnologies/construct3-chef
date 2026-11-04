@@ -538,7 +538,8 @@ See the [wiki index](../index.md) for the other sections.
 * [0060. scaffold-sprite shares the objectType name rule](0060-scaffold-sprite-shares-the-objecttype-name-rule.md) -
   `scaffold-sprite --source/--name` now use the same label-agnostic name rule
   as a recipe `objectTypes` CREATE (`objectTypeNameIssue`): empty, `/`, `\`,
-  `:`, `.`/`..` and only-dots-and-spaces are refused, and `a..b` is accepted.
+  `:`, `.`/`..` and only-dots-and-spaces are refused, and `a..b` is accepted
+  (refused since ADR 0067, because C3 would load it as `ab`).
   `scaffold-layout` also refuses empty inputs, a non-`.json` output and a
   directory source before any write
   ([#267](https://github.com/GenvidTechnologies/construct3-chef/issues/267))

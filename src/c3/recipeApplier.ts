@@ -340,7 +340,8 @@ function checkCreateTargets(rootDir: string, files: NonNullable<Recipe["files"]>
 }
 
 /**
- * Refuse a recipe objectType whose name already exists on disk under a different spelling or folder (#274, ADR 0046).
+ * Refuse a recipe objectType whose name already exists on disk under a different spelling or folder (#274, ADR 0046),
+ * or as a family in any `families/` folder: C3 keeps object types and families in one name namespace (#260, ADR 0067).
  * An exact re-declaration (same folder, same letter case) is left for createObjectTypeIo to SKIP. Runs before any
  * dry-run output or write, so validate-recipe / --preview refuse exactly like apply.
  */

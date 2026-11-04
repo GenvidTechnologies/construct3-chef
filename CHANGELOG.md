@@ -84,8 +84,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Scaffolded layout names and new objectType names follow C3's name rules.**
   C3 takes a layout's identity from its JSON name and keeps object types and
-  families in one name namespace. A duplicate name breaks the project when the
-  editor loads it, and a name the editor rewrites, or a layout whose name
+  families in one name namespace. A duplicate name makes the editor's project
+  loader throw (read from the editor code, not run), and a name the editor rewrites, or a layout whose name
   differs from its file name, ends up with two identities. These inputs are now
   refused, and some were accepted before:
   - `scaffold-layout` (CLI `--name`, MCP `name`) refuses a name that differs

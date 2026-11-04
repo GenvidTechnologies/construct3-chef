@@ -87,7 +87,9 @@ export type ObjectTypeNameIssue =
 /**
  * The label-agnostic name-only rule shared by recipe `objectTypes` CREATE and scaffold-sprite (`--source`/`--name`):
  * ONE path segment that is not empty, has no `/` or `\`, is not `.` or `..`, has no `:`, and is not only dots and
- * spaces, and is not a Windows reserved device name (#330). `a..b` is acceptable. `undefined` when the name is usable.
+ * spaces, and is not a Windows reserved device name (#330). `a..b` passes this rule; a NEW name is then also held to
+ * C3's reserved-word and normalizer rules (`objectClassNameIssue`, #260), which refuse it. `undefined` when the name
+ * passes this rule.
  */
 export function objectTypeNameIssue(name: string): ObjectTypeNameIssue | undefined {
   if (name === "") return { kind: "empty" };
@@ -102,8 +104,9 @@ export function objectTypeNameIssue(name: string): ObjectTypeNameIssue | undefin
  * no `/` or `\`, not `.` or `..`, no `:`, not only dots and spaces. `folder` (when not `undefined`) must be a non-empty
  * relative path: no `..` segment (backslashes count as `/`), not absolute or drive-letter, no `:`, no segment made
  * only of dots and spaces, no segment that is a Windows reserved device name. `name` is refused as a reserved device
- * name too (#330). An empty-string folder is refused (omit `folder` instead). A trailing `/` and interior
- * `//` are tolerated (they name the same folder).
+ * name too (#330), and must be a name C3 keeps as written and not a C3 reserved word (`objectClassNameIssue`, #260).
+ * An empty-string folder is refused (omit `folder` instead). A trailing `/` and interior `//` are tolerated (they name
+ * the same folder).
  */
 export function objectTypeEntryIssue(name: string, folder: string | undefined): string | undefined {
   const nameIssue = objectTypeNameIssue(name);
