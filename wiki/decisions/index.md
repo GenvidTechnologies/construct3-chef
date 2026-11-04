@@ -594,3 +594,12 @@ See the [wiki index](../index.md) for the other sections.
   `rootFileFolders` from `detectManifestDrift`, classifies editor-local names
   at every depth in every file section, and syncs a `video` section
   ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358))
+* [0067. Scaffold and objectType names follow C3's name rules](0067-scaffold-and-objecttype-names-follow-c3s-name-rules.md) -
+  C3 identifies a layout by its JSON `name`, and object types and families
+  share one object-class name namespace. `scaffold-layout` now refuses a
+  `name` that differs from the output file name and a JSON-name clash with an
+  existing layout. `scaffold-sprite` and recipe objectTypes CREATE refuse a
+  name that matches a family, a C3-reserved word, or a name C3 would rewrite.
+  The rules are a local bridge, `src/c3/c3NameRules.ts`, until c3source
+  exports them
+  ([#260](https://github.com/GenvidTechnologies/construct3-chef/issues/260))
