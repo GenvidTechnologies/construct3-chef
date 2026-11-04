@@ -19,6 +19,7 @@ describe("scaffoldGuard (#254)", () => {
   let root: string;
   const layoutsDir = () => path.join(root, "layouts");
   const objectTypesDir = () => path.join(root, "objectTypes");
+  const familiesDir = () => path.join(root, "families");
   const imagesDir = () => path.join(root, "images");
 
   /** Write a file (relative to root) with throwaway content, creating parent dirs. */
@@ -84,7 +85,7 @@ describe("scaffoldGuard (#254)", () => {
     it("U5: an existing flat objectTypes/<name>.json is an output-exists conflict (even for an editor-local name)", () => {
       put("objectTypes/tsconfig.json");
 
-      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), SRC, "tsconfig");
+      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), familiesDir(), imagesDir(), SRC, "tsconfig");
 
       expect(got).to.deep.equal([{ relPath: "objectTypes/tsconfig.json", reason: "output-exists" }]);
     });
@@ -92,7 +93,7 @@ describe("scaffoldGuard (#254)", () => {
     it("U5b: Text.json collides with name 'text' as an objectType-name conflict on every host (#253, #260)", () => {
       put("objectTypes/Text.json");
 
-      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), SRC, "text");
+      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), familiesDir(), imagesDir(), SRC, "text");
 
       expect(got).to.deep.equal([{ relPath: "objectTypes/Text.json", reason: "objectType-name" }]);
     });
@@ -100,7 +101,7 @@ describe("scaffoldGuard (#254)", () => {
     it("U6: an objectType with the same name in a subfolder is an objectType-name conflict", () => {
       put("objectTypes/sub/Dup.json");
 
-      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), SRC, "Dup");
+      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), familiesDir(), imagesDir(), SRC, "Dup");
 
       expect(got).to.deep.equal([{ relPath: "objectTypes/sub/Dup.json", reason: "objectType-name" }]);
     });
@@ -112,8 +113,12 @@ describe("scaffoldGuard (#254)", () => {
       const src = JSON.parse(readFileSync(path.join(objectTypesDir(), "Src.json"), "utf-8")) as Record<string, unknown>;
 
       const expected: ScaffoldConflict[] = [{ relPath: "images/dst-a-000.png", reason: "image-target" }];
-      expect(findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), src, "Dst")).to.deep.equal(expected);
-      expect(findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), src, "DST")).to.deep.equal(expected);
+      expect(findSpriteScaffoldConflicts(root, objectTypesDir(), familiesDir(), imagesDir(), src, "Dst")).to.deep.equal(
+        expected,
+      );
+      expect(findSpriteScaffoldConflicts(root, objectTypesDir(), familiesDir(), imagesDir(), src, "DST")).to.deep.equal(
+        expected,
+      );
     });
 
     it("GR6: an existing file at an over-match name (not derived from the source objectType) is not reported (#262)", () => {
@@ -123,7 +128,7 @@ describe("scaffoldGuard (#254)", () => {
       put("images/src-big-animation 1-000.png", "x");
       put("images/dst-big-animation 1-000.png", "y");
 
-      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), SPRITE_SRC, "Dst");
+      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), familiesDir(), imagesDir(), SPRITE_SRC, "Dst");
 
       expect(got).to.deep.equal([]);
     });
@@ -132,7 +137,7 @@ describe("scaffoldGuard (#254)", () => {
       put("objectTypes/Src.json");
       expect(existsSync(imagesDir())).to.be.false;
 
-      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), SRC, "Fresh");
+      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), familiesDir(), imagesDir(), SRC, "Fresh");
 
       expect(got).to.deep.equal([]);
     });
@@ -153,7 +158,7 @@ describe("scaffoldGuard (#254)", () => {
     it("SC2: an objectType whose name differs only by case is an objectType-name conflict naming the on-disk file", () => {
       put("objectTypes/Foo.json");
 
-      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), imagesDir(), SRC, "foo");
+      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), familiesDir(), imagesDir(), SRC, "foo");
 
       expect(got).to.deep.equal([{ relPath: "objectTypes/Foo.json", reason: "objectType-name" }]);
     });
@@ -165,6 +170,65 @@ describe("scaffoldGuard (#254)", () => {
       const got = findLayoutScaffoldConflicts(root, layoutsDir(), out);
 
       expect(got).to.deep.equal([{ relPath: "layouts/Foo.json", reason: "layout-name" }]);
+    });
+  });
+
+  // #260: object types and families share one project-wide name namespace in C3, letter case ignored.
+  describe("family names (#260)", () => {
+    it("I260-G3: a family named like the target (exact, other case, other folder) is a family-name conflict with its on-disk path", () => {
+      put("families/TextFamily.json");
+      put("families/Sub/Deep.json");
+
+      const got = {
+        exact: findSpriteScaffoldConflicts(root, objectTypesDir(), familiesDir(), imagesDir(), SRC, "TextFamily"),
+        otherCase: findSpriteScaffoldConflicts(root, objectTypesDir(), familiesDir(), imagesDir(), SRC, "textfamily"),
+        subfolder: findSpriteScaffoldConflicts(root, objectTypesDir(), familiesDir(), imagesDir(), SRC, "deep"),
+      };
+
+      expect(got).to.deep.equal({
+        exact: [{ relPath: "families/TextFamily.json", reason: "family-name" }],
+        otherCase: [{ relPath: "families/TextFamily.json", reason: "family-name" }],
+        subfolder: [{ relPath: "families/Sub/Deep.json", reason: "family-name" }],
+      });
+    });
+
+    it("I260-G4: a different family name, editor-local family files and a missing families/ are not conflicts", () => {
+      put("families/TextFamily.json");
+      put("families/Ghost.uistate.json");
+      put("families/uistate/Ghost.json");
+
+      const got = {
+        otherName: findSpriteScaffoldConflicts(root, objectTypesDir(), familiesDir(), imagesDir(), SRC, "TextFamily2"),
+        editorLocal: findSpriteScaffoldConflicts(root, objectTypesDir(), familiesDir(), imagesDir(), SRC, "Ghost"),
+      };
+      rmSync(familiesDir(), { recursive: true, force: true });
+      const noFamiliesDir = findSpriteScaffoldConflicts(
+        root,
+        objectTypesDir(),
+        familiesDir(),
+        imagesDir(),
+        SRC,
+        "Ghost",
+      );
+
+      expect(got).to.deep.equal({ otherName: [], editorLocal: [] });
+      expect(noFamiliesDir).to.deep.equal([]);
+    });
+
+    it("I260-G5: an objectType, a family and an image target are listed together, in rank order", () => {
+      put("objectTypes/Src.json", JSON.stringify(SPRITE_SRC));
+      put("objectTypes/sub/Dst.json");
+      put("families/Dst.json");
+      put("images/src-a-000.png", "x");
+      put("images/dst-a-000.png", "y");
+
+      const got = findSpriteScaffoldConflicts(root, objectTypesDir(), familiesDir(), imagesDir(), SPRITE_SRC, "Dst");
+
+      expect(got).to.deep.equal([
+        { relPath: "families/Dst.json", reason: "family-name" },
+        { relPath: "objectTypes/sub/Dst.json", reason: "objectType-name" },
+        { relPath: "images/dst-a-000.png", reason: "image-target" },
+      ]);
     });
   });
 

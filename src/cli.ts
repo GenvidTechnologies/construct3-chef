@@ -326,6 +326,7 @@ guardAllHandlers(yargs(hideBin(process.argv)))
       const plan = planSpriteScaffold({
         rootDir,
         objectTypesDir: project.objectTypesDir,
+        familiesDir: project.familiesDir,
         imagesDir: project.imagesDir,
         source: argv.source,
         name: argv.name,

@@ -215,6 +215,7 @@ export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaff
 export interface SpriteScaffoldPlanOptions {
   rootDir: string;
   objectTypesDir: string;
+  familiesDir: string;
   imagesDir: string;
   source: string;
   name: string;
@@ -222,7 +223,7 @@ export interface SpriteScaffoldPlanOptions {
 
 /** Validate and build a sprite scaffold. Never writes. */
 export function planSpriteScaffold(opts: SpriteScaffoldPlanOptions): SpriteScaffoldPlan | ScaffoldRejection {
-  const { rootDir, objectTypesDir, imagesDir, source, name } = opts;
+  const { rootDir, objectTypesDir, familiesDir, imagesDir, source, name } = opts;
 
   for (const [label, val] of [
     ["source", source],
@@ -266,7 +267,7 @@ export function planSpriteScaffold(opts: SpriteScaffoldPlanOptions): SpriteScaff
 
   const sourceObj = JSON.parse(readFileSync(sourceFile, "utf-8")) as Record<string, unknown>;
 
-  const conflicts = findSpriteScaffoldConflicts(rootDir, objectTypesDir, imagesDir, sourceObj, name);
+  const conflicts = findSpriteScaffoldConflicts(rootDir, objectTypesDir, familiesDir, imagesDir, sourceObj, name);
   if (conflicts.length > 0) {
     return { ok: false, kind: "conflict", message: formatScaffoldRefusal("scaffold-sprite", conflicts) };
   }

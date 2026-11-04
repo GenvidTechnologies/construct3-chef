@@ -91,6 +91,7 @@ describe("scaffoldPlan (T26, #259)", function () {
     return {
       rootDir: tmp,
       objectTypesDir: path.join(tmp, "objectTypes"),
+      familiesDir: path.join(tmp, "families"),
       imagesDir: path.join(tmp, "images"),
       source: "Text",
       name: "PlanFresh",

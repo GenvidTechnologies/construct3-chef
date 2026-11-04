@@ -1705,6 +1705,7 @@ regP(
           const plan = planSpriteScaffold({
             rootDir: ctx.root,
             objectTypesDir: ctx.project.objectTypesDir,
+            familiesDir: ctx.project.familiesDir,
             imagesDir: ctx.project.imagesDir,
             source,
             name: targetName,

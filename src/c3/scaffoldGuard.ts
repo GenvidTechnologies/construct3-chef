@@ -11,11 +11,16 @@
 
 import { existsSync, readdirSync } from "node:fs";
 import * as path from "node:path";
-import { find_all_layouts_path, find_all_objectTypes_path } from "@genvidtech/c3source";
-import { objectTypeNameMatches } from "./objectTypeIdentity.js";
+import { find_all_layouts_path, find_all_objectTypes_path, find_all_section_items_path } from "@genvidtech/c3source";
+import { objectClassNameMatches } from "./objectTypeIdentity.js";
 import { planSpriteImageCopies } from "./spriteScaffold.js";
 
-export type ScaffoldConflictReason = "output-exists" | "layout-name" | "objectType-name" | "image-target";
+export type ScaffoldConflictReason =
+  | "output-exists"
+  | "layout-name"
+  | "objectType-name"
+  | "family-name"
+  | "image-target";
 
 export interface ScaffoldConflict {
   /** POSIX path relative to the project root. */
@@ -32,6 +37,7 @@ const REASON_TEXT: Record<ScaffoldConflictReason, string> = {
   "output-exists": "the output file already exists",
   "layout-name": "a layout with this file name already exists",
   "objectType-name": "an objectType with this name already exists",
+  "family-name": "a family with this name already exists",
   "image-target": "an image this scaffold would copy already exists",
 };
 
@@ -39,6 +45,7 @@ const REASON_RANK: Record<ScaffoldConflictReason, number> = {
   "output-exists": 0,
   "layout-name": 1,
   "objectType-name": 1,
+  "family-name": 1,
   "image-target": 2,
 };
 
@@ -103,6 +110,9 @@ export function findLayoutScaffoldConflicts(rootDir: string, layoutsDir: string,
  * - `objectType-name` for any `find_all_objectTypes_path` entry whose
  *   basename is `<targetName>.json` ignoring letter case (#253, #260),
  *   reported under its on-disk spelling.
+ * - `family-name` for any `find_all_section_items_path(familiesDir)` entry
+ *   with the same basename rule: object types and families share one name
+ *   namespace in C3, so a family also takes the name.
  * - `image-target` for each existing target of `planSpriteImageCopies`
  *   (exactly the images `deriveExpectedImages` derives from the source
  *   objectType, #262), when `imagesDir` exists.
@@ -113,6 +123,7 @@ export function findLayoutScaffoldConflicts(rootDir: string, layoutsDir: string,
 export function findSpriteScaffoldConflicts(
   rootDir: string,
   objectTypesDir: string,
+  familiesDir: string,
   imagesDir: string,
   sourceObjectType: Record<string, unknown>,
   targetName: string,
@@ -120,10 +131,12 @@ export function findSpriteScaffoldConflicts(
   const found: Found[] = [];
   const flat = path.join(objectTypesDir, `${targetName}.json`);
   if (exactBasenameExists(flat)) found.push({ abs: flat, reason: "output-exists" });
-  if (existsSync(objectTypesDir)) {
-    for (const p of objectTypeNameMatches(find_all_objectTypes_path(objectTypesDir), targetName)) {
-      found.push({ abs: p, reason: "objectType-name" });
-    }
+  const listing = {
+    objectTypes: existsSync(objectTypesDir) ? find_all_objectTypes_path(objectTypesDir) : [],
+    families: existsSync(familiesDir) ? find_all_section_items_path(familiesDir) : [],
+  };
+  for (const m of objectClassNameMatches(listing, targetName)) {
+    found.push({ abs: m.path, reason: m.kind === "family" ? "family-name" : "objectType-name" });
   }
   if (existsSync(imagesDir)) {
     for (const { targetPath } of planSpriteImageCopies(imagesDir, sourceObjectType, targetName)) {

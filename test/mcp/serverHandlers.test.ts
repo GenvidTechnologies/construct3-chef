@@ -2046,6 +2046,54 @@ describe("MCP server handler response shaping", () => {
       expect(mcpMessage).to.equal(expected);
     });
 
+    it("I260-B1: scaffold-sprite named like an existing family is refused alike on CLI and MCP, nothing written", async function () {
+      this.timeout(60_000);
+      const handler = __getHandler("scaffold-sprite")!;
+      expect(fs.existsSync(path.join(tmp, "families", "TextFamily.json"))).to.be.true;
+      __setExtractedDirty(false);
+      const before = snapshotTree(tmp);
+
+      const mcp = (await handler({ source: "Text", name: "TextFamily" }, makeExtra())) as any;
+      expect(mcp.isError).to.be.true;
+      const lines = textOf(mcp).split("\n");
+      const txLine = lines.pop();
+      const mcpMessage = lines.join("\n");
+      const cli = runCli(["scaffold-sprite", "--project-dir", tmp, "--source", "Text", "--name", "TextFamily"]);
+
+      expect({
+        txLine,
+        mcpMessage,
+        cliExit: cli.exitCode,
+        cliStderr: cli.stderr.trimEnd(),
+        bumped: watcher.bumped,
+        dirty: __getExtractedDirty(),
+        tree: snapshotTree(tmp),
+      }).to.deep.equal({
+        txLine: "txId: default:5",
+        mcpMessage: formatScaffoldRefusal("scaffold-sprite", [
+          { relPath: "families/TextFamily.json", reason: "family-name" },
+        ]),
+        cliExit: 1,
+        cliStderr: formatScaffoldRefusal("scaffold-sprite", [
+          { relPath: "families/TextFamily.json", reason: "family-name" },
+        ]),
+        bumped: 0,
+        dirty: false,
+        tree: before,
+      });
+    });
+
+    it("I260-B4: scaffold-sprite with a name next to an existing family's name succeeds and bumps once", async () => {
+      const result = (await __getHandler("scaffold-sprite")!(
+        { source: "Text", name: "TextFamily2", regenerate: false },
+        makeExtra(),
+      )) as any;
+
+      expect(result.isError, result.content?.[0]?.text).to.be.undefined;
+      expect(fs.existsSync(path.join(tmp, "objectTypes", "TextFamily2.json"))).to.be.true;
+      expect(watcher.bumped).to.equal(1);
+    });
+
     it("SR13: scaffold-sprite finds a source that the fixture keeps in a subfolder and writes the clone flat", async () => {
       const handler = __getHandler("scaffold-sprite")!;
       const result = (await handler({ source: "Sprite2", name: "SR13Clone", regenerate: false }, makeExtra())) as any;
