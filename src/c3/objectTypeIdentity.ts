@@ -27,11 +27,11 @@ export type ObjectTypeCreateDecision =
  * does not matter. Letter case is compared exactly. Pure: no I/O.
  */
 export function decideObjectTypeCreate(
-  listing: readonly string[],
+  listing: ObjectClassListing,
   targetPath: string,
   name: string,
 ): ObjectTypeCreateDecision {
-  return decideObjectClassCreate({ objectTypes: listing, families: [] }, "objectType", targetPath, name);
+  return decideObjectClassCreate(listing, "objectType", targetPath, name);
 }
 
 /** Listed file paths of the two kinds that share one name namespace. Same path spelling rules as `decideObjectTypeCreate`. */

@@ -345,10 +345,13 @@ function checkCreateTargets(rootDir: string, files: NonNullable<Recipe["files"]>
  * dry-run output or write, so validate-recipe / --preview refuse exactly like apply.
  */
 function checkObjectTypeCreateTargets(rootDir: string, objectTypes: readonly ObjectTypeCreate[]): void {
-  const objectTypesDir = openProject(rootDir).objectTypesDir;
-  const listing = existsSync(objectTypesDir)
-    ? find_all_objectTypes_path(objectTypesDir).map((p) => path.relative(rootDir, p).split(path.sep).join("/"))
-    : [];
+  const project = openProject(rootDir);
+  const objectTypesDir = project.objectTypesDir;
+  const toRel = (p: string): string => path.relative(rootDir, p).split(path.sep).join("/");
+  const listing = {
+    objectTypes: existsSync(objectTypesDir) ? find_all_objectTypes_path(objectTypesDir).map(toRel) : [],
+    families: project.findAllFamilies().map(toRel),
+  };
   const lines: string[] = [];
   for (const entry of objectTypes) {
     const target = path.posix.normalize(getObjectTypePath(entry));
@@ -357,7 +360,7 @@ function checkObjectTypeCreateTargets(rootDir: string, objectTypes: readonly Obj
   }
   if (lines.length === 0) return;
   throw new Error(
-    `objectTypes refused: ${lines.length} entr${lines.length === 1 ? "y names" : "ies name"} an objectType that already exists on disk under another spelling or folder. An objectType's identity is its name in any objectTypes/ folder, letter case ignored (ADR 0046). Nothing was written.\n` +
+    `objectTypes refused: ${lines.length} entr${lines.length === 1 ? "y names" : "ies name"} an objectType or family that already exists on disk under another spelling or folder. C3 object types and families share one name space: an objectType's identity is its name in any objectTypes/ or families/ folder, letter case ignored (ADR 0046). Nothing was written.\n` +
       lines.join("\n") +
       `\nRe-declare it with the exact on-disk name and folder (a SKIP when only one objectType file has that name), or choose a different name. When several files share the name, rename or remove the extras first.`,
   );

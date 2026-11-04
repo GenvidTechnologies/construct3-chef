@@ -443,6 +443,42 @@ describe("MCP server handler response shaping", () => {
     }
   });
 
+  // #260: an objectTypes entry named like an existing family is refused on every surface with the same line.
+  it("I260-B3: validate-recipe, apply-recipe and the CLI refuse an objectType named like a family, no bump", async () => {
+    const LINE = "  - objectTypes/TextFamily.json (on disk: families/TextFamily.json)";
+    const recipe = JSON.stringify({ objectTypes: [{ name: "TextFamily", plugin: "Json" }] });
+    const family = path.join(tmp, "families", "TextFamily.json");
+    const before = fs.readFileSync(family);
+
+    const validated = (await __getHandler("validate-recipe")!({ recipe }, makeExtra())) as any;
+    const validatedText = validated.content.map((b: any) => b.text).join("\n");
+    expect(validated.isError, validatedText).to.be.true;
+    expect(validatedText).to.include(LINE);
+
+    const applied = (await __getHandler("apply-recipe")!(
+      { recipe, txId: "default:5", regenerate: false },
+      makeExtra(),
+    )) as any;
+    const appliedText = applied.content.map((b: any) => b.text).join("\n");
+    expect(applied.isError, appliedText).to.be.true;
+    expect(appliedText).to.include(LINE);
+    expect(watcher.bumped).to.equal(0);
+    expect(fs.existsSync(path.join(tmp, "objectTypes", "TextFamily.json"))).to.be.false;
+    expect(fs.readFileSync(family).equals(before)).to.be.true;
+    expect(__getExtractedDirty()).to.be.false;
+
+    const recipeDir = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "c3chef-i260-cli-"));
+    try {
+      const recipeFile = path.join(recipeDir, "recipe.json");
+      fs.writeFileSync(recipeFile, recipe);
+      const r = runCli(["apply-recipe", recipeFile, "--project-dir", tmp, "--dry-run"]);
+      expect({ exitCode: r.exitCode, hasLine: r.stderr.includes(LINE) }).to.deep.equal({ exitCode: 1, hasLine: true });
+      expect(fs.existsSync(path.join(tmp, "objectTypes", "TextFamily.json"))).to.be.false;
+    } finally {
+      fs.rmSync(recipeDir, { recursive: true, force: true });
+    }
+  });
+
   // R2 (#245): a workflow tool routes through applyParsed too; it only edits an existing
   // layout (creates no new file), so no reminder.
   it("clone-replica-to-layouts (workflow) succeeds with no sync-project reminder", async () => {

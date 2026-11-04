@@ -506,8 +506,30 @@ describe("objectType create identity (#274)", () => {
     });
   });
 
+  describe("recipe objectTypes against families", () => {
+    it("I260-RC1: TextFamily is refused in dry-run and apply, naming the family file, tree byte-identical", () => {
+      const recipe = { objectTypes: [{ name: "TextFamily", plugin: "Json" }] };
+      assertRefused(recipe, ["objectTypes/TextFamily.json", "on disk: families/TextFamily.json", "families/"]);
+    });
+
+    it("I260-RC2: TextFamily2 is accepted, and a project without families/ still creates", () => {
+      const recipe = { objectTypes: [{ name: "TextFamily2", plugin: "Json" }] };
+      assert.isUndefined(run(tmp, recipe, true), "dry-run refused TextFamily2");
+      assert.isUndefined(run(tmp, recipe, false), "apply refused TextFamily2");
+
+      const bare = path.join(parent, "nofamilies");
+      cpSync(FIXTURE_ROOT, bare, { recursive: true });
+      rmSync(path.join(bare, "families"), { recursive: true, force: true });
+      assert.isUndefined(run(bare, { objectTypes: [{ name: "Fresh", plugin: "Json" }] }, false), "no-families create");
+      assert.isTrue(snapshotTree(bare).has("objectTypes/Fresh.json"));
+    });
+  });
+
   describe("decideObjectTypeCreate", () => {
-    const listing = ["objectTypes/NavButton.json", "objectTypes/images/Sprite.json", "objectTypes/tiles/Sprite.json"];
+    const listing = {
+      objectTypes: ["objectTypes/NavButton.json", "objectTypes/images/Sprite.json", "objectTypes/tiles/Sprite.json"],
+      families: [],
+    };
 
     it("OT274-R5: create, skip and refuse", () => {
       assert.deepEqual(decideObjectTypeCreate(listing, "objectTypes/Fresh.json", "Fresh"), { kind: "create" });
