@@ -265,7 +265,11 @@ guardAllHandlers(yargs(hideBin(process.argv)))
           describe:
             "Output path for the new layout JSON, relative to the project root (a .json file within layouts/); missing folders are created",
         })
-        .option("name", { type: "string", demandOption: true, describe: "Name for the new layout" })
+        .option("name", {
+          type: "string",
+          demandOption: true,
+          describe: "Name for the new layout; must equal the output file name without '.json'",
+        })
         .option("event-sheet", { type: "string", demandOption: true, describe: "Event sheet name for the new layout" })
         .option("regenerate", {
           type: "boolean",

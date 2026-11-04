@@ -45,7 +45,9 @@ import {
   formatScaffoldSourceCaseMismatch,
   formatScaffoldSourceAmbiguous,
   formatScaffoldRegistryMissing,
+  formatScaffoldLayoutNameMismatch,
 } from "../../src/c3/scaffoldPlan.js";
+import { layoutNameIssue, layoutNameIssueText } from "../../src/c3/c3NameRules.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = path.join(__dirname, "..", "fixtures", "construct3-chef-sample");
@@ -2117,6 +2119,83 @@ describe("MCP server handler response shaping", () => {
         dirty: false,
         tree: before,
       });
+    });
+
+    it("I260-B2: scaffold-layout JSON-name conflict, name mismatch and a~b name rule are refused alike on CLI and MCP, nothing written", async function () {
+      this.timeout(120_000);
+      const handler = __getHandler("scaffold-layout")!;
+      fs.writeFileSync(path.join(tmp, "layouts", "Other.json"), JSON.stringify({ name: "Renamed", layers: [] }));
+      __setExtractedDirty(false);
+      const before = snapshotTree(tmp);
+      const nameRuleIssue = layoutNameIssue("a~b")!;
+
+      const cases = [
+        {
+          out: "Renamed",
+          name: "Renamed",
+          expected: formatScaffoldRefusal("scaffold-layout", [
+            { relPath: "layouts/Other.json", reason: "layout-json-name" },
+          ]),
+        },
+        {
+          out: "New",
+          name: "Elsewhere",
+          expected: formatScaffoldLayoutNameMismatch("Elsewhere", "New", "layouts/New.json"),
+        },
+        {
+          out: "PlanB",
+          name: "a~b",
+          expected: `Invalid name 'a~b' — ${layoutNameIssueText(nameRuleIssue)}`,
+        },
+      ];
+      for (const c of cases) {
+        const mcp = (await handler(
+          {
+            source: "Gameplay/Main Layout.json",
+            name: c.name,
+            path: `${c.out}.json`,
+            eventSheet: "Event sheet 1",
+            regenerate: false,
+          },
+          makeExtra(),
+        )) as any;
+        expect(mcp.isError, c.out).to.be.true;
+        const lines = textOf(mcp).split("\n");
+        const txLine = lines.pop();
+        const mcpMessage = lines.join("\n");
+        const cli = runCli([
+          "scaffold-layout",
+          "--project-dir",
+          tmp,
+          "--source",
+          "layouts/Gameplay/Main Layout.json",
+          "--out",
+          `layouts/${c.out}.json`,
+          "--name",
+          c.name,
+          "--event-sheet",
+          "Event sheet 1",
+          "--regenerate=false",
+        ]);
+
+        expect({
+          txLine,
+          mcpMessage,
+          cliExit: cli.exitCode,
+          cliStderr: cli.stderr.trimEnd(),
+          bumped: watcher.bumped,
+          dirty: __getExtractedDirty(),
+          tree: snapshotTree(tmp),
+        }).to.deep.equal({
+          txLine: "txId: default:5",
+          mcpMessage: c.expected,
+          cliExit: 1,
+          cliStderr: c.expected,
+          bumped: 0,
+          dirty: false,
+          tree: before,
+        });
+      }
     });
 
     it("I260-B4: scaffold-sprite with a name next to an existing family's name succeeds and bumps once", async () => {

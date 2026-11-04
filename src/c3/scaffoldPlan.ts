@@ -80,6 +80,11 @@ export function formatScaffoldOutputSegmentRejection(rel: string, i: SegmentIssu
   return `Invalid output path '${rel}' — ${segmentIssueText(i)}`;
 }
 
+/** `relPosix` is the resolved output, project-relative with `/` separators, never the caller's raw argument. */
+export function formatScaffoldLayoutNameMismatch(name: string, stem: string, relPosix: string): string {
+  return `Invalid name '${name}' — must equal the output file name '${stem}' (${relPosix}), because C3 names a layout by its JSON name and the project lists it by file name`;
+}
+
 export function formatScaffoldSourceNotFile(relPosix: string): string {
   return `Source layout is not a file: ${relPosix}`;
 }
@@ -197,6 +202,15 @@ export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaff
   const conflicts = findLayoutScaffoldConflicts(rootDir, layoutsDir, outPath);
   if (conflicts.length > 0) {
     return { ok: false, kind: "conflict", message: formatScaffoldRefusal("scaffold-layout", conflicts) };
+  }
+
+  const stem = path.basename(outPath, ".json");
+  if (name !== stem) {
+    return {
+      ok: false,
+      kind: "invalid-name",
+      message: formatScaffoldLayoutNameMismatch(name, stem, relPosix(rootDir, outPath)),
+    };
   }
 
   const sourceLayout = JSON.parse(readFileSync(sourcePath, "utf-8")) as Record<string, unknown>;
