@@ -31,11 +31,55 @@ export function decideObjectTypeCreate(
   targetPath: string,
   name: string,
 ): ObjectTypeCreateDecision {
-  const matches = objectTypeNameMatches(listing, name);
+  return decideObjectClassCreate({ objectTypes: listing, families: [] }, "objectType", targetPath, name);
+}
+
+/** Listed file paths of the two kinds that share one name namespace. Same path spelling rules as `decideObjectTypeCreate`. */
+export interface ObjectClassListing {
+  objectTypes: readonly string[];
+  families: readonly string[];
+}
+
+export interface ObjectClassMatch {
+  path: string;
+  kind: "objectType" | "family";
+}
+
+/**
+ * Every listed object type or family file whose basename equals `${name}.json` with letter case ignored (the identity
+ * `objectTypeNameMatches` applies). Object types come first, then families, each in listing order.
+ *
+ * In C3 object types and families share one object-class namespace (editor r495-2; GenvidTechnologies/c3source#123
+ * records the trace), so a name used by one kind is taken for the other.
+ */
+export function objectClassNameMatches(listing: ObjectClassListing, name: string): ObjectClassMatch[] {
+  return [
+    ...objectTypeNameMatches(listing.objectTypes, name).map((p): ObjectClassMatch => ({ path: p, kind: "objectType" })),
+    ...objectTypeNameMatches(listing.families, name).map((p): ObjectClassMatch => ({ path: p, kind: "family" })),
+  ];
+}
+
+/**
+ * Decide what a create of kind `kind` at `targetPath` may do against both listings. SKIP only when there is exactly one
+ * match in total, of the same kind, at exactly `targetPath`; any other match refuses and lists every matching path;
+ * no match creates. For `kind: "objectType"` with no families this is the objectType rule of
+ * `decideObjectTypeCreate`. The family create in #304 is meant to call `decideObjectClassCreate(listing, "family", …)`.
+ * Pure: no I/O.
+ */
+export function decideObjectClassCreate(
+  listing: ObjectClassListing,
+  kind: "objectType" | "family",
+  targetPath: string,
+  name: string,
+): ObjectTypeCreateDecision {
+  const matches = objectClassNameMatches(listing, name);
   if (matches.length === 0) return { kind: "create" };
   const want = path.posix.normalize(targetPath);
-  if (matches.length === 1 && path.posix.normalize(matches[0]!) === want) return { kind: "skip", path: matches[0]! };
-  return { kind: "refuse", onDisk: matches };
+  const only = matches[0]!;
+  if (matches.length === 1 && only.kind === kind && path.posix.normalize(only.path) === want) {
+    return { kind: "skip", path: only.path };
+  }
+  return { kind: "refuse", onDisk: matches.map((m) => m.path) };
 }
 
 export type ObjectTypeLookup =

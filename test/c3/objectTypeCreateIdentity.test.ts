@@ -8,7 +8,7 @@ import { applyParsed, findObjectTypeFile } from "../../src/c3/recipeApplier.js";
 import { validateRecipe } from "../../src/c3/recipeInterpreter.js";
 import type { Recipe } from "../../src/c3/recipeInterpreter.js";
 import { objectTypeEntryIssue } from "../../src/c3/recipeKeys.js";
-import { decideObjectTypeCreate } from "../../src/c3/objectTypeIdentity.js";
+import { decideObjectClassCreate, decideObjectTypeCreate } from "../../src/c3/objectTypeIdentity.js";
 import { snapshotTree } from "../helpers/applyFixtures.js";
 import { runCli } from "../helpers/runCli.js";
 
@@ -449,6 +449,60 @@ describe("objectType create identity (#274)", () => {
     it("I328-R3: the public findObjectTypeFile returns null instead of throwing", () => {
       rmSync(path.join(tmp, "objectTypes"), { recursive: true, force: true });
       assert.isNull(findObjectTypeFile(tmp, "NavButton"));
+    });
+  });
+
+  describe("decideObjectClassCreate", () => {
+    it("I260-H2: an object type and a family share one name; only an exact same-kind lone match skips", () => {
+      const withBoth = { objectTypes: ["objectTypes/Sprite.json"], families: ["families/Sprite.json"] };
+      const familyOnly = { objectTypes: [], families: ["families/Sub/Deep.json"] };
+      const objectTypeOnly = { objectTypes: ["objectTypes/Sprite.json", "objectTypes/Sub/Sprite.json"], families: [] };
+      const lone = { objectTypes: ["objectTypes/Sprite.json"], families: ["families/TextFamily.json"] };
+      assert.deepEqual(
+        {
+          objectTypeWithSameNamedFamily: decideObjectClassCreate(
+            withBoth,
+            "objectType",
+            "objectTypes/Sprite.json",
+            "Sprite",
+          ),
+          familyWithSameNamedObjectType: decideObjectClassCreate(withBoth, "family", "families/Sprite.json", "Sprite"),
+          objectTypeOverFamilyAlone: decideObjectClassCreate(familyOnly, "objectType", "objectTypes/Deep.json", "Deep"),
+          familyAtItsOwnPath: decideObjectClassCreate(familyOnly, "family", "families/Sub/Deep.json", "Deep"),
+          familyAtOtherFolder: decideObjectClassCreate(familyOnly, "family", "families/Deep.json", "Deep"),
+          familyOverObjectTypeAlone: decideObjectClassCreate(lone, "family", "families/Sprite.json", "Sprite"),
+          objectTypeNoFamilyMatch: decideObjectClassCreate(lone, "objectType", "objectTypes/Sprite.json", "Sprite"),
+          objectTypeTwoMatches: decideObjectClassCreate(
+            objectTypeOnly,
+            "objectType",
+            "objectTypes/Sprite.json",
+            "Sprite",
+          ),
+          letterCaseVariant: decideObjectClassCreate(lone, "objectType", "objectTypes/sprite.json", "sprite"),
+          none: decideObjectClassCreate(lone, "family", "families/Fresh.json", "Fresh"),
+        },
+        {
+          objectTypeWithSameNamedFamily: {
+            kind: "refuse",
+            onDisk: ["objectTypes/Sprite.json", "families/Sprite.json"],
+          },
+          familyWithSameNamedObjectType: {
+            kind: "refuse",
+            onDisk: ["objectTypes/Sprite.json", "families/Sprite.json"],
+          },
+          objectTypeOverFamilyAlone: { kind: "refuse", onDisk: ["families/Sub/Deep.json"] },
+          familyAtItsOwnPath: { kind: "skip", path: "families/Sub/Deep.json" },
+          familyAtOtherFolder: { kind: "refuse", onDisk: ["families/Sub/Deep.json"] },
+          familyOverObjectTypeAlone: { kind: "refuse", onDisk: ["objectTypes/Sprite.json"] },
+          objectTypeNoFamilyMatch: { kind: "skip", path: "objectTypes/Sprite.json" },
+          objectTypeTwoMatches: {
+            kind: "refuse",
+            onDisk: ["objectTypes/Sprite.json", "objectTypes/Sub/Sprite.json"],
+          },
+          letterCaseVariant: { kind: "refuse", onDisk: ["objectTypes/Sprite.json"] },
+          none: { kind: "create" },
+        },
+      );
     });
   });
 
