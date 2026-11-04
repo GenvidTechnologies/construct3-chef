@@ -232,6 +232,51 @@ describe("scaffoldGuard (#254)", () => {
     });
   });
 
+  // #260: C3 takes a layout's identity from its JSON `name`, so a new layout must not reuse one.
+  describe("layout JSON names (#260)", () => {
+    it("I260-G1: a layout whose JSON name matches the output stem (either case) is a layout-json-name conflict", () => {
+      put("layouts/Other.json", JSON.stringify({ name: "Renamed" }));
+
+      const got = {
+        exact: findLayoutScaffoldConflicts(root, layoutsDir(), path.join(layoutsDir(), "Renamed.json")),
+        otherCase: findLayoutScaffoldConflicts(root, layoutsDir(), path.join(layoutsDir(), "renamed.json")),
+      };
+
+      expect(got).to.deep.equal({
+        exact: [{ relPath: "layouts/Other.json", reason: "layout-json-name" }],
+        otherCase: [{ relPath: "layouts/Other.json", reason: "layout-json-name" }],
+      });
+    });
+
+    it("I260-G2: a different JSON name, bad files and editor-local files are not JSON-name conflicts; a double match is listed once", () => {
+      put("layouts/Other.json", JSON.stringify({ name: "Renamed" }));
+      put("layouts/Broken.json", "{ not json");
+      put("layouts/NoName.json", JSON.stringify({ name: 42 }));
+      put("layouts/uistate/Ghost.json", JSON.stringify({ name: "Ghost" }));
+      put("layouts/Ghost.uistate.json", JSON.stringify({ name: "Ghost" }));
+      put("layouts/Both.json", JSON.stringify({ name: "Both" }));
+      expect(existsSync(path.join(layoutsDir(), "uistate", "Ghost.json"))).to.be.true;
+      expect(existsSync(path.join(layoutsDir(), "Ghost.uistate.json"))).to.be.true;
+      const at = (name: string) => path.join(layoutsDir(), `${name}.json`);
+
+      const got = {
+        otherName: findLayoutScaffoldConflicts(root, layoutsDir(), at("Renamed2")),
+        brokenByFileName: findLayoutScaffoldConflicts(root, layoutsDir(), at("broken")),
+        nonStringByFileName: findLayoutScaffoldConflicts(root, layoutsDir(), at("noname")),
+        editorLocal: findLayoutScaffoldConflicts(root, layoutsDir(), at("Ghost")),
+        both: findLayoutScaffoldConflicts(root, layoutsDir(), path.join(layoutsDir(), "New", "Both.json")),
+      };
+
+      expect(got).to.deep.equal({
+        otherName: [],
+        brokenByFileName: [{ relPath: "layouts/Broken.json", reason: "layout-name" }],
+        nonStringByFileName: [{ relPath: "layouts/NoName.json", reason: "layout-name" }],
+        editorLocal: [],
+        both: [{ relPath: "layouts/Both.json", reason: "layout-name" }],
+      });
+    });
+  });
+
   describe("formatScaffoldRefusal", () => {
     it("U9: lists every conflict with a count header, POSIX paths and the nothing-written line", () => {
       const conflicts: ScaffoldConflict[] = [

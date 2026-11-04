@@ -9,7 +9,7 @@
  * export is a permanent public-API commitment).
  */
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import * as path from "node:path";
 import { find_all_layouts_path, find_all_objectTypes_path, find_all_section_items_path } from "@genvidtech/c3source";
 import { objectClassNameMatches } from "./objectTypeIdentity.js";
@@ -18,6 +18,7 @@ import { planSpriteImageCopies } from "./spriteScaffold.js";
 export type ScaffoldConflictReason =
   | "output-exists"
   | "layout-name"
+  | "layout-json-name"
   | "objectType-name"
   | "family-name"
   | "image-target";
@@ -36,6 +37,7 @@ interface Found {
 const REASON_TEXT: Record<ScaffoldConflictReason, string> = {
   "output-exists": "the output file already exists",
   "layout-name": "a layout with this file name already exists",
+  "layout-json-name": "a layout with this JSON name already exists",
   "objectType-name": "an objectType with this name already exists",
   "family-name": "a family with this name already exists",
   "image-target": "an image this scaffold would copy already exists",
@@ -44,6 +46,7 @@ const REASON_TEXT: Record<ScaffoldConflictReason, string> = {
 const REASON_RANK: Record<ScaffoldConflictReason, number> = {
   "output-exists": 0,
   "layout-name": 1,
+  "layout-json-name": 1,
   "objectType-name": 1,
   "family-name": 1,
   "image-target": 2,
@@ -86,7 +89,14 @@ function finish(rootDir: string, found: Found[]): ScaffoldConflict[] {
  * - `layout-name` for any c3source `find_all_layouts_path(layoutsDir)` entry
  *   whose basename equals that of `outPath` ignoring letter case (#253, #260),
  *   reported under its on-disk spelling.
+ * - `layout-json-name` for any such entry whose JSON `name` equals the stem
+ *   of `outPath` (basename without `.json`) ignoring letter case (#260, ADR
+ *   `wiki/decisions/0046`). C3 takes a layout's identity from its JSON
+ *   `name`, not its file name, and refuses to load a project where two
+ *   layouts share one. An unreadable or unparseable file, or a non-string
+ *   `name`, never throws: it takes part through the file-name check only.
  *
+ * A layout matching by both identities is listed once, as `layout-name`.
  * Results are deduped and ordered deterministically; `relPath` is a POSIX
  * path relative to `rootDir`.
  */
@@ -95,11 +105,29 @@ export function findLayoutScaffoldConflicts(rootDir: string, layoutsDir: string,
   if (exactBasenameExists(outPath)) found.push({ abs: outPath, reason: "output-exists" });
   if (existsSync(layoutsDir)) {
     const base = path.basename(outPath).toLowerCase();
-    for (const p of find_all_layouts_path(layoutsDir)) {
+    const stem = path.basename(outPath, ".json").toLowerCase();
+    const layouts = find_all_layouts_path(layoutsDir);
+    for (const p of layouts) {
       if (path.basename(p).toLowerCase() === base) found.push({ abs: p, reason: "layout-name" });
+    }
+    for (const p of layouts) {
+      const name = readJsonName(p);
+      if (name !== undefined && name.toLowerCase() === stem) found.push({ abs: p, reason: "layout-json-name" });
     }
   }
   return finish(rootDir, found);
+}
+
+/** The string `name` property of the JSON file at `file`, or undefined when unreadable, unparseable or not a string. */
+function readJsonName(file: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(file, "utf-8"));
+    if (typeof parsed !== "object" || parsed === null) return undefined;
+    const name = (parsed as Record<string, unknown>).name;
+    return typeof name === "string" ? name : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
