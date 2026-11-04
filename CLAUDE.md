@@ -33,6 +33,8 @@ npm run build                           # tsc → dist/, then prepends a node sh
 
 > **Single-file runs need `test:file`, not `npm test -- <path>`.** The `test` script hardcodes the `'test/**/*.test.ts'` spec glob, and mocha **merges** (doesn't override) a positional path with a config/inline spec — so `npm test -- test/c3/foo.test.ts` silently runs the *whole* suite (the path just dedups against the glob). `test:file` is the same command minus the glob, so the forwarded path is the only spec. `--grep` works on `npm test` because it's a name filter, not a spec.
 
+> **The full suite takes about 10 minutes, and a fresh worktree has no dependencies.** Measured 2026-11-03: `npm test` ran 2348 tests in 10m, which is past the Bash tool's 600 s foreground limit, so start it with `run_in_background` and read the totals from a log file. A new worktree has no `node_modules`, so run `npm ci` before `lint`, `typecheck` or `test`.
+
 There is no dev script for the CLI. Run it in-place with `npx tsx src/cli.ts <subcommand> --project-dir <path>` — tsx compiles the `.ts` on the fly, so no build is needed. The package's `main`/`types`/`exports` point at the built `dist/` (what published consumers import); the `construct3-chef` bin also only exists after `npm run build` (it points at `dist/cli.js`).
 
 > **Probing an internal `src/c3/` function ad-hoc** (not the CLI): write a temp `.mts` file at the repo root and run `npx tsx that-file.mts` (delete it after). Do **not** use `npx tsx -e "<import … from './src/…'; …>"` — the inline-eval form with multi-line ESM imports silently yields no output in this repo's `NodeNext`/`"type":"module"` setup, so it's not usable for quick probes.
