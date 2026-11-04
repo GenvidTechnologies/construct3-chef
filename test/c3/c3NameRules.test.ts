@@ -1,4 +1,5 @@
 import { expect } from "chai";
+import * as c3source from "@genvidtech/c3source";
 import {
   layoutNameIssue,
   layoutNameIssueText,
@@ -104,5 +105,23 @@ describe("c3NameRules", () => {
       [`a${NBSP}b`, "must be a name C3 keeps as written: C3 would load it as 'ab'"],
       ["s-elf", "must be a name C3 keeps as written: C3 would load it as 'self'"],
     ]);
+  });
+
+  it("I260-T1: c3source exports no name validator yet, so the local bridge is still needed", () => {
+    const pattern = /objectClassName|layoutName|itemNameIssue|isValid[A-Za-z]*Name|NameIssue|reservedObject/i;
+    const matching = (names: string[]): string[] => names.filter((n) => pattern.test(n));
+
+    expect(matching(["isValidItemName", "objectClassNameIssue", "layoutNameIssue"])).to.have.length(3);
+    expect(matching(["isSectionItemName"])).to.have.length(0);
+
+    const found = matching(Object.keys(c3source));
+    expect(
+      found,
+      `c3source now exports a name validator (${found.join(", ")}; c3source#123). Adopt it and delete ` +
+        "src/c3/c3NameRules.ts, its two call sites (src/c3/scaffoldPlan.ts, src/c3/recipeKeys.ts) and this " +
+        "tripwire (I260-T1). Afterwards these tests must stay green: I260-N1, I260-N2, I260-N3, I260-N4, " +
+        "I260-N5 (move or replace them with tests over the adopted export), I260-L4, I260-L5, I260-S1, " +
+        "I260-S2, I260-RC3, I260-RC4.",
+    ).to.deep.equal([]);
   });
 });
