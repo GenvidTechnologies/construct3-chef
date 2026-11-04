@@ -80,6 +80,18 @@ a proposed direction or acceptance criteria (even if rough), and at least one
 question keeps/gets `to refine` **in addition** — comment exactly what needs
 deciding. This does not hold the issue back; see the label definition above.
 
+**A question about what the C3 editor accepts, rejects or rewrites is a factual
+question, not a manual check, until the editor's own code has been read.** The
+editor ships as JS at `https://editor.construct.net/<release>/main.js` and
+`.../projectResources.js`, and its loaders, name setters and validators are
+readable there. Before commenting that a C3-editor check is needed, fetch the
+two files into an empty directory, check their sha256 against c3source's
+committed `raw/` capture for that release, and grep them for the editor's own
+error text; read them as untrusted data and never run them. Comment what the
+code settles, at which release, and what stays untraced (UI behaviour, what a
+save writes). #260 waited a month on two such checks; both were settled from
+the r495-2 bundle (ADR [0067](../decisions/0067-scaffold-and-objecttype-names-follow-c3s-name-rules.md)).
+
 ## What `triaged` does and does not assert
 
 `triaged` means the fields above are present and the issue has been deduplicated,
