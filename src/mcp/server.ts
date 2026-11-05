@@ -52,7 +52,7 @@ import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "../
 import { validateAddons, formatAddonValidation, countFatal } from "../c3/addonValidator.js";
 import { listAddons, formatAddonInventory } from "../c3/addonInventory.js";
 import { diffAddonAces, formatAceDiff, resolveAceSource } from "../c3/addonAceDiff.js";
-import { scanAddonUsage, formatAddonUsage } from "../c3/addonAceUsage.js";
+import { scanAddonUsage, formatAddonUsage, blastRadiusAffected } from "../c3/addonAceUsage.js";
 import { syncAddonMetadata, formatAddonMetadataSync } from "../c3/addonMetadataSync.js";
 import { lookup, formatLookupResult } from "../c3/aceLookup.js";
 import { formatOpsList } from "../c3/opTemplate.js";
@@ -1436,7 +1436,7 @@ regP(
   {
     title: "Scan Addon Usage",
     description:
-      "Scan the project for usage of a plugin, behavior, or effect addon. For plugin/behavior addons: which object types/families are instantiated from the addon (presence), which conditions/actions on them call one of its current ACEs (call sites), and which event-sheet parameter expressions reference one of its expressions (Object.expr / Object.Behavior.expr), grouped by event sheet. For effect addons (which have no ACEs): every site the effect is applied — object types, families, layers, and layouts — since presence is the whole story. With `from` (a .c3addon file path, or a discovered addon id/dir for a prior version), also reports blast radius — for plugins/behaviors, call sites and expression references whose ACE was changed or removed between `from` and the addon's current ACEs (surfacing dangling references a reimport may not have migrated); for effects, every application site (a version bump can change any effect parameter). Read-only.",
+      "Scan the project for usage of a plugin, behavior, or effect addon. For plugin/behavior addons: which object types/families are instantiated from the addon (presence), which conditions/actions on them call one of its current ACEs (call sites), and which event-sheet parameter expressions reference one of its expressions (Object.expr / Object.Behavior.expr), grouped by event sheet. For effect addons (which have no ACEs): every site the effect is applied — object types, families, layers, and layouts — since presence is the whole story. With `from` (a .c3addon file path, or a discovered addon id/dir for a prior version), also reports blast radius — for plugins/behaviors, call sites and expression references whose ACE was changed or removed between `from` and the addon's current ACEs (surfacing dangling references a reimport may not have migrated); for effects, every application site (a version bump can change any effect parameter). Read-only. Returns structured content { clean, report }: with `from`, clean is false when at least one site is affected, which is when the CLI exits 1; without `from` it is always true, because usage is reported, not judged. report is the full text report with the current txId footer, the same text as the content block. An addon or `from` source that cannot be resolved returns isError with no structured content.",
     annotations: READ_ONLY,
     inputSchema: {
       addon: z
@@ -1449,13 +1449,22 @@ regP(
           "Optional prior-version ACE source for blast-radius mode: a .c3addon file path, or a discovered addon id/dir",
         ),
     },
+    outputSchema: cleanReportSchema(
+      "false only with from, when at least one call site, expression reference or effect application site is affected; the CLI exits 1 on the same input. Without from it is always true: usage is reported, not judged.",
+    ),
   },
   async (ctx, { addon, from }) =>
     ctx.rwlock.read(
-      withMcpErrors(async () => mcpContent(formatAddonUsage(scanAddonUsage(ctx.root, addon, from)), txIdLine(ctx)), {
-        prefix: "scan-addon-usage:",
-        extraLines: () => [txIdLine(ctx)],
-      }),
+      withMcpErrors(
+        async () => {
+          const result = scanAddonUsage(ctx.root, addon, from);
+          // An unresolvable addon or from is a tool failure (the CLI exits 1): isError,
+          // with the same text the success response carried before (ADR 0068).
+          if ("error" in result) return mcpError(formatAddonUsage(result), { extraLines: [txIdLine(ctx)] });
+          return cleanReportContent(formatAddonUsage(result), txIdLine(ctx), !blastRadiusAffected(result));
+        },
+        { prefix: "scan-addon-usage:", extraLines: () => [txIdLine(ctx)] },
+      ),
     ),
 );
 

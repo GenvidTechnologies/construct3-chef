@@ -267,3 +267,86 @@ describe("MCP validate-addons structured content (#349)", function () {
     });
   });
 });
+
+describe("MCP scan-addon-usage structured content (#349)", function () {
+  this.timeout(120000);
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = copyFixture();
+    __setProjectRoot(tmp);
+    __setTestWatcher(makeFakeWatcher(5));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    __resetTestState();
+  });
+
+  async function scan(args: Record<string, unknown>): Promise<any> {
+    return __getHandler("scan-addon-usage")!(args, makeExtra());
+  }
+
+  function textOf(result: any): string {
+    return result.content[0].text;
+  }
+
+  it("I349-SU1: scan blast radius with affected sites gives clean false", async () => {
+    const result = await scan({ addon: "MyCompany_MyEffect", from: "MyCompany_MyEffect" });
+    expect({
+      isError: result.isError,
+      clean: result.structuredContent?.clean,
+      affected: textOf(result).includes("3 site(s) affected"),
+    }).to.deep.equal({ isError: undefined, clean: false, affected: true });
+  });
+
+  it("I349-SU2: scan with no affected site, or without from, is clean", async () => {
+    const none = await scan({ addon: "MyCompany_MyBehavior", from: "MyCompany_MyBehavior" });
+    const plain = await scan({ addon: "MyCompany_MyEffect" });
+    expect({
+      none: none.structuredContent?.clean,
+      plain: plain.structuredContent?.clean,
+    }).to.deep.equal({ none: true, plain: true });
+  });
+
+  it("I349-SU3: scan with an unresolvable source is isError with the same text", async () => {
+    const addon = await scan({ addon: "NoSuchAddonXYZ" });
+    const from = await scan({ addon: "MyCompany_MyBehavior", from: "NoSuchSourceXYZ" });
+    expect({
+      addon: { isError: addon.isError, structured: addon.structuredContent, text: textOf(addon) },
+      from: { isError: from.isError, structured: from.structuredContent },
+    }).to.deep.equal({
+      addon: {
+        isError: true,
+        structured: undefined,
+        text: "scan-addon-usage: addon source not found: NoSuchAddonXYZ\ntxId: default:5",
+      },
+      from: { isError: true, structured: undefined },
+    });
+  });
+
+  it("I349-SU4: scan CLI exit code and MCP result agree", async () => {
+    const pair = async (cliArgs: string[], args: Record<string, unknown>) => {
+      const cliExit = runCli(["scan-addon-usage", ...cliArgs, "--project-dir", tmp]).exitCode;
+      const result = await scan(args);
+      return [cliExit, result.isError ? "isError" : result.structuredContent?.clean];
+    };
+    expect({
+      blast: await pair(["MyCompany_MyEffect", "--from", "MyCompany_MyEffect"], {
+        addon: "MyCompany_MyEffect",
+        from: "MyCompany_MyEffect",
+      }),
+      none: await pair(["MyCompany_MyBehavior", "--from", "MyCompany_MyBehavior"], {
+        addon: "MyCompany_MyBehavior",
+        from: "MyCompany_MyBehavior",
+      }),
+      plain: await pair(["MyCompany_MyEffect"], { addon: "MyCompany_MyEffect" }),
+      missing: await pair(["NoSuchAddonXYZ"], { addon: "NoSuchAddonXYZ" }),
+    }).to.deep.equal({
+      blast: [1, false],
+      none: [0, true],
+      plain: [0, true],
+      missing: [1, "isError"],
+    });
+  });
+});

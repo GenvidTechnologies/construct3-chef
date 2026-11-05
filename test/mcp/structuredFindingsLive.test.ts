@@ -84,6 +84,35 @@ describe("MCP structured findings through the live SDK (#349)", function () {
     }).to.deep.equal({ isError: undefined, blocks: 1, clean: false, reportIsText: true, noSubstitution: true });
   });
 
+  it("I349-L2c: live scan-addon-usage survives SDK validation", async () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "c3chef-i349-live-"));
+    fs.cpSync(FIXTURE_DIR, tmp, { recursive: true });
+    __setProjectRoot(tmp);
+    const result: any = await client.callTool({
+      name: "scan-addon-usage",
+      arguments: { addon: "MyCompany_MyEffect", from: "MyCompany_MyEffect" },
+    });
+    expect({
+      isError: result.isError,
+      blocks: result.content.length,
+      clean: result.structuredContent?.clean,
+      reportIsText: result.structuredContent?.report === textOf(result),
+      noSubstitution: !textOf(result).includes("Output validation error"),
+    }).to.deep.equal({ isError: undefined, blocks: 1, clean: false, reportIsText: true, noSubstitution: true });
+  });
+
+  it("I349-L3b: live scan-addon-usage with an unresolvable addon is isError", async () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "c3chef-i349-live-"));
+    fs.cpSync(FIXTURE_DIR, tmp, { recursive: true });
+    __setProjectRoot(tmp);
+    const result: any = await client.callTool({ name: "scan-addon-usage", arguments: { addon: "NoSuchAddonXYZ" } });
+    expect({
+      isError: result.isError,
+      structured: result.structuredContent,
+      notFound: textOf(result).includes("addon source not found"),
+    }).to.deep.equal({ isError: true, structured: undefined, notFound: true });
+  });
+
   it("I349-L3a: live validate-project failure paths", async () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), "c3chef-i349-live-"));
     fs.mkdirSync(path.join(tmp, "layouts"), { recursive: true });
