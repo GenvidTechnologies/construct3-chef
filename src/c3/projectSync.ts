@@ -19,7 +19,7 @@ import {
   TIMELINE_TRANSITIONS_FOLDER,
 } from "@genvidtech/c3source";
 import { hasEditorLocalSegment } from "./editorLocal.js";
-import { fileAdmissionIssue, folderAdmitted } from "./fileAdmission.js";
+import { lowerExtension, rescanIssue } from "./rescanAdmission.js";
 import { mintUniqueSid } from "./sidUtils.js";
 
 // ---------------------------------------------------------------------------
@@ -50,9 +50,9 @@ export interface FileSectionConfig {
   diskDir: string;
   infoKey: string;
   /**
-   * @deprecated Section membership is decided by the editor's rescan rule (`fileAdmission.ts`), not by an
-   * extension list. A direct `syncFileFolder` caller may still pass one: it narrows which unlisted files are
-   * admitted. The `FILE_SECTIONS` entries no longer set it.
+   * @deprecated Section membership is decided by the editor's rescan rule (`rescanAdmission.ts` over c3source's
+   * `rescanAdmissionIssue`), not by an extension list. A direct `syncFileFolder` caller may still pass one: it
+   * narrows which unlisted files are admitted. The `FILE_SECTIONS` entries no longer set it.
    */
   extensions?: string[];
   /**
@@ -256,7 +256,7 @@ export interface DiskTree {
  *    caller may still pass, is a plain suffix filter on the listing. The
  *    `FILE_SECTIONS` entries no longer set one: `planFileLevel` reads the disk with
  *    no extension filter and decides which unlisted files take part with the
- *    editor's rescan rule (`fileAdmission.ts`).
+ *    editor's rescan rule (`rescanAdmission.ts` over c3source's `rescanAdmissionIssue`).
  *
  * Consequence: delegating ONLY the ignore predicate would have been a BEHAVIOUR
  * CHANGE, not a refactor, so `readDiskDir` keeps its own filters and its
@@ -327,7 +327,11 @@ interface PlanNode {
 interface PlanContext {
   manifest: PlanManifestEntry[];
   diskList: Array<{ name: string; path: string[] }>;
+  /** `.ts` twins of this section, by NFC lower-cased section-relative path (ADR 0069 amendment). */
+  twins: Set<string>;
 }
+
+const twinKey = (segs: string[], name: string): string => [...segs, name].join("/").normalize().toLowerCase();
 
 /** Add `folder`'s whole subtree (items and nested named folders) to the manifest list. */
 function collectManifestSubtree(folder: FileFolder, segs: string[], ctx: PlanContext): void {
@@ -360,20 +364,35 @@ function planFileLevel(
   const atSectionRoot = segs.length === 0;
   const listedFiles = new Set(folder?.items.map((i) => i.name) ?? []);
   const listedDirs = new Set((folder?.subfolders ?? []).flatMap((s) => (s.name === undefined ? [] : [s.name])));
-  // A `.js` file's `.ts` twin counts when it is listed in this folder or present on disk beside it.
-  const twinPresent = (f: string): boolean => {
-    if (!f.toLowerCase().endsWith(".js")) return false;
-    const twin = `${f.slice(0, -3)}.ts`;
-    return listedFiles.has(twin) || rawDisk.files.includes(twin);
-  };
-  const admitted = (f: string): boolean =>
-    fileAdmissionIssue(config.key, f, { atSectionRoot, tsTwinListed: twinPresent(f) }) === undefined &&
-    (config.extensions?.some((ext) => f.endsWith(ext)) ?? true);
+  const candidates = rawDisk.files.filter(keep);
+  const narrowed = (f: string): boolean => config.extensions?.some((ext) => f.endsWith(ext)) ?? true;
+  // Upstream asks for the `.ts` twin by its bare name; the set is keyed by section-relative path.
+  const fileIssue = (f: string) =>
+    rescanIssue(config.key, {
+      kind: "file",
+      name: f,
+      atSectionRoot,
+      hasRegisteredFile: (ts) => ctx.twins.has(twinKey(segs, ts)),
+    });
+  // Phase 1: register this level's `.ts` twins before any `.js` at this level is decided. A twin matches only
+  // at its own level (both sides use disk segments), so filling the set level by level is enough.
+  // A `.ts` counts when it is listed here and present (candidates come from the disk listing, so a listed `.ts`
+  // missing on disk never counts) or, in `script` only, when this sync adds it. Asking `fileIssue` about a
+  // `.ts` never calls the twin callback, so this phase cannot recurse.
+  for (const f of candidates) {
+    if (lowerExtension(f) !== ".ts") continue;
+    if (listedFiles.has(f) || (config.key === "script" && fileIssue(f) === undefined && narrowed(f))) {
+      ctx.twins.add(twinKey(segs, f));
+    }
+  }
+  // Phase 2: keep a listed entry, or an unlisted one the rescan rule admits.
   const disk: DiskTree = {
-    files: rawDisk.files.filter(keep).filter((f) => listedFiles.has(f) || admitted(f)),
+    files: candidates.filter((f) => listedFiles.has(f) || (fileIssue(f) === undefined && narrowed(f))),
     dirs: rawDisk.dirs
       .filter(keep)
-      .filter((d) => listedDirs.has(d) || folderAdmitted(config.key, d, { atSectionRoot })),
+      .filter(
+        (d) => listedDirs.has(d) || rescanIssue(config.key, { kind: "folder", name: d, atSectionRoot }) === undefined,
+      ),
   };
   const node: PlanNode = {
     segs,
@@ -439,7 +458,7 @@ export function syncFileFolder(
   opts?: { withhold?: boolean },
 ): void {
   const withhold = opts?.withhold === true;
-  const ctx: PlanContext = { manifest: [], diskList: [] };
+  const ctx: PlanContext = { manifest: [], diskList: [], twins: new Set() };
   const root = planFileLevel(folder, diskPath, [], config, ctx, undefined, undefined);
 
   // Classify

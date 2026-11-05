@@ -92,7 +92,7 @@ Rejected options, with the reason for each.
 - **A `regStructured(` registration wrapper.** The README inventory parser in `test/readmeCommandInventory.test.ts` matches the literal `regP(` form, so each registration stays `regP("name", { ... })` with an `outputSchema` key in the config.
 - **G1, add a `skipGate` input to `validate-addons`.** It would reverse the parameter decision of ADR 0038 and flip a pinned test. It is left open for later. The cost of G0: on a project with a lang backlog (the sample project is one), an agent reads `clean: false` on every call and must read the per-family lines in `report`. That is the [#220](https://github.com/GenvidTechnologies/construct3-chef/issues/220) problem, reproduced on MCP.
 
-**Upstream.** mcp-utils' `mcpContent` has no structured parameter, so the local builder wraps it. An intent request to mcp-utils asks for an optional structured argument. No local code works around an upstream defect, so there is nothing to retire. The `{ clean, report }` policy stays local either way.
+**Upstream.** mcp-utils 0.14.0 ships `mcpStructuredContent` ([mcp-utils#37](https://github.com/GenvidTechnologies/mcp-utils/issues/37)), and `cleanReportContent` in `src/mcp/structuredReport.ts` delegates to it. The `{ clean, report }` payload policy and `cleanReportSchema` stay local, because upstream has no schema helper. The output is byte-identical to the earlier local builder, which test `CS41-H1` pins by comparing `JSON.stringify` output.
 
 ## Testing rule
 

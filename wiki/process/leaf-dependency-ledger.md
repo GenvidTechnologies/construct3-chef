@@ -99,6 +99,20 @@ The intervening **c3source 1.2.0** added an `isEventVarReference`/`getEventVarRe
 
 **Next-bump check.** Whether [c3source#130](https://github.com/GenvidTechnologies/c3source/issues/130) shipped an admission predicate (`DB4-T1` goes red when it does; the retirement steps are in ADR 0069). Whether an upstream walk carries `walkFiles`' error tolerances (ADR 0021).
 
+### 4.1.0
+
+**c3source 4.1.0** was adopted together with mcp-utils 0.14.0 in [#378](https://github.com/GenvidTechnologies/construct3-chef/issues/378). **Adopted:** `rescanAdmissionIssue`, the editor's rescan decision for an unlisted file-section entry ([c3source#130](https://github.com/GenvidTechnologies/c3source/issues/130)). `src/c3/fileAdmission.ts` and the tripwire `DB4-T1` were deleted, and `src/c3/rescanAdmission.ts` carries chef's two policy layers over it (ADR [`0069`](../decisions/0069-file-section-admission-follows-the-editors-rescan-rule.md), amendment).
+
+**Inherited, not adopted.** `C3_FONT_FILE_TYPES` and `C3_GENERAL_ROOT_RESERVED_FILE_NAMES`, through the function. The font set covers exactly `.woff`, `.woff2`, `.ttf`, `.otf` and `.eot`, so ADR 0069's local font deviation is retired.
+
+**Not requested.** No request was filed with c3source for a folder-prefix table, which a cross-section twin lookup would need: the twin lookup stays section-local, and the limitation is recorded in ADR 0069.
+
+**Revert-confirm.** On the bump alone the full suite ran 2424 passing, 2 pending and 1 failing, and the one failure was `DB4-T1`, the tripwire, as designed. Against the base total of 2425 nothing else moved.
+
+**Answers to the 4.0.0 next-bump checks.** [c3source#130](https://github.com/GenvidTechnologies/c3source/issues/130) shipped. The dist `layouts.*` and `project.*` bodies are byte-identical to 4.0.0 (only `manifest.*` changed), so the ADR [`0021`](../decisions/0021-section-item-axis-does-not-reopen-walk-declines.md) `findJsonFiles` decline stands.
+
+**Next-bump check.** Whether `rescanAdmissionIssue`'s outcomes moved. `CS41-U1` pins the per-section outcomes, so a change shows as a red row. Whether an upstream walk carries `walkFiles`' error tolerances (ADR 0021).
+
 ## @genvidtech/mcp-utils
 
 ### 0.3.0
@@ -213,3 +227,11 @@ Adopted in [#217](https://github.com/GenvidTechnologies/construct3-chef/issues/2
 **Answers to earlier next-bump checks.** The 0.12.0 entry's check on mcp-utils#35 is answered by this adoption. The 0.10.0 check holds again: `_txId` starts at 0 and increments only in `bump()`, so ADR 0037's no-wrapper decline stands.
 
 **Next-bump check.** Whether mcp-utils `walkFiles` gained a link policy ([#375](https://github.com/GenvidTechnologies/construct3-chef/issues/375)).
+
+### 0.14.0
+
+**mcp-utils 0.14.0** was adopted together with c3source 4.1.0 in [#378](https://github.com/GenvidTechnologies/construct3-chef/issues/378). **Adopted:** `mcpStructuredContent` ([mcp-utils#37](https://github.com/GenvidTechnologies/mcp-utils/issues/37)). `cleanReportContent` in `src/mcp/structuredReport.ts` delegates to it, and its output is byte-identical to the earlier local builder (test `CS41-H1`; ADR [`0068`](../decisions/0068-mcp-findings-ride-in-structured-content-and-iserror-stays-tool-failure.md)). The `{ clean, report }` policy and `cleanReportSchema` stay local, because upstream has no schema helper.
+
+**Answers to earlier next-bump checks.** `walkFiles` is byte-identical to 0.13.0, so it has no link policy and [#375](https://github.com/GenvidTechnologies/construct3-chef/issues/375) stays open.
+
+**Next-bump check.** [#375](https://github.com/GenvidTechnologies/construct3-chef/issues/375): whether `walkFiles` gained a link policy.

@@ -3,8 +3,9 @@ type: decision-record
 title: "0069. File-section admission follows the editor's rescan rule"
 description: >-
   sync keeps its own lockstep walk of the file sections (c3source 4.0.0 / Option B-2). A disk file takes part in
-  classification when the manifest lists it, or when the C3 editor's rescan rule would add it. The rule is a local
-  bridge, `src/c3/fileAdmission.ts`, with the tripwire DB4-T1 and the upstream request c3source#130. It replaces the
+  classification when the manifest lists it, or when the C3 editor's rescan rule would add it. The rule was first a
+  local bridge, `src/c3/fileAdmission.ts`, with the tripwire DB4-T1; c3source 4.1.0 shipped it as
+  `rescanAdmissionIssue` (c3source#130) and the amendment records the retirement. It replaces the
   per-section extension filters of ADR 0066, which treated an extension list as section membership. The editor
   trace that settles #354 is recorded, with its bundle hashes and offsets
   ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354))
@@ -43,22 +44,22 @@ With c3source 4.0.0 and mcp-utils 0.13.0 adopted, that question was settled from
 
 ## Decision
 
-**Option B-2: keep chef's lockstep walk and split presence from admission.** `planFileLevel` in `src/c3/projectSync.ts` reads each disk directory without an extension filter (presence). A disk file then takes part in classification when the manifest lists it at that path, or when the editor's rescan rule admits it. A disk file that is neither is invisible to sync, as filtered files were before. An unlisted subfolder takes part when the manifest lists it or `folderAdmitted` accepts it. Editor-local classification (ADR 0066 decision 2) still applies on both sides.
+**Option B-2: keep chef's lockstep walk and split presence from admission.** `planFileLevel` in `src/c3/projectSync.ts` reads each disk directory without an extension filter (presence). A disk file then takes part in classification when the manifest lists it at that path, or when the editor's rescan rule admits it. A disk file that is neither is invisible to sync, as filtered files were before. An unlisted subfolder takes part when the manifest lists it or `folderAdmitted` accepts it (superseded: since the amendment below, c3source's `rescanAdmissionIssue` decides folders through `rescanAdmission.ts`). Editor-local classification (ADR 0066 decision 2) still applies on both sides.
 
-1. **The bridge is `src/c3/fileAdmission.ts`** (off-barrel). `fileAdmissionIssue(section, name, ctx)` returns why the editor skips a file, or `undefined` when it adds it. `folderAdmitted(section, name, ctx)` does the same for a folder. The name check reuses c3source's `itemNameIssue("layouts", name)`, with one carve-out: a `rewritten` result whose name equals `name.normalize()` is admitted, because the editor normalises to NFC internally and c3source compares the raw name. The carve-out is an inference from reading both bodies, pinned by `DB4-A4`.
+1. **The bridge is `src/c3/fileAdmission.ts`** (off-barrel; retired onto c3source 4.1.0, see the Amendment). `fileAdmissionIssue(section, name, ctx)` returns why the editor skips a file, or `undefined` when it adds it. `folderAdmitted(section, name, ctx)` does the same for a folder. The name check reuses c3source's `itemNameIssue("layouts", name)`, with one carve-out: a `rewritten` result whose name equals `name.normalize()` is admitted, because the editor normalises to NFC internally and c3source compares the raw name. The carve-out is an inference from reading both bodies, pinned by `DB4-A4`. *(Retired: see the Amendment.)*
 2. **`skipFileSections` replaces the manifest view.** `runSync` calls `detectManifestDrift(rootDir, project, { skipFileSections: true })` and no longer builds a manifest copy without `rootFileFolders` (the `nameView` of ADR 0066). The option is kept for cost alone: chef discards upstream's file-section drift either way, and since c3source 4.0.0 those walks do not follow links ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)).
 3. **`extensions` only narrows admission.** `FileSectionConfig.extensions` is `@deprecated` and kept for direct callers of the barrel-exported `syncFileFolder`. The `FILE_SECTIONS` entries no longer set it, `script` included.
 4. **New items take `fileTypeForSection`.** `newItemType` uses c3source's per-section type for the seven known section keys and `inferMimeType` otherwise. This adopts the video facts attested by [c3source#113](https://github.com/GenvidTechnologies/c3source/issues/113): a video `.webm` is `video/webm`.
 
 ### Deviations from the editor
 
-- **`script` also admits `.ts`.** The editor's rescan admits `.js` only. Without the deviation, sync would stop registering `.ts` scripts. This is a chef deviation. The editor's own `.js` admission is kept: an unlisted `.js` is registered unless its `.ts` twin is listed or present beside it. The `script` entry in `FILE_SECTIONS` sets no extension list, so nothing narrows the rule.
-- **`font` uses a local extension set** (`.woff`, `.woff2`, `.ttf`, `.otf`, `.eot`), because the registry flag's per-extension values were not read.
-- **A `.js` file's `.ts` twin counts when it is listed in the folder or present on disk beside it.** The editor tests the registered twin.
+- **`script` also admits `.ts`.** The editor's rescan admits `.js` only. Without the deviation, sync would stop registering `.ts` scripts. This is a chef deviation. The editor's own `.js` admission is kept: an unlisted `.js` is registered unless its `.ts` twin counts (the twin rule was replaced by the amendment below). The `script` entry in `FILE_SECTIONS` sets no extension list, so nothing narrows the rule.
+- **`font` uses a local extension set** (`.woff`, `.woff2`, `.ttf`, `.otf`, `.eot`), because the registry flag's per-extension values were not read. *(Retired: see the Amendment.)*
+- **A `.js` file's `.ts` twin counts when it is listed in the folder or present on disk beside it.** The editor tests the registered twin. *(Replaced by the twin set in the Amendment.)*
 
 ### Tripwire and retirement
 
-The test `DB4-T1` in `test/c3/fileAdmission.test.ts` goes red when `Object.keys` of the c3source module gains a name matching `/admi(t|ssion)|rescan/i`. The near miss `detectFamilyMemberIssues` must not match, and the test asserts that. When it goes red, adopt the upstream predicate and delete `src/c3/fileAdmission.ts`, its call site in `src/c3/projectSync.ts`, `test/c3/fileAdmission.test.ts` and `DB4-T1`. Afterwards `DB4-A1`, `DB4-A2`, `DB4-A3` and `DB4-A4` (moved over the adopted export), `DB4-S354` and `DB4-S2` must stay green. The upstream request is [c3source#130](https://github.com/GenvidTechnologies/c3source/issues/130).
+The test `DB4-T1` in `test/c3/fileAdmission.test.ts` goes red when `Object.keys` of the c3source module gains a name matching `/admi(t|ssion)|rescan/i`. The near miss `detectFamilyMemberIssues` must not match, and the test asserts that. When it goes red, adopt the upstream predicate and delete `src/c3/fileAdmission.ts`, its call site in `src/c3/projectSync.ts`, `test/c3/fileAdmission.test.ts` and `DB4-T1`. Afterwards `DB4-A1`, `DB4-A2`, `DB4-A3` and `DB4-A4` (moved over the adopted export), `DB4-S354` and `DB4-S2` must stay green. The upstream request is [c3source#130](https://github.com/GenvidTechnologies/c3source/issues/130). *(Done: see the Amendment.)*
 
 ## Compromise
 
@@ -76,5 +77,46 @@ The design's own labels are kept.
 - **Newly refused.** An unlisted file the rescan rule refuses stays invisible: a name that fails the name check, one of the 17 reserved names directly under `files/`, a `.js` with a `.ts` twin, or an extension outside the section's category.
 - **Real corpus.** The canonical fixture's file sections hold 18 regular non-editor-local files (2 `.ts` scripts, 7 `.png` icons, 9 general files), all listed. Against the old extension filters, 0 dispositions changed. The fixture holds no unlisted file and no subfolder, so the new admission paths are covered only by synthetic tests.
 - **Mutation evidence** (HEAD 9478baf). Forcing admission true turns `DB4-S2` and `I358-V1` red. Ignoring the listed set turns `DB4-S354` red. Removing the NFC carve-out turns `DB4-A4` red. Removing the reserved-root check turns `DB4-A2` and `DB4-S2` red. The `script` section's `.js` admission is pinned by `DB4-S2` as well: the first implementation kept a `.ts` extension list on the `script` entry, which silently dropped an unlisted `.js`; that case failed when added to `DB4-S2` and passes since the list was removed.
-- **The bridge is temporary** and ends at [c3source#130](https://github.com/GenvidTechnologies/c3source/issues/130), as above.
+- **The bridge is temporary** and ends at [c3source#130](https://github.com/GenvidTechnologies/c3source/issues/130), as above. *(Done: see the Amendment.)*
 - **Link divergence** between chef's finders and upstream's walks is tracked in [#375](https://github.com/GenvidTechnologies/construct3-chef/issues/375).
+
+## Amendment (2026-11-05): the bridge is retired onto c3source 4.1.0
+
+c3source 4.1.0 shipped the predicate that [c3source#130](https://github.com/GenvidTechnologies/c3source/issues/130) requested, as `rescanAdmissionIssue`. The adoption is tracked in [#378](https://github.com/GenvidTechnologies/construct3-chef/issues/378). The decisions above stand, except where this amendment says otherwise. It records what changed in how they are carried out.
+
+- **The bridge is gone.** `src/c3/fileAdmission.ts` is deleted, and so is the tripwire `DB4-T1`, which went red on the bump alone: the full suite ran 2424 passing, 2 pending and 1 failing, and the one failure was `DB4-T1`. `DB4-A1` to `DB4-A4` moved to `test/c3/rescanAdmission.test.ts`. `DB4-S354` and `DB4-S2` stay green.
+- **Upstream owns the rule.** The name check, the 17 reserved names directly under `files/`, the `ts-defs` folder, the per-section type rules and the `.ts` twin test all come from `rescanAdmissionIssue`. This includes the NFC handling that the bridge carried as a carve-out (`DB4-A4` stays).
+- **The adapter has two layers.** `src/c3/rescanAdmission.ts` (off-barrel) holds only chef's policy over upstream:
+  - `script` also admits `.ts`. Upstream refuses it with kind `section`, and the adapter lifts only that refusal. Upstream's `name` refusal still applies first.
+  - A section key that is not a key of `C3_ROOT_FILE_FOLDERS` (reachable through the barrel-exported `syncFileFolder`) gets the name check only, where upstream throws. The key test is an own-property test, so `toString` is an unknown key.
+- **The twin set.** `planFileLevel` keeps one set of `.ts` twins per section, keyed by the section-relative path, compared without letter case after NFC. It fills the set for a folder level before it decides any `.js` at that level. A `.ts` counts as a twin when:
+  - it is listed in the manifest and present on disk; or
+  - in `script` only, the same sync adds it.
+
+  In `general`, only a listed and present `.ts` counts, so an unlisted `x.ts` and `x.js` pair adds both. A listed `.ts` that is missing on disk never counts. An `extensions` narrowing from a direct `syncFileFolder` caller applies to the same-sync case too: a `.ts` that sync does not add is not a twin.
+- **The font deviation is retired.** c3source's `C3_FONT_FILE_TYPES` (`application/font-woff`, `font/woff2`, `application/font-sfnt`, `application/vnd.ms-fontobject`) covers exactly `.woff`, `.woff2`, `.ttf`, `.otf` and `.eot`, the set the local deviation listed. The `script` `.ts` deviation stays.
+- **The twin lookup is a new rule, not a port.** It differs from the bridge's lookup in letter case and Unicode form (now ignored), in the missing listed `.ts` (no longer counts), and in `general` (an unlisted `.ts` no longer shields its `.js`).
+
+**Limitations.**
+
+- The twin lookup searches its own section. The editor's lookup is not limited to one section, so a twin in another section that collides with a `.js` here is not searched.
+- Inferred, with no authoritative source: a `.ts` that the editor adds in the same rescan does not count as a twin for that rescan, and the editor drops a listed-but-missing file before its unlisted-file checks. The `general` rule (only a listed and present `.ts` counts, so an unlisted pair adds both) and the missing-file exclusion rest on these two inferences. The `script` same-sync rule does not: the editor never admits a `.ts` in `script`, so that rule exists only because of chef's `.ts` deviation. Counting a `.ts` that this sync adds there gives the state the editor would see on its next rescan, once the `.ts` is listed: its `.js` twin is refused.
+- Only `videos/` admission has been seen in a real editor save. The other sections rest on the bundle read recorded above.
+
+**Decision: where admission lives.** Chosen: "Option A (recommended): a small off-barrel adapter, `src/c3/rescanAdmission.ts` (new)". Rejected: "Option B (alternative): inline both layers as private helpers in `projectSync.ts`". Under B the layers could be tested only through `syncFileFolder` on temp directories, and exporting them from `projectSync.ts` would make them barrel API.
+
+**Decision: the unknown key.** Chosen: "(i), recommended: probe upstream as `general` off its root, and keep only a `name` refusal". Rejected: "(ii): keep a local `itemNameIssue` with the NFC carve-out", which is a second copy of the name rule.
+
+**Mutation evidence** (HEAD 80d99ca and d156c1c; the harness restores byte for byte, and its no-op control M0 was clean).
+
+- Making the `script` `.ts` deviation never fire turns `CS41-U2`, `DB4-A1`, `DB4-S2` and `CS41-S2` red, plus `CS41-S8` and four `syncFileFolder` tests that add new `.ts` scripts.
+- Dropping the listed set turns `DB4-S354` red.
+- Dropping the case fold or the NFC step turns `CS41-S4` red.
+- Counting only listed twins (no same-sync adds) turns `DB4-S2` and `CS41-S2` red.
+- Not scoping the same-sync rule to `script` turns `CS41-S2` and `CS41-S6` red.
+- Counting a listed but missing `.ts` turns `CS41-S5` red.
+- Removing the unknown-key wrapper, or replacing the own-property test with `in`, turns `CS41-U3` and `CS41-S7` red.
+- A twin key that ignores the folder path turns `CS41-S3` red.
+- Removing the `extensions` narrowing in either phase turns `CS41-S8` red.
+- Dropping the listed-folder rule turns `CS41-S10` red.
+- Swapping the key order in the MCP findings builder turns `CS41-H1` red and leaves `I349-H1` green (ADR 0068).

@@ -1,13 +1,15 @@
 import { z } from "zod";
-import { mcpContent } from "@genvidtech/mcp-utils";
+import { mcpStructuredContent } from "@genvidtech/mcp-utils";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 /**
  * Off-barrel MCP plumbing for tools whose CLI exits 1 on findings (ADR 0068).
  *
- * The structured `report` is derived from the text block that `mcpContent`
- * builds, so the two cannot drift. An `isError` result never carries
- * `structuredContent`.
+ * The payload is built with mcp-utils' `mcpStructuredContent` (0.14.0): it
+ * joins the text and footer as `mcpContent` does and passes that joined text
+ * to the builder, so `report` and the text block cannot drift. The
+ * `{ clean, report }` payload policy and the outputSchema stay local. An
+ * `isError` result never carries `structuredContent`.
  */
 
 const REPORT_DESCRIPTION =
@@ -20,7 +22,5 @@ export function cleanReportSchema(cleanDescription: string) {
 
 /** Success result: the text block plus structuredContent whose report is that block's text, byte for byte. Never for an isError result. */
 export function cleanReportContent(text: string, footer: string | undefined, clean: boolean): CallToolResult {
-  const result = mcpContent(text, footer);
-  const report = (result.content[0] as { type: "text"; text: string }).text;
-  return { ...result, structuredContent: { clean, report } };
+  return mcpStructuredContent(text, footer, (report) => ({ clean, report }));
 }
