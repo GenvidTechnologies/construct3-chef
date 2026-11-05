@@ -11,7 +11,7 @@ generated: { by: process:tech-writer, at: 2026-11-02T00:00:00Z }
 
 # 0066. sync keeps its own file-section walk under c3source 3.1.0 and adds the video section
 
-- **Status:** Accepted
+- **Status:** Accepted. Superseded in part by ADR [0069](0069-file-section-admission-follows-the-editors-rescan-rule.md) (see Amendment, 2026-11-05).
 - **Date:** 2026-11-02
 - **Issues:** [#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358). Upstream: [c3source#110](https://github.com/GenvidTechnologies/c3source/issues/110) (shipped in 3.1.0), [c3source#113](https://github.com/GenvidTechnologies/c3source/issues/113) (video facts), [c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114) (link-safe drift walks).
 - **Relates to:** ADR [0006](0006-upstream-ownership-boundary-and-adoption-posture.md) (upstream ownership), ADR [0016](0016-shared-file-walk-adoption-triage.md) (§2, the `readDiskDir` decline), ADR [0018](0018-editor-local-writes-are-not-source-changes.md) and ADR [0019](0019-two-walk-primitives-one-classification-rule.md) (one editor-local rule), ADR [0021](0021-section-item-axis-does-not-reopen-walk-declines.md) (a decline record that does not reopen), ADR [0024](0024-project-c3proj-shared-serializer.md) (the write serializes the manifest object), ADR [0065](0065-sync-withholds-removals-unless-pruning-is-requested.md) (removals are withheld).
@@ -62,4 +62,14 @@ Option A is chosen. 3.1.0 discharges ADR 0065's two reasons. It does not dischar
 - [#349](https://github.com/GenvidTechnologies/construct3-chef/issues/349) is unchanged.
 - A name-section link loop still fails the run with one `Error:` line on the CLI and `isError` on MCP.
 - When c3source tolerates links ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)) or changes the `if (rff)` check, update this record and the ledger entry for 3.1.0.
-- When c3source attests the video section ([c3source#113](https://github.com/GenvidTechnologies/c3source/issues/113)), update the `video` entry, the test `I358-V1:` and this record together.
+- When c3source attests the video section ([c3source#113](https://github.com/GenvidTechnologies/c3source/issues/113)), update the `video` entry, the test `I358-V1:` and this record together. *(Done: see the Amendment.)*
+
+## Amendment (2026-11-05): superseded in part by ADR 0069
+
+The decisions above are kept as written. This amendment records what the c3source 4.0.0 and mcp-utils 0.13.0 adoption ([#374](https://github.com/GenvidTechnologies/construct3-chef/issues/374), [#299](https://github.com/GenvidTechnologies/construct3-chef/issues/299)) changed. The new decision is ADR [0069](0069-file-section-admission-follows-the-editors-rescan-rule.md).
+
+- **The link reason is discharged.** c3source 4.0.0 ships link-safe drift walks ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)) and reports skipped links in `ManifestDrift.links`. Decision 4 and the Consequences line about a name-section link loop no longer describe 4.0.0. Chef reports the skipped links in ADR [0070](0070-validate-reports-duplicate-names-and-skipped-links.md).
+- **The video facts are attested.** [c3source#113](https://github.com/GenvidTechnologies/c3source/issues/113) shipped them in 4.0.0, from an r506.3 editor save. New items take their type from `fileTypeForSection`, and decision 3's statement that upstream marks the folder name as INFERRED no longer holds.
+- **Option B is weighed again and declined again, for new reasons.** The link reason is gone. The cost reason is new: consuming upstream file-section drift needs a post-filter, a re-pairing step, a second apply engine and a reordered report, for no behaviour that keeping chef's walk lacks. Chef's walk stays, and `runSync` now passes `skipFileSections` to `detectManifestDrift` instead of hiding `rootFileFolders` with `nameView`.
+- **"Extension filters are section membership" was wrong on both editor rules.** On load, every listed file is a member, with no extension check. On rescan, the editor admits an unlisted file by its section's category rule, not by an extension list. The extension filters therefore hid listed files, which is [#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354). ADR 0069 replaces them with the editor's rescan rule and records the editor trace that settles #354.
+- **Unchanged.** Editor-local classification at every depth (decision 2), the withheld removals of ADR 0065, and the `video` section itself.
