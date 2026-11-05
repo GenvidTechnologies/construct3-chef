@@ -31,6 +31,23 @@ describe("structuredReport", () => {
       noFooterReport: { clean: true, report: "a" },
     });
   });
+
+  it("CS41-H1: cleanReportContent serializes with keys in the order content, structuredContent, then clean, report", () => {
+    const cases: Array<{ text: string; footer: string | undefined; clean: boolean; joined: string }> = [
+      { text: "a", footer: "txId: x", clean: false, joined: "a\ntxId: x" },
+      { text: "a", footer: undefined, clean: true, joined: "a" },
+      { text: "", footer: "txId: x", clean: true, joined: "txId: x" },
+      { text: "a\nb", footer: undefined, clean: false, joined: "a\nb" },
+    ];
+    const actual = cases.map((c) => JSON.stringify(cleanReportContent(c.text, c.footer, c.clean)));
+    const expected = cases.map((c) =>
+      JSON.stringify({
+        content: [{ type: "text", text: c.joined }],
+        structuredContent: { clean: c.clean, report: c.joined },
+      }),
+    );
+    expect(actual).to.deep.equal(expected);
+  });
 });
 
 // Handlers under test touch watcher.txId (the footer) only; a bare object is enough.
