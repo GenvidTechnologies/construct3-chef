@@ -9,6 +9,7 @@ import {
   countWatchedEntries,
   ledgerCapacity,
   editorLocalAwareFingerprint,
+  editorLocalFilteringFactory,
   routeWatcherLog,
 } from "../../src/mcp/sourceWatcher.js";
 
@@ -344,6 +345,28 @@ describe("createSourceWatcher", () => {
     const hits = info.filter((l) => l.includes("baseline: 1051 files, 60 directories"));
     assert.equal(hits.length, 1, `info lines: ${JSON.stringify(info)}`);
     assert.deepEqual(warnings, []);
+  });
+});
+
+describe("editorLocalFilteringFactory", () => {
+  it("DB4-W4: drops editor-local events and forwards source events", () => {
+    const root = path.join(os.tmpdir(), "c3chef-filter-root");
+    let baseOnEvent: ((filename: string) => void) | undefined;
+    const base: WatcherFactory = (_target, onEvent) => {
+      baseOnEvent = onEvent;
+      return { close: () => {} };
+    };
+    const forwarded: string[] = [];
+    editorLocalFilteringFactory(root, base)(root, (f) => forwarded.push(f));
+    assert.ok(baseOnEvent, "base factory was not invoked");
+
+    const dropped = ["eventSheets/uistate/x", "a/B.uistate.json", "scripts/tsconfig.json"];
+    for (const rel of dropped) baseOnEvent(path.resolve(root, rel));
+    assert.deepEqual(forwarded, [], "editor-local events must not be forwarded");
+
+    const kept = path.resolve(root, "eventSheets/a.json");
+    baseOnEvent(kept);
+    assert.deepEqual(forwarded, [kept]);
   });
 });
 

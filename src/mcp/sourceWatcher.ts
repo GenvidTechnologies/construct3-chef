@@ -135,6 +135,17 @@ const fsWatchFactory: WatcherFactory = (target, onEvent) => {
 };
 
 /**
+ * Wrap `baseFactory` so events for editor-local paths under `root` never reach
+ * the watcher's handler. Other events are forwarded unchanged. See ADR 0018.
+ */
+export function editorLocalFilteringFactory(root: string, baseFactory: WatcherFactory): WatcherFactory {
+  return (target, onEvent) =>
+    baseFactory(target, (filename) => {
+      if (!isEditorLocalPathUnder(root, filename)) onEvent(filename);
+    });
+}
+
+/**
  * Build an OptimisticWatcher over the project's source dirs + project.c3proj.
  *
  * - External source-dir change     → txId bump (by the watcher) + onSourceChange.
@@ -165,15 +176,11 @@ export function createSourceWatcher(opts: SourceWatcherOptions): OptimisticWatch
   // Wraps the SELECTED factory (not just fsWatchFactory), so an injected test
   // stub is filtered too. See ADR 0018.
   const baseFactory = opts.watcherFactory ?? fsWatchFactory;
-  const filteringFactory: WatcherFactory = (target, onEvent) =>
-    baseFactory(target, (filename) => {
-      if (!isEditorLocalPathUnder(opts.projectRoot, filename)) onEvent(filename);
-    });
 
   return new OptimisticWatcher({
     watchDirs,
     expected: opts.expected,
-    watcherFactory: filteringFactory,
+    watcherFactory: editorLocalFilteringFactory(opts.projectRoot, baseFactory),
     logger: opts.logger,
     // One ledger per call, i.e. per project context; sized from the watched tree.
     observed: new ObservedState({
