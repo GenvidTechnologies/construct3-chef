@@ -23,7 +23,7 @@ generated: { by: process:tech-writer, at: 2026-11-05T00:00:00Z }
 
 c3source 4.0.0 returns two more lists from `detectManifestDrift`: `duplicates` (item names repeated within a uniqueness scope) and `links` (symbolic links or junctions that the walk did not follow). Drift keying stays exact upstream, so a case-only rename still reads as `missing` plus `untracked`; a duplicate is a separate finding.
 
-Two facts make the report needed. Chef's finders now skip linked items silently, so `links` is the only signal that an item was not seen. And ADR 0066 set `ManifestDrift.duplicates` to carry no file-section entries in chef's runs, because chef hid those sections from the call.
+Two facts make the report needed. Chef's finders now skip linked items silently, so `links` is where a skipped name-section link shows. A link under a file-section folder is skipped by chef's own file walk (`readDiskDir` keeps only regular files and directories) and is not listed, because the call skips the file sections ([#375](https://github.com/GenvidTechnologies/construct3-chef/issues/375)). And ADR 0066 set `ManifestDrift.duplicates` to carry no file-section entries in chef's runs, because chef hid those sections from the call.
 
 The input to #344 said that upstream marks the per-section scope and the letter-case rule as unvalidated. That is out of date: the name scopes are audited against editor r495-2. Only the file-section scope and the `images` scope are unvalidated upstream.
 
@@ -44,7 +44,7 @@ The line shapes:
 4. **`objectClasses`: reported here.** The duplicate across object types and families is reported by this change. It covers the "object type and family share a name" case of [#368](https://github.com/GenvidTechnologies/construct3-chef/issues/368).
 5. **Gate: advisory.** The report changes no exit code and no `clean`. Upstream has not traced whether the editor fails to load a project with such a duplicate, so "the project fails to open" is unverified.
 6. **Placement: a standalone call next to `reportStrayFiles`** (the precedent of ADR 0023). Scaffold syncs stay silent.
-7. **Links: reported, advisory.** The report is the only signal that chef's finders skipped a linked item.
+7. **Links: reported, advisory.** The report is where a name-section link that chef's finders skipped shows. File-section links are not covered (see Context).
 8. **The stale premise** about unvalidated name scopes is corrected, as in Context.
 
 ## Compromise

@@ -51,11 +51,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   manifest and disk occurrence, for example
   `! layouts 'level1': manifest (none); disk layouts/Level1, layouts/sub/level1`.
   File sections are not checked. `[links]` lists symbolic links and junctions
-  below a section root that c3source 4.0.0's walks skip and do not follow, for
-  example `! layouts/sub/loop (not followed)`
+  below a name-section root that c3source 4.0.0's walks skip and do not
+  follow, for example `! layouts/sub/loop (not followed)`
   ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)).
-  Chef's finders no longer see such linked items, so this is the only report
-  of them. Both sections are advisory: they change no CLI exit code,
+  Chef's finders no longer see such linked items, and this report is where
+  they show. Both sections are project-wide: `--section` does not narrow
+  them. Known limitation: a link under a file-section folder is skipped by
+  chef's own file walk and is not listed
+  ([#375](https://github.com/GenvidTechnologies/construct3-chef/issues/375)). Both sections are advisory: they change no CLI exit code,
   `--fail-on-strays` result or MCP `structuredContent.clean`. On MCP the lines
   are in the report text and in `structuredContent.report`. `validate-project`
   prints them only when `project.c3proj` could be read. Scaffold commands do
