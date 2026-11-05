@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-05
+
 ### Added
 
 - **`sync-project` and `validate-project` sync the `video` file section**
@@ -58,7 +60,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   they show. Both sections are project-wide: `--section` does not narrow
   them. Known limitation: a link under a file-section folder is skipped by
   chef's own file walk and is not listed
-  ([#375](https://github.com/GenvidTechnologies/construct3-chef/issues/375)). Both sections are advisory: they change no CLI exit code,
+  ([#375](https://github.com/GenvidTechnologies/construct3-chef/issues/375)).
+  Both sections are advisory: they change no CLI exit code,
   `--fail-on-strays` result or MCP `structuredContent.clean`. On MCP the lines
   are in the report text and in `structuredContent.report`. `validate-project`
   prints them only when `project.c3proj` could be read. Scaffold commands do
@@ -80,9 +83,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Letter case is ignored after Unicode NFC, and a listed `.ts` that is missing
   on disk does not count. `validate-project` follows the same rule, so its
   `clean` can turn true when a listed `Case.ts` sits beside an unlisted
-  `case.js`. `files/` no
-  longer adds a name the editor's name check refuses (for example a dotfile
-  such as `.gitkeep`, or a name with a forbidden character), one of the 17
+  `case.js`. `files/` no longer adds a name the editor's name check refuses
+  (for example a dotfile such as `.gitkeep`, or a name with a forbidden
+  character), one of the 17
   names the editor reserves directly under `files/` (for example `index.html`,
   `data.json`, `sw.js`; the same names in a subfolder are still added), or a
   `.js` with a `.ts` twin. A file that sync does not add stays outside the
@@ -259,7 +262,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--out` folder segments are not checked against C3's folder rule
   ([#367](https://github.com/GenvidTechnologies/construct3-chef/issues/367));
   existing projects with such names are not reported
-  ([#368](https://github.com/GenvidTechnologies/construct3-chef/issues/368))
+  ([#368](https://github.com/GenvidTechnologies/construct3-chef/issues/368));
+  the rules were traced in the r495 editor bundle only, and older editors
+  (r379, r402) are not checked
+  ([#369](https://github.com/GenvidTechnologies/construct3-chef/issues/369))
   (#260, GenvidTechnologies/c3source#123).
 
 - **MCP `scaffold-layout` detects a stale `sid-registry.txt`.** The tool now
@@ -269,6 +275,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rejected. A call without a `txId` still scaffolds against the registry as
   it is. The CLI `scaffold-layout` has no freshness check
   ([#337](https://github.com/GenvidTechnologies/construct3-chef/issues/337)).
+  Known limitation: `scaffold-sprite` (CLI and MCP) does not read
+  `sid-registry.txt` at all, so its new SIDs are checked only against other
+  objectTypes
+  ([#336](https://github.com/GenvidTechnologies/construct3-chef/issues/336)).
 
 - **File-section sync skips editor-local files at every depth.** `uistate/`
   and `ts-defs/` directories, `*.uistate.json` files and `tsconfig.json` were
@@ -292,7 +302,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a reserved segment falls back to `extracted` with a `[chefConfig]` warning
   instead of failing. Known consequence: a `layouts` or `files` key naming an
   existing reserved-named file (possible on Linux) can no longer be edited by
-  recipe. `scaffold-layout --source` is not checked, because it is only read
+  recipe. `scaffold-layout --source` is not checked, because it is only read.
+  `COM0` and `LPT0` are accepted, as ADR 0064 decides; #351 proposes refusing
+  them
   (#330, ADR 0064;
   [issue](https://github.com/GenvidTechnologies/construct3-chef/issues/330)).
 
@@ -1456,7 +1468,8 @@ Initial public release, extracted from the retired c3-mcp-server initiative.
 - `read-event-sids` matches condition and action content. ([#8](https://github.com/GenvidTechnologies/construct3-chef/issues/8))
 - The DSL extractor marks disabled conditions with `[DISABLED]`. ([#5](https://github.com/GenvidTechnologies/construct3-chef/issues/5))
 
-[Unreleased]: https://github.com/GenvidTechnologies/construct3-chef/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/GenvidTechnologies/construct3-chef/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/GenvidTechnologies/construct3-chef/compare/v2.2.0...v3.0.0
 [2.2.0]: https://github.com/GenvidTechnologies/construct3-chef/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/GenvidTechnologies/construct3-chef/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/GenvidTechnologies/construct3-chef/compare/v1.2.0...v2.0.0
