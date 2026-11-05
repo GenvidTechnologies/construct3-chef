@@ -3,7 +3,6 @@ import * as path from "node:path";
 import {
   ObservedState,
   OptimisticWatcher,
-  contentFingerprint,
   type ExpectedChanges,
   type WatcherFactory,
   type Logger,
@@ -57,24 +56,6 @@ export function countWatchedEntries(watchTargets: string[]): number {
 /** Ledger capacity for a watched tree of `counted` entries: never below {@link LEDGER_FLOOR}. */
 export function ledgerCapacity(counted: number): number {
   return Math.max(LEDGER_FLOOR, LEDGER_HEADROOM * counted);
-}
-
-/**
- * Fingerprinter for the watcher's ledger that ignores editor-local files.
- *
- * Returns `"absent"` for a path where `isEditorLocalPathUnder(projectRoot, …)`
- * holds. `"absent"` is `contentFingerprint`'s ENOENT value, which the ledger
- * treats as "no live content": an editor-local file already in the ledger
- * therefore never reads as changed when edited or deleted, and never flips the
- * ledger lossy when evicted. A newly created one still reads as changed, because
- * the ledger judges a never-seen path before any fingerprint (#299). ADR 0018:
- * editor-local writes are not source changes.
- *
- * Any other path is hashed exactly as the default fingerprinter does, by
- * delegating to `contentFingerprint` unchanged.
- */
-export function editorLocalAwareFingerprint(projectRoot: string): (filePath: string) => string {
-  return (filePath) => (isEditorLocalPathUnder(projectRoot, filePath) ? "absent" : contentFingerprint(filePath));
 }
 
 /**
@@ -186,9 +167,11 @@ export function createSourceWatcher(opts: SourceWatcherOptions): OptimisticWatch
     // One ledger per call, i.e. per project context; sized from the watched tree.
     observed: new ObservedState({
       maxEntries: ledgerCapacity(countWatchedEntries(watchDirs)),
-      fingerprint: editorLocalAwareFingerprint(opts.projectRoot),
       // An ignored path gets no ledger entry, so creating an editor-local file
-      // is not a change. The key is the normalized POSIX absolute path;
+      // is not a change. The ledger uses mcp-utils' default content
+      // fingerprint: the `ignore` predicate keeps editor-local paths out of
+      // the ledger, and editorLocalFilteringFactory keeps them out of the
+      // event stream. The key is the normalized POSIX absolute path;
       // isEditorLocalPathUnder accepts that form against a native root.
       ignore: (key) => isEditorLocalPathUnder(opts.projectRoot, key),
     }),

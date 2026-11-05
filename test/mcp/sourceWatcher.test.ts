@@ -3,13 +3,12 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, renameSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ExpectedChanges, ObservedState, contentFingerprint, type WatcherFactory } from "@genvidtech/mcp-utils";
+import { ExpectedChanges, ObservedState, type WatcherFactory } from "@genvidtech/mcp-utils";
 import { isEditorLocalPathUnder } from "../../src/c3/editorLocal.js";
 import {
   createSourceWatcher,
   countWatchedEntries,
   ledgerCapacity,
-  editorLocalAwareFingerprint,
   editorLocalFilteringFactory,
   routeWatcherLog,
 } from "../../src/mcp/sourceWatcher.js";
@@ -419,23 +418,6 @@ describe("sourceWatcher ledger helpers", () => {
     assert.equal(countWatchedEntries(targets), 5 + 2 + 1 + 0);
     assert.equal(ledgerCapacity(99), 10000);
     assert.equal(ledgerCapacity(2741), 10964);
-  });
-
-  it("editorLocalAwareFingerprint hashes source files and reports editor-local ones absent", () => {
-    mkdirSync(path.join(root, "eventSheets"));
-    const src = path.join(root, "eventSheets", "a.json");
-    const local = path.join(root, "eventSheets", "Foo.uistate.json");
-    writeFileSync(src, "one");
-    writeFileSync(local, "x");
-    const fp = editorLocalAwareFingerprint(root);
-    // The fingerprinter relies on "absent" being the ledger's no-content value;
-    // pin that upstream contract so a change to it fails here.
-    assert.equal(contentFingerprint(path.join(root, "eventSheets", "missing.json")), "absent");
-    assert.equal(fp(local), "absent");
-    assert.equal(fp(src), contentFingerprint(src));
-    const before = fp(src);
-    writeFileSync(src, "two");
-    assert.notEqual(fp(src), before);
   });
 
   it("MU12-L1: routeWatcherLog routes baseline summary to info, incomplete/failed to warning, others to null", () => {
