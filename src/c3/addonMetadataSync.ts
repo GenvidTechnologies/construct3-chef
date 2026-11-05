@@ -40,6 +40,13 @@ export interface AddonSyncResult {
   reformatWarning?: string;
 }
 
+/** True iff outstanding human work remains (ADR 0017's exit-code policy): a blocked row, or a would-change row in a mode that did not write. */
+export function addonSyncLeavesWork(result: AddonSyncResult): boolean {
+  const blocked = result.rows.some((r) => r.status === "blocked");
+  const wouldChange = result.rows.some((r) => r.status === "would-change");
+  return blocked || (result.dryRun && wouldChange);
+}
+
 /**
  * The internal read+classify result, richer than {@link AddonSyncResult}: it carries
  * the live parsed manifest BY IDENTITY (never a clone — required for

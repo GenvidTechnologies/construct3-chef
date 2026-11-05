@@ -34,8 +34,13 @@ import {
 } from "./c3/addonValidator.js";
 import { listAddons, formatAddonInventory } from "./c3/addonInventory.js";
 import { diffAddonAces, formatAceDiff, resolveAceSource } from "./c3/addonAceDiff.js";
-import { scanAddonUsage, formatAddonUsage } from "./c3/addonAceUsage.js";
-import { syncAddonMetadata, formatAddonMetadataSync, type SyncDirection } from "./c3/addonMetadataSync.js";
+import { scanAddonUsage, formatAddonUsage, blastRadiusAffected } from "./c3/addonAceUsage.js";
+import {
+  syncAddonMetadata,
+  formatAddonMetadataSync,
+  addonSyncLeavesWork,
+  type SyncDirection,
+} from "./c3/addonMetadataSync.js";
 
 // Resolve the package version for `--version`. The URL is relative to this
 // module file, so it resolves correctly from both dist/cli.js (→ dist/../package.json)
@@ -703,9 +708,7 @@ guardAllHandlers(yargs(hideBin(process.argv)))
         return;
       }
       console.log(formatAddonUsage(result));
-      if (result.blast !== undefined && result.blast.affectedCount > 0) {
-        process.exitCode = 1;
-      }
+      if (blastRadiusAffected(result)) process.exitCode = 1;
     },
   )
   .command(
@@ -737,11 +740,7 @@ guardAllHandlers(yargs(hideBin(process.argv)))
         return;
       }
       console.log(formatAddonMetadataSync(result));
-      const blocked = result.rows.some((r) => r.status === "blocked");
-      const wouldChange = result.rows.some((r) => r.status === "would-change");
-      if (blocked || (result.dryRun && wouldChange)) {
-        process.exitCode = 1;
-      }
+      if (addonSyncLeavesWork(result)) process.exitCode = 1;
     },
   )
   .command(

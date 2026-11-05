@@ -108,7 +108,7 @@ An unknown family name is rejected outright, before any check runs: `Invalid --s
 
 **Rationale for a deny-list over an allow-list:** an allow-list (`--fail-on <families>`) would silently stop gating any family added after the invocation was written — a false green the next time a new finding kind ships. A deny-list gates a new family automatically, since the default is "gate everything" and an operator must explicitly name what to exempt. See [ADR 0038](../decisions/0038-validate-addons-deny-list-family-gating.md).
 
-The MCP `validate-addons` tool renders the same per-family breakdown line but takes no `--skip-gate`-equivalent parameter — it has no exit code, so there's nothing for a gate parameter to control (ADR 0038, following the precedent set by `--fail-on-strays` having no MCP counterpart — see [ADR 0025](../decisions/0025-stray-gating-is-cli-only-and-survives-a-manifest-failure.md)).
+The MCP `validate-addons` tool renders the same per-family breakdown line but takes no `--skip-gate`-equivalent parameter. It returns `structuredContent.clean`, which is false on any finding in any of the four families, so it equals the CLI without `--skip-gate` (ADR 0038, [ADR 0068](../decisions/0068-mcp-findings-ride-in-structured-content-and-iserror-stays-tool-failure.md); the omission follows the precedent set by `--fail-on-strays` having no MCP counterpart — see [ADR 0025](../decisions/0025-stray-gating-is-cli-only-and-survives-a-manifest-failure.md)).
 
 The aces/properties ↔ lang findings appear the same way, one line per missing string, e.g.:
 
@@ -236,6 +236,8 @@ Dropping `--dry-run` from a `manifest-from-package` run writes the `would-change
 - **0** — every row is `in-sync`/`no-manifest-entry`, or a `manifest-from-package` apply (no `--dry-run`) resolved every `would-change` row it could. A successful write is exit 0 even though it mutated `project.c3proj`.
 - **1** — any row is `blocked` (requires the operator to resolve the ambiguity or editor-only status by hand), or any row is `would-change` in a mode that didn't write (`--dry-run`, or the inherently read-only `package-from-manifest` direction).
 
+MCP `preview-addon-metadata-sync` and `sync-addon-metadata` return `structuredContent.clean` by the same rule, from the same predicate. For `sync-addon-metadata`, `clean` is evaluated after the apply: a full apply with nothing blocked is clean ([ADR 0068](../decisions/0068-mcp-findings-ride-in-structured-content-and-iserror-stays-tool-failure.md)).
+
 Output uses the shared `formatAddonMetadataSync` formatter, so the CLI and MCP (`preview-addon-metadata-sync` / `sync-addon-metadata`) surfaces are byte-identical.
 
 ---
@@ -326,7 +328,7 @@ Call sites:
     event #8  events[2]   [action] GCoreFamily.sync-progress(slot)
 ```
 
-The clean case prints `No usage of addon "<id>" found.` An unresolvable addon prints `addon source not found: <arg>` and exits 1.
+The clean case prints `No usage of addon "<id>" found.` An unresolvable addon prints `addon source not found: <arg>` to stderr and exits 1. The MCP tool returns an `isError` result whose text is `scan-addon-usage: addon source not found: <arg>`, followed by the `txId` footer.
 
 ### Behavior addons
 
@@ -450,5 +452,7 @@ Call sites:
 
 - **0** — plain scan (no `--from`), or blast-radius scan with zero affected call sites.
 - **1** — blast-radius scan with `affectedCount > 0` (fits a project's `commands.validate` chain as an upgrade gate), or an unresolvable `addon`/`--from` source.
+
+The MCP tool returns `structuredContent.clean` by the same rule. It is false in blast mode (`from` given) when any site is affected. Without `from` it is always `true`: usage is reported, not judged. An unresolvable `addon` or `from` returns `isError`, matching the CLI's exit 1. Its text is the CLI's error message with a `scan-addon-usage: ` prefix and the `txId` footer, the same text the tool returned before as a success result ([ADR 0068](../decisions/0068-mcp-findings-ride-in-structured-content-and-iserror-stays-tool-failure.md)).
 
 Output uses the shared `formatAddonUsage` formatter, so the CLI and MCP `scan-addon-usage` surfaces are byte-identical.

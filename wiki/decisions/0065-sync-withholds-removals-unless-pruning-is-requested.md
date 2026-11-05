@@ -64,7 +64,7 @@ Two further gaps made the output unreliable as a warning:
 ## Consequences
 
 - **Behaviour change, major release.** A consumer relying on sync to remove stale entries must now pass `--prune` / `prune: true`. The CLI `validate-project` exits 1 while any withheld entry remains.
-- **[#349](https://github.com/GenvidTechnologies/construct3-chef/issues/349):** MCP `validate-project` still reports success; its text carries the `[withheld]` lines.
+- **[#349](https://github.com/GenvidTechnologies/construct3-chef/issues/349):** MCP `validate-project` still reports success; its text carries the `[withheld]` lines. **Amended by ADR [0068](0068-mcp-findings-ride-in-structured-content-and-iserror-stays-tool-failure.md) (2026-11-05):** resolved. MCP `validate-project` now returns `structuredContent.clean`, false while any withheld entry remains, matching the CLI exit code.
 - **[#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354):** a present non-`.ts` script (for example a declared `.js`) is withheld by default instead of deleted. With `prune` it is removed exactly as before.
 - **[#344](https://github.com/GenvidTechnologies/construct3-chef/issues/344):** a stale duplicate is withheld like any `missing`. `drift.duplicates` stays unread, and what to do with duplicates is still #344's question. `applyNameDrift`'s remove-all-occurrences behaviour is unchanged.
 - **[#333](https://github.com/GenvidTechnologies/construct3-chef/issues/333):** any repair that removes a folder is a `-` change and falls under `prune`.

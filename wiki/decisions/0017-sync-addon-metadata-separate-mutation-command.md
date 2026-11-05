@@ -192,6 +192,8 @@ in a mode that didn't write, i.e. `--dry-run` or the inherently read-only
 `package-from-manifest` direction). A successful apply that resolved
 everything it could is exit 0, even though it wrote to disk.
 
+**Amended by ADR [0068](0068-mcp-findings-ride-in-structured-content-and-iserror-stays-tool-failure.md) (2026-11-05):** the same outstanding-human-work rule now defines `structuredContent.clean` for the MCP tools `preview-addon-metadata-sync` and `sync-addon-metadata`, through the shared `addonSyncLeavesWork` predicate that the CLI exit code also uses.
+
 This required a choice, because the two closest in-repo precedents
 disagree with each other: `sync-project` never exits non-zero (a sync is
 always considered successful once applied), while `validate-addons` exits 1

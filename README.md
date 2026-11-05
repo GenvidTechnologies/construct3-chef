@@ -150,13 +150,13 @@ The server can host more than one C3 project root at once (see [Multi-project su
 | `resolve-anchor` | Look up a DSL coordinate by line number, SID, or name pattern |
 | `navigation-graph` | Show the layout navigation graph as a from→to→line table, or as PlantUML with `format:"plantuml"` |
 | `validate-recipe` | Validate a recipe JSON without applying it (returns txId) |
-| `validate-project` | Dry-run project.c3proj sync check |
+| `validate-project` | Dry-run project.c3proj sync check; returns structured `clean`; optional `section` |
 | `read-addon` | Read a C3 addon's metadata + ACE summary (or a raw entry, or list all addons); works on extracted and archive-only addons |
-| `validate-addons` | Validate bundled `.c3addon` packages against `project.c3proj.usedAddons` (metadata, integrity, orphan/missing/duplicate) and each addon's `aces.json`/`plugin.js` properties against its `lang/*.json` locales; optional `addon` param scopes to one addon (by id or source-tree path). Read-only |
+| `validate-addons` | Returns structured `clean` (false on any finding in any family). Validate bundled `.c3addon` packages against `project.c3proj.usedAddons` (metadata, integrity, orphan/missing/duplicate) and each addon's `aces.json`/`plugin.js` properties against its `lang/*.json` locales; optional `addon` param scopes to one addon (by id or source-tree path). Read-only |
 | `list-addons` | Unified addon inventory — one row per addon reconciling bundled `.c3addon` packages, `usedAddons` entries, and editor-only addons, with status and version |
 | `diff-addon-aces` | Diff the ACE contract between two addon versions: added/removed ACEs plus changed param signatures |
-| `scan-addon-usage` | Find where a plugin, behavior, or effect addon is used: object/family presence, event-sheet ACE call sites, and expression references; `from` reports blast radius against a prior version |
-| `preview-addon-metadata-sync` | Dry-run report of `version`/`author` drift between bundled `.c3addon` packages and `project.c3proj.usedAddons` — the read-only preview for `sync-addon-metadata`. Optional `addon` param scopes to one addon by id. Never writes |
+| `scan-addon-usage` | Returns structured `clean` (with `from`, false when any site is affected). Find where a plugin, behavior, or effect addon is used: object/family presence, event-sheet ACE call sites, and expression references; `from` reports blast radius against a prior version |
+| `preview-addon-metadata-sync` | Returns structured `clean`. Dry-run report of `version`/`author` drift between bundled `.c3addon` packages and `project.c3proj.usedAddons` — the read-only preview for `sync-addon-metadata`. Optional `addon` param scopes to one addon by id. Never writes |
 | `list-ops` | List the target project's user-defined ops (parameterized recipe templates) with their parameters |
 | `get-state` | Return server state for the target project: txId and extractedDirty flag |
 | `list-projects` | List every project registered at launch (id, root, extractedDir, default). The only tool with no `project` parameter — it enumerates the registry itself |
@@ -174,7 +174,7 @@ The server can host more than one C3 project root at once (see [Multi-project su
 | `templatize-in-place` | Convert an existing instance into the master template on its current layout |
 | `clone-replica-to-layouts` | Add a replica of an existing template to one or more target layouts in one call |
 | `replace-instance-with-replica` | Remove an instance and place a replica of a named template in its spot (same layer, same world props) |
-| `sync-addon-metadata` | Sync `project.c3proj.usedAddons` `version`/`author` fields against bundled `.c3addon` packages; only `direction: "manifest-from-package"` writes. Optional `addon` param scopes to one addon by id |
+| `sync-addon-metadata` | Returns structured `clean`, evaluated after the apply. Sync `project.c3proj.usedAddons` `version`/`author` fields against bundled `.c3addon` packages; only `direction: "manifest-from-package"` writes. Optional `addon` param scopes to one addon by id |
 
 **Non-idempotent read tool** (reads source only, but returns different output per call — do not treat as idempotent for retry or caching):
 

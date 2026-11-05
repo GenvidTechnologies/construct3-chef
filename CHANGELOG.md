@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the folder name and `file-info` key are not attested by an editor-saved
   project
   ([c3source#113](https://github.com/GenvidTechnologies/c3source/issues/113)).
+- **MCP `validate-project` accepts `section`**, the same values as the CLI's
+  `--section`. It scopes the sync report and `clean` to that section; strays
+  and image drift are still reported project-wide
+  ([#349](https://github.com/GenvidTechnologies/construct3-chef/issues/349)).
 
 ### Changed
 
@@ -63,11 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `false`); and optional `withheld`, `movedTo` and `movedFrom` fields on
   `Change`. A direct `syncFileFolder` caller still gets removals applied by
   default, but now also gets SID-keeping moves and one line per entry of a
-  removed subfolder. Known limitations:
-  MCP `validate-project` still returns success alongside the text
-  ([#349](https://github.com/GenvidTechnologies/construct3-chef/issues/349)),
-  and a present non-`.ts` script is withheld rather than removed by default,
-  though still removed with prune
+  removed subfolder. Known limitation: a present non-`.ts` script is withheld
+  rather than removed by default, though still removed with prune
   ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354))
   ([#346](https://github.com/GenvidTechnologies/construct3-chef/issues/346)).
 - **`@genvidtech/c3source` is updated to `^3.1.0`**
@@ -81,6 +82,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)).
 
 ### Fixed
+
+- **MCP findings tools report pass or fail in `structuredContent`.**
+  `validate-project`, `validate-addons`, `scan-addon-usage`,
+  `preview-addon-metadata-sync` and `sync-addon-metadata` returned a success
+  result on findings the CLI exits 1 on, so an agent had to parse text to tell
+  pass from fail. Each now returns `structuredContent: { clean, report }`:
+  `clean` is false exactly where the CLI exits 1 for the same inputs, and
+  `report` is the text block, `txId` footer included. Per tool, `clean` is
+  false for `validate-project` on manifest drift, withheld removals included
+  (strays and image drift never affect it); for `validate-addons` on any
+  finding in any family, as the CLI without `--skip-gate`; for
+  `scan-addon-usage` when `from` is given and any site is affected (always
+  true without `from`); and for the two sync tools when outstanding work
+  remains (`sync-addon-metadata` is judged after the apply). `isError` stays
+  reserved for tool failure and carries no `structuredContent`. MCP
+  `scan-addon-usage` now returns `isError` for an unresolvable `addon` or
+  `from`, with the same text as before. Each of these tools now lists an
+  `outputSchema` in `tools/list`, which changes the MCP tool surface (#349,
+  ADR 0068;
+  [issue](https://github.com/GenvidTechnologies/construct3-chef/issues/349)).
 
 - **Scaffolded layout names and new objectType names follow C3's name rules.**
   C3 takes a layout's identity from its JSON name and keeps object types and

@@ -26,7 +26,8 @@ import type { Logger } from "@genvidtech/mcp-utils";
 import { applyParsed } from "../c3/recipeApplier.js";
 import { validateRecipe, type Recipe } from "../c3/recipeInterpreter.js";
 import { findJsonFiles, SID_SOURCE_DIRS } from "../c3/generators.js";
-import { runSync, reportImageDrift, reportStrayFiles } from "../c3/projectSync.js";
+import { runSync, reportImageDrift, reportStrayFiles, ALL_SECTION_KEYS } from "../c3/projectSync.js";
+import { cleanReportSchema, cleanReportContent } from "./structuredReport.js";
 import { newWriteLedger, failureEffects, type WriteLedger } from "./writeLedger.js";
 import { suppressSelfWrites } from "./selfWrites.js";
 import { isEditorLocalPathUnder } from "../c3/editorLocal.js";
@@ -48,11 +49,11 @@ import {
 import { resolveNavConvention } from "../c3/navConvention.js";
 import { discoverAddons, resolveAddonTarget } from "../c3/addonDiscovery.js";
 import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "../c3/addonReader.js";
-import { validateAddons, formatAddonValidation } from "../c3/addonValidator.js";
+import { validateAddons, formatAddonValidation, countFatal } from "../c3/addonValidator.js";
 import { listAddons, formatAddonInventory } from "../c3/addonInventory.js";
 import { diffAddonAces, formatAceDiff, resolveAceSource } from "../c3/addonAceDiff.js";
-import { scanAddonUsage, formatAddonUsage } from "../c3/addonAceUsage.js";
-import { syncAddonMetadata, formatAddonMetadataSync } from "../c3/addonMetadataSync.js";
+import { scanAddonUsage, formatAddonUsage, blastRadiusAffected } from "../c3/addonAceUsage.js";
+import { syncAddonMetadata, formatAddonMetadataSync, addonSyncLeavesWork } from "../c3/addonMetadataSync.js";
 import { lookup, formatLookupResult } from "../c3/aceLookup.js";
 import { formatOpsList } from "../c3/opTemplate.js";
 import {
@@ -162,7 +163,10 @@ const PROJECT_PARAM = {
  */
 function regP(
   name: string,
-  config: Record<string, unknown> & { inputSchema?: Record<string, import("zod").ZodTypeAny> },
+  config: Record<string, unknown> & {
+    inputSchema?: Record<string, import("zod").ZodTypeAny>;
+    outputSchema?: Record<string, import("zod").ZodTypeAny>;
+  },
   handler: (ctx: ProjectContext, args: any, extra: Extra) => Promise<CallToolResult>,
 ): void {
   reg(
@@ -1175,11 +1179,21 @@ regP(
   {
     title: "Validate project.c3proj",
     description:
-      "Dry-run sync of project.c3proj against disk. Reports any drift (missing or extra file entries) without modifying the file. Also reports stray files — files under a section root that are neither .json section items nor editor-local (e.g. layouts/notes.txt) — as a detection-only note that never affects the result. Returns output and current txId.",
+      "Dry-run sync of project.c3proj against disk. Reports any drift (missing or extra file entries, including removals sync-project would withhold) without modifying the file. Also reports image drift and stray files — files under a section root that are neither .json section items nor editor-local (e.g. layouts/notes.txt) — as detection-only notes that never affect `clean`. Pass `section` to check one section only (strays and image drift stay project-wide). Returns structured content { clean, report }: clean is false when the manifest has drift (the CLI exits 1 on the same input); report is the full text report with the current txId footer, the same text as the content block. A manifest that cannot be read or parsed returns isError with no structured content.",
     annotations: READ_ONLY,
-    inputSchema: {},
+    inputSchema: {
+      section: z
+        .enum(ALL_SECTION_KEYS as [string, ...string[]])
+        .optional()
+        .describe(
+          "Only validate one section (CLI --section). Strays and image drift are always reported project-wide.",
+        ),
+    },
+    outputSchema: cleanReportSchema(
+      "false when project.c3proj has drift against disk in the checked sections (all, or section), withheld removals included; the CLI exits 1 on the same input. Strays and image drift never affect it.",
+    ),
   },
-  async (ctx) =>
+  async (ctx, { section }) =>
     ctx.rwlock.read(
       withMcpErrors(
         async () => {
@@ -1190,8 +1204,9 @@ regP(
           // help most. Caught at the CALL SITE — runSync's own fail-fast contract, and
           // the three rows in syncC3Proj.test.ts that pin it, stay untouched.
           let failure: unknown;
+          let clean = false;
           try {
-            runSync(ctx.root, true, log);
+            clean = runSync(ctx.root, true, log, section).clean;
           } catch (err) {
             failure = err;
           }
@@ -1202,7 +1217,7 @@ regP(
             // along rather than converting a real failure into a success response.
             return mcpError(failure, { prefix: "Error:", extraLines: [text(), txIdLine(ctx)] });
           }
-          return mcpContent(text(), txIdLine(ctx));
+          return cleanReportContent(text(), txIdLine(ctx), clean);
         },
         { prefix: "Error:", extraLines: () => [txIdLine(ctx)] },
       ),
@@ -1319,7 +1334,7 @@ regP(
   {
     title: "Validate Addons",
     description:
-      "Validate every bundled .c3addon package under addons/ against the project.c3proj usedAddons manifest: reports metadata mismatches (author/version), package-integrity failures (malformed zip, missing addon.json/aces.json, un-materialized git-lfs pointer, addon-id vs filename), aces.json vs lang/ ACE-entry consistency, orphan packages (on disk but not in usedAddons), missing packages (usedAddons bundled:true with no package on disk), and duplicate packages (multiple archives resolving to the same addon id). With `addon`, scope validation to a single addon (by discovered id, or by path to an addon source tree) instead of the whole project. Read-only; no mutation.",
+      "Validate every bundled .c3addon package under addons/ against the project.c3proj usedAddons manifest: reports metadata mismatches (author/version), package-integrity failures (malformed zip, missing addon.json/aces.json, un-materialized git-lfs pointer, addon-id vs filename), aces.json vs lang/ ACE-entry consistency, orphan packages (on disk but not in usedAddons), missing packages (usedAddons bundled:true with no package on disk), and duplicate packages (multiple archives resolving to the same addon id). With `addon`, scope validation to a single addon (by discovered id, or by path to an addon source tree) instead of the whole project. Read-only; no mutation. Returns structured content { clean, report }: clean is false when any finding is reported, in any of the four families (metadata, integrity, package-consistency, lang), which is when the CLI without --skip-gate exits 1; report is the full text report with the current txId footer, the same text as the content block. An invalid or unknown addon returns isError with no structured content.",
     annotations: READ_ONLY,
     inputSchema: {
       addon: z
@@ -1329,6 +1344,9 @@ regP(
           "Validate a single addon by discovered id or by path to an addon source tree (aces.json + lang/). Omit to validate all bundled addons.",
         ),
     },
+    outputSchema: cleanReportSchema(
+      "false when any finding is reported, in any of the four families (metadata, integrity, package-consistency, lang); the CLI without --skip-gate exits 1 on the same input.",
+    ),
   },
   async (ctx, { addon }) =>
     ctx.rwlock.read(
@@ -1349,7 +1367,12 @@ regP(
           } else {
             result = validateAddons(ctx.root);
           }
-          return mcpContent(formatAddonValidation(result), txIdLine(ctx));
+          // countFatal with no skipped family is the CLI's default gate (ADR 0038, ADR 0068).
+          return cleanReportContent(
+            formatAddonValidation(result),
+            txIdLine(ctx),
+            countFatal(result.findings, []) === 0,
+          );
         },
         { prefix: "validate-addons:", extraLines: () => [txIdLine(ctx)] },
       ),
@@ -1413,7 +1436,7 @@ regP(
   {
     title: "Scan Addon Usage",
     description:
-      "Scan the project for usage of a plugin, behavior, or effect addon. For plugin/behavior addons: which object types/families are instantiated from the addon (presence), which conditions/actions on them call one of its current ACEs (call sites), and which event-sheet parameter expressions reference one of its expressions (Object.expr / Object.Behavior.expr), grouped by event sheet. For effect addons (which have no ACEs): every site the effect is applied — object types, families, layers, and layouts — since presence is the whole story. With `from` (a .c3addon file path, or a discovered addon id/dir for a prior version), also reports blast radius — for plugins/behaviors, call sites and expression references whose ACE was changed or removed between `from` and the addon's current ACEs (surfacing dangling references a reimport may not have migrated); for effects, every application site (a version bump can change any effect parameter). Read-only.",
+      "Scan the project for usage of a plugin, behavior, or effect addon. For plugin/behavior addons: which object types/families are instantiated from the addon (presence), which conditions/actions on them call one of its current ACEs (call sites), and which event-sheet parameter expressions reference one of its expressions (Object.expr / Object.Behavior.expr), grouped by event sheet. For effect addons (which have no ACEs): every site the effect is applied — object types, families, layers, and layouts — since presence is the whole story. With `from` (a .c3addon file path, or a discovered addon id/dir for a prior version), also reports blast radius — for plugins/behaviors, call sites and expression references whose ACE was changed or removed between `from` and the addon's current ACEs (surfacing dangling references a reimport may not have migrated); for effects, every application site (a version bump can change any effect parameter). Read-only. Returns structured content { clean, report }: with `from`, clean is false when at least one site is affected, which is when the CLI exits 1; without `from` it is always true, because usage is reported, not judged. report is the full text report with the current txId footer, the same text as the content block. An addon or `from` source that cannot be resolved returns isError with no structured content.",
     annotations: READ_ONLY,
     inputSchema: {
       addon: z
@@ -1426,13 +1449,22 @@ regP(
           "Optional prior-version ACE source for blast-radius mode: a .c3addon file path, or a discovered addon id/dir",
         ),
     },
+    outputSchema: cleanReportSchema(
+      "false only with from, when at least one call site, expression reference or effect application site is affected; the CLI exits 1 on the same input. Without from it is always true: usage is reported, not judged.",
+    ),
   },
   async (ctx, { addon, from }) =>
     ctx.rwlock.read(
-      withMcpErrors(async () => mcpContent(formatAddonUsage(scanAddonUsage(ctx.root, addon, from)), txIdLine(ctx)), {
-        prefix: "scan-addon-usage:",
-        extraLines: () => [txIdLine(ctx)],
-      }),
+      withMcpErrors(
+        async () => {
+          const result = scanAddonUsage(ctx.root, addon, from);
+          // An unresolvable addon or from is a tool failure (the CLI exits 1): isError,
+          // with the same text the success response carried before (ADR 0068).
+          if ("error" in result) return mcpError(formatAddonUsage(result), { extraLines: [txIdLine(ctx)] });
+          return cleanReportContent(formatAddonUsage(result), txIdLine(ctx), !blastRadiusAffected(result));
+        },
+        { prefix: "scan-addon-usage:", extraLines: () => [txIdLine(ctx)] },
+      ),
     ),
 );
 
@@ -1454,12 +1486,18 @@ regP(
     description:
       "Dry-run report of version/author drift between bundled .c3addon packages and project.c3proj's " +
       "usedAddons manifest entries — the read-only preview for sync-addon-metadata. Never writes. With " +
-      "`addon`, scope to a single addon by discovered id.",
+      "`addon`, scope to a single addon by discovered id. Returns structured content { clean, report }: " +
+      "clean is false when a sync would change a field or a row is blocked, which is when the CLI with " +
+      "--dry-run exits 1; report is the full text report with the current txId footer, the same text as the " +
+      "content block. An unknown addon or an unreadable manifest returns isError with no structured content.",
     annotations: READ_ONLY,
     inputSchema: {
       direction: ADDON_METADATA_SYNC_DIRECTION_SCHEMA,
       addon: z.string().optional().describe("Scope to a single addon by discovered id. Omit to preview all."),
     },
+    outputSchema: cleanReportSchema(
+      "false when outstanding human work remains: a would-change row (nothing is written by a preview) or a blocked row; the CLI with --dry-run exits 1 on the same input.",
+    ),
   },
   async (ctx, { direction, addon }) =>
     ctx.rwlock.read(
@@ -1469,7 +1507,7 @@ regP(
           if ("error" in result) {
             return mcpError(result.error, { prefix: "preview-addon-metadata-sync:", extraLines: [txIdLine(ctx)] });
           }
-          return mcpContent(formatAddonMetadataSync(result), txIdLine(ctx));
+          return cleanReportContent(formatAddonMetadataSync(result), txIdLine(ctx), !addonSyncLeavesWork(result));
         },
         { prefix: "preview-addon-metadata-sync:", extraLines: () => [txIdLine(ctx)] },
       ),
@@ -1485,13 +1523,20 @@ regP(
       "'manifest-from-package' writes anything (chef has no .c3addon writer, so 'package-from-manifest' is " +
       "a read-only report identical to preview-addon-metadata-sync). With `addon`, scope to a single addon. " +
       "Pass txId from preview-addon-metadata-sync (or a prior call) for optimistic concurrency. Returns the " +
-      "sync report and the current txId — bumped only when the manifest was actually written.",
+      "sync report and the current txId — bumped only when the manifest was actually written. Returns " +
+      "structured content { clean, report }: clean is false when outstanding human work remains after the " +
+      "call (a blocked row, or under 'package-from-manifest' a stale package), which is when the CLI exits " +
+      "1; report is the full text report with the txId footer, the same text as the content block. A stale " +
+      "txId, an unknown addon or an unreadable manifest returns isError with no structured content.",
     annotations: MUTATE,
     inputSchema: {
       direction: ADDON_METADATA_SYNC_DIRECTION_SCHEMA,
       addon: z.string().optional().describe("Scope to a single addon by discovered id. Omit to sync all."),
       txId: z.string().optional().describe("Expected txId — if stale, sync is rejected"),
     },
+    outputSchema: cleanReportSchema(
+      "false when outstanding human work remains after the call: a blocked row, or under package-from-manifest (which never writes) a stale package; the CLI exits 1 on the same input.",
+    ),
   },
   async (ctx, { direction, addon, txId: expectedTxId }) =>
     ctx.rwlock.write(
@@ -1524,7 +1569,8 @@ regP(
           // only) and the ctx.watcher itself excludes it from onSourceChange.
           if (result.wrote) ctx.watcher.bump();
 
-          return mcpContent(formatAddonMetadataSync(result), txIdLine(ctx));
+          // Built after the bump, so the footer and report carry the post-write txId.
+          return cleanReportContent(formatAddonMetadataSync(result), txIdLine(ctx), !addonSyncLeavesWork(result));
         },
         { prefix: "sync-addon-metadata:", extraLines: () => [txIdLine(ctx)] },
       ),

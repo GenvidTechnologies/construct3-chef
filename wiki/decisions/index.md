@@ -604,3 +604,11 @@ See the [wiki index](../index.md) for the other sections.
   The rules are a local bridge, `src/c3/c3NameRules.ts`, until c3source
   exports them
   ([#260](https://github.com/GenvidTechnologies/construct3-chef/issues/260))
+* [0068. MCP findings ride in structuredContent, and isError stays tool failure](0068-mcp-findings-ride-in-structured-content-and-iserror-stays-tool-failure.md) -
+  Five MCP tools whose CLI exits 1 on findings now declare an outputSchema of
+  `{ clean, report }`. `clean` is true exactly when the CLI would exit 0 for
+  the same inputs, and `report` repeats the text block, txId footer included.
+  `isError` keeps meaning tool failure and carries no structuredContent. This
+  refines ADR 0025 section 4 and gives MCP `validate-addons` a pass/fail
+  signal
+  ([#349](https://github.com/GenvidTechnologies/construct3-chef/issues/349))

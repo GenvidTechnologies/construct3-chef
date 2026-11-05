@@ -157,6 +157,11 @@ export interface AddonUsageResult {
   blast?: BlastInfo;
 }
 
+/** True iff the CLI's scan-addon-usage exits 1: blast-radius mode found an affected site. MCP clean is its negation. */
+export function blastRadiusAffected(result: AddonUsageResult): boolean {
+  return result.blast !== undefined && result.blast.affectedCount > 0;
+}
+
 export type ScanAddonUsageResult = AddonUsageResult | { error: string };
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
