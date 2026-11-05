@@ -103,6 +103,8 @@ a deliberate asymmetry, not an oversight: the two surfaces stay aligned on
 *what is reported*, and diverge on *what gates*, because only one of them has
 a notion of gating at all.
 
+**Amended by ADR [0068](0068-mcp-findings-ride-in-structured-content-and-iserror-stays-tool-failure.md) (2026-11-05):** the premise that an MCP response has no pass/fail signal is no longer true. MCP `validate-addons` returns `structuredContent.clean`, which gates all four families and equals the CLI without `--skip-gate`. The no-parameter decision stands as a deferral, not an impossibility: adding an optional `skip-gate` input later is additive.
+
 ## Rejected alternative: an allow-list (`--fail-on`)
 
 Issue #220 itself proposed and ranked first an **allow-list** shape:

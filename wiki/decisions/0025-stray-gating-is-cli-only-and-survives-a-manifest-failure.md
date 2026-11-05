@@ -143,6 +143,8 @@ unconditionally (any finding fails it — it has no severity concept). That
 was already the repo's practice; this record is the first place it's
 written down, with its reason.
 
+**Amended by ADR [0068](0068-mcp-findings-ride-in-structured-content-and-iserror-stays-tool-failure.md) (2026-11-05):** findings now have a structured channel on five tools, `structuredContent: { clean, report }`. The principle that `isError` means tool failure is unchanged. The `validate-addons` instance named above now carries `clean`, which equals the CLI exit code. The Consequences' instruction to revisit this record first is answered by 0068.
+
 ### 5. `sync-project` is never gated
 
 Not merely "it has no exit-code logic today." The decisive argument: **a
