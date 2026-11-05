@@ -16,6 +16,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { runSync } from "../../src/c3/projectSync.js";
+import { reportDriftAdvisories } from "../../src/c3/driftAdvisories.js";
 
 // Each row runs against a temp COPY of the canonical fixture, never the fixture itself. Rows seed
 // directory links (junctions, which need no admin rights on Windows) and run a dry-run sync.
@@ -84,7 +85,7 @@ describe("sync file-section walk and links", function () {
   });
 
   const GUARD_MESSAGE =
-    "runSync must keep c3source's file-section drift walks out of sync (the nameView in runSync, ADR 0066): since c3source 3.1.0 they follow links";
+    "runSync must keep c3source's file-section drift walks out of sync (the skipFileSections option in runSync, ADR 0066): since c3source 3.1.0 they follow links";
 
   it("I358-R2: a junction loop under undeclared files/undecl and scripts/undecl does not throw", () => {
     const root = copy();
@@ -123,7 +124,7 @@ describe("sync file-section walk and links", function () {
     });
   });
 
-  it("I358-R4: a junction loop under eventSheets/sub still throws ELOOP", () => {
+  it("DB4-R4: a junction loop under eventSheets/sub does not throw", () => {
     const root = copy();
     mkdirSync(path.join(root, "eventSheets", "sub"), { recursive: true });
     seedLink(root, "eventSheets/sub/loop", path.join(root, "eventSheets", "sub"));
@@ -137,8 +138,21 @@ describe("sync file-section walk and links", function () {
 
     expect(
       { threw },
-      "a junction loop under a name-section folder still throws ELOOP; if this goes red, c3source fixed link handling: update ADR 0066 and the c3source 3.1.0 ledger entry",
-    ).to.deep.equal({ threw: "ELOOP" });
+      "c3source 4.0.0 walks no longer follow links below a walk root (c3source#114), so a name-section link loop does not fail the run",
+    ).to.deep.equal({ threw: null });
+  });
+
+  it("DB4-U7: a junction at layouts/sub/loop gives the exact [links] line", () => {
+    const root = copy();
+    mkdirSync(path.join(root, "layouts", "sub"), { recursive: true });
+    seedLink(root, "layouts/sub/loop", path.join(root, "layouts", "sub"));
+
+    const lines: string[] = [];
+    reportDriftAdvisories(root, (l) => lines.push(l));
+
+    expect(lines.filter((l) => l.startsWith("[links]"))).to.deep.equal([
+      "[links]".padEnd(16) + "! layouts/sub/loop (not followed)",
+    ]);
   });
 
   const EDITOR_LOCAL_MESSAGE =

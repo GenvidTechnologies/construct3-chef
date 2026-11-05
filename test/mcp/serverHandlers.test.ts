@@ -47,7 +47,6 @@ import {
   formatScaffoldRegistryMissing,
   formatScaffoldLayoutNameMismatch,
 } from "../../src/c3/scaffoldPlan.js";
-import { layoutNameIssue, layoutNameIssueText } from "../../src/c3/c3NameRules.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = path.join(__dirname, "..", "fixtures", "construct3-chef-sample");
@@ -1695,6 +1694,96 @@ describe("MCP server handler response shaping", () => {
     });
   });
 
+  // ── drift advisories on validate-project / sync-project (#344) ─────────────
+
+  describe("drift advisories (#344)", () => {
+    const advisoryLines = (text: string): string[] =>
+      text.split(/\r?\n/).filter((l) => l.startsWith("[duplicates]") || l.startsWith("[links]"));
+
+    function seedDuplicate(root: string): void {
+      fs.mkdirSync(path.join(root, "layouts", "sub"), { recursive: true });
+      fs.writeFileSync(path.join(root, "layouts", "Level1.json"), "{}");
+      fs.writeFileSync(path.join(root, "layouts", "sub", "level1.json"), "{}");
+    }
+
+    // Control: the same number of new layouts, no repeated name, so manifest drift is the same
+    // shape with and without a duplicate.
+    function seedNoDuplicate(root: string): void {
+      fs.mkdirSync(path.join(root, "layouts", "sub"), { recursive: true });
+      fs.writeFileSync(path.join(root, "layouts", "Level1.json"), "{}");
+      fs.writeFileSync(path.join(root, "layouts", "sub", "Level2.json"), "{}");
+    }
+
+    it("DB4-U4: the CLI and MCP validate-project advisory lines are byte-identical; exit code and clean are unchanged by a duplicate", async () => {
+      // Mask: none needed for the compared lines. The advisory lines carry only project-relative
+      // names, so they hold no txId token, temp path or SID; the txId footer and the drift lines
+      // that do are outside the comparison (only lines starting [duplicates] / [links] are taken).
+      const surfaces = async (): Promise<{ cli: string[]; mcp: string[]; exitCode: number; clean: unknown }> => {
+        const cli = runCli(["validate-project", "--project-dir", tmp]);
+        const mcp = (await __getHandler("validate-project")!({}, makeExtra())) as any;
+        return {
+          cli: advisoryLines(cli.stdout),
+          mcp: advisoryLines(mcp.content[0].text),
+          exitCode: cli.exitCode,
+          clean: mcp.structuredContent?.clean,
+        };
+      };
+
+      seedNoDuplicate(tmp);
+      const control = await surfaces();
+      fs.rmSync(path.join(tmp, "layouts", "Level1.json"));
+      fs.rmSync(path.join(tmp, "layouts", "sub"), { recursive: true });
+      seedDuplicate(tmp);
+      const withDuplicate = await surfaces();
+
+      expect(withDuplicate.cli).to.deep.equal([
+        "[duplicates]".padEnd(16) + "! layouts 'level1': manifest (none); disk layouts/Level1, layouts/sub/level1",
+        "[links]".padEnd(16) + "(no links)",
+      ]);
+      expect(withDuplicate.mcp).to.deep.equal(withDuplicate.cli);
+      expect(control.cli).to.deep.equal([
+        "[duplicates]".padEnd(16) + "(no duplicates)",
+        "[links]".padEnd(16) + "(no links)",
+      ]);
+      expect({ exitCode: withDuplicate.exitCode, clean: withDuplicate.clean }).to.deep.equal({
+        exitCode: control.exitCode,
+        clean: control.clean,
+      });
+    });
+
+    it("DB4-U5: scaffold-layout and scaffold-sprite output contains no [duplicates] or [links] line", async () => {
+      seedDuplicate(tmp);
+      const layout = (await __getHandler("scaffold-layout")!(
+        {
+          source: "Gameplay/Main Layout.json",
+          name: "DB4U5Layout",
+          path: "DB4U5Layout.json",
+          eventSheet: "Event sheet 1",
+          regenerate: false,
+        },
+        makeExtra(),
+      )) as any;
+      const sprite = (await __getHandler("scaffold-sprite")!(
+        { source: "Text", name: "DB4U5Sprite", regenerate: false },
+        makeExtra(),
+      )) as any;
+      const validate = (await __getHandler("validate-project")!({}, makeExtra())) as any;
+
+      expect({
+        errors: [layout.isError, sprite.isError],
+        layout: advisoryLines(layout.content[0].text),
+        sprite: advisoryLines(sprite.content[0].text),
+        // Positive control: the same project does show the duplicate through validate-project.
+        validateHasDuplicate: advisoryLines(validate.content[0].text).some((l) => l.includes("'level1'")),
+      }).to.deep.equal({
+        errors: [undefined, undefined],
+        layout: [],
+        sprite: [],
+        validateHasDuplicate: true,
+      });
+    });
+  });
+
   // ── sync removals are withheld unless prune (#346) ────────────────────────
 
   describe("sync removals are withheld unless prune (#346)", () => {
@@ -2127,7 +2216,6 @@ describe("MCP server handler response shaping", () => {
       fs.writeFileSync(path.join(tmp, "layouts", "Other.json"), JSON.stringify({ name: "Renamed", layers: [] }));
       __setExtractedDirty(false);
       const before = snapshotTree(tmp);
-      const nameRuleIssue = layoutNameIssue("a~b")!;
 
       const cases = [
         {
@@ -2145,7 +2233,7 @@ describe("MCP server handler response shaping", () => {
         {
           out: "PlanB",
           name: "a~b",
-          expected: `Invalid name 'a~b' — ${layoutNameIssueText(nameRuleIssue)}`,
+          expected: "Invalid name 'a~b' — must be a name C3 keeps as written: C3 would load it as 'ab'",
         },
       ];
       for (const c of cases) {
@@ -2196,6 +2284,40 @@ describe("MCP server handler response shaping", () => {
           tree: before,
         });
       }
+    });
+
+    it("DB4-B1: scaffold-sprite --name Time is refused alike on CLI and MCP, nothing written, no bump", async function () {
+      this.timeout(60_000);
+      const handler = __getHandler("scaffold-sprite")!;
+      __setExtractedDirty(false);
+      const before = snapshotTree(tmp);
+      const expected =
+        "Invalid name 'Time' — must not be 'Time': C3 reserves it as a System expression name (letter case ignored)";
+
+      const mcp = (await handler({ source: "Text", name: "Time" }, makeExtra())) as any;
+      expect(mcp.isError).to.be.true;
+      const lines = textOf(mcp).split("\n");
+      const txLine = lines.pop();
+      const mcpMessage = lines.join("\n");
+      const cli = runCli(["scaffold-sprite", "--project-dir", tmp, "--source", "Text", "--name", "Time"]);
+
+      expect({
+        txLine,
+        mcpMessage,
+        cliExit: cli.exitCode,
+        cliStderr: cli.stderr.trimEnd(),
+        bumped: watcher.bumped,
+        dirty: __getExtractedDirty(),
+        tree: snapshotTree(tmp),
+      }).to.deep.equal({
+        txLine: "txId: default:5",
+        mcpMessage: expected,
+        cliExit: 1,
+        cliStderr: expected,
+        bumped: 0,
+        dirty: false,
+        tree: before,
+      });
     });
 
     it("I260-B4: scaffold-sprite with a name next to an existing family's name succeeds and bumps once", async () => {

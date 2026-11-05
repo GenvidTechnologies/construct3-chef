@@ -36,6 +36,7 @@ describe("sync video file section", function () {
     const root = copy();
     seedFile(root, "videos/clip.mp4", "mp4\n");
     seedFile(root, "videos/clip.webm", "webm\n");
+    seedFile(root, "videos/clip.ogv", "ogv\n");
     seedFile(root, "videos/readme.txt", "r\n");
 
     const logged: string[] = [];
@@ -51,11 +52,12 @@ describe("sync video file section", function () {
 
     expect(
       { items, readmeAnywhere },
-      "the video section registers .mp4 and .webm with c3source's current types; if c3source's type for a video .webm moved (GenvidTechnologies/c3source#113), update this row, ADR 0066 and the CHANGELOG known-limitation sentence together",
+      "the video section registers the files the editor's rescan admits (video category) with c3source's section types: .webm is video/webm, .ogv is admitted, readme.txt is not",
     ).to.deep.equal({
       items: [
         { name: "clip.mp4", type: "video/mp4", sid: "<SID>", "file-info": { purpose: "none" } },
-        { name: "clip.webm", type: "audio/webm; codecs=opus", sid: "<SID>", "file-info": { purpose: "none" } },
+        { name: "clip.ogv", type: "video/ogg", sid: "<SID>", "file-info": { purpose: "none" } },
+        { name: "clip.webm", type: "video/webm", sid: "<SID>", "file-info": { purpose: "none" } },
       ],
       readmeAnywhere: false,
     });

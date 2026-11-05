@@ -1373,22 +1373,25 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
     );
   });
 
-  it("SR346-R13: a present scripts/helper.js declared under script is kept (withheld) by default and removed with prune", () => {
+  it("DB4-S354: present scripts/helper.js and scripts/notes.md declared under script give no change by default, and prune still keeps both declared", () => {
+    // notes.md is a file the editor's rescan rule would not admit (script admits .js and .ts only),
+    // so only the listed-file rule keeps it present; helper.js is admitted either way.
     const build = () => {
       const c = copyFixture();
       const m = readManifest(c.manifestPath);
-      m.rootFileFolders.script.items.push({
-        name: "helper.js",
-        type: "application/javascript",
-        sid: 311111111111111,
-        "script-info": { purpose: "none" },
-      });
+      m.rootFileFolders.script.items.push(
+        { name: "helper.js", type: "application/javascript", sid: 311111111111111, "script-info": { purpose: "none" } },
+        { name: "notes.md", type: "text/markdown", sid: 311111111111112, "script-info": { purpose: "none" } },
+      );
       writeManifest(c.manifestPath, m);
       writeFileSync(path.join(c.root, "scripts", "helper.js"), "");
+      writeFileSync(path.join(c.root, "scripts", "notes.md"), "");
       return c;
     };
-    const has = (manifestPath: string) =>
-      readManifest(manifestPath).rootFileFolders.script.items.some((i: FileItem) => i.name === "helper.js");
+    const has = (manifestPath: string) => {
+      const items = readManifest(manifestPath).rootFileFolders.script.items.map((i: FileItem) => i.name);
+      return items.includes("helper.js") && items.includes("notes.md");
+    };
 
     const kept = build();
     const keptResult = runSync(kept.root, false, () => {}, "script", { prune: false });
@@ -1397,13 +1400,64 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
     assert.deepEqual(
       {
         keptDeclared: has(kept.manifestPath),
-        keptWithheld: keptResult.changes.map((c) => ({ detail: c.detail, withheld: c.withheld })),
+        keptChanges: keptResult.changes.map((c) => ({ detail: c.detail, withheld: c.withheld })),
         prunedDeclared: has(removed.manifestPath),
       },
       {
         keptDeclared: true,
-        keptWithheld: [{ detail: "helper.js", withheld: true }],
-        prunedDeclared: false,
+        keptChanges: [],
+        prunedDeclared: true,
+      },
+    );
+  });
+
+  it("DB4-S2: sync adds only what the editor rescan admits, per section", () => {
+    const c = copyFixture();
+    const put = (rel: string): void => {
+      const abs = path.join(c.root, rel);
+      mkdirSync(path.dirname(abs), { recursive: true });
+      writeFileSync(abs, "x");
+    };
+    put("sounds/a.ogg");
+    put("sounds/readme.txt");
+    put("files/.gitkeep");
+    put("files/index.html");
+    put("files/sub/index.html");
+    put("scripts/extra.js");
+    put("scripts/notes.md");
+    put("scripts/twin.ts");
+    put("scripts/twin.js");
+    runSync(c.root, false, () => {});
+    const m = readManifest(c.manifestPath);
+    const names = (f: any, prefix = ""): string[] => [
+      ...f.items.map((i: FileItem) => prefix + i.name),
+      ...f.subfolders.flatMap((s: any) => names(s, `${prefix}${s.name}/`)),
+    ];
+    const sound = m.rootFileFolders.sound.items.find((i: FileItem) => i.name === "a.ogg");
+    const general = names(m.rootFileFolders.general);
+    const script = names(m.rootFileFolders.script);
+    assert.deepEqual(
+      {
+        aOgg: sound?.type,
+        readme: names(m.rootFileFolders.sound).includes("readme.txt"),
+        gitkeep: general.includes(".gitkeep"),
+        rootIndex: general.includes("index.html"),
+        subIndex: general.includes("sub/index.html"),
+        extraJs: script.includes("extra.js"),
+        notesMd: script.includes("notes.md"),
+        twinTs: script.includes("twin.ts"),
+        twinJs: script.includes("twin.js"),
+      },
+      {
+        aOgg: "audio/ogg; codecs=vorbis",
+        readme: false,
+        gitkeep: false,
+        rootIndex: false,
+        subIndex: true,
+        extraJs: true,
+        notesMd: false,
+        twinTs: true,
+        twinJs: false,
       },
     );
   });

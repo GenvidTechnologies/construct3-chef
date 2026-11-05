@@ -27,6 +27,7 @@ import { applyParsed } from "../c3/recipeApplier.js";
 import { validateRecipe, type Recipe } from "../c3/recipeInterpreter.js";
 import { findJsonFiles, SID_SOURCE_DIRS } from "../c3/generators.js";
 import { runSync, reportImageDrift, reportStrayFiles, ALL_SECTION_KEYS } from "../c3/projectSync.js";
+import { reportDriftAdvisories } from "../c3/driftAdvisories.js";
 import { cleanReportSchema, cleanReportContent } from "./structuredReport.js";
 import { newWriteLedger, failureEffects, type WriteLedger } from "./writeLedger.js";
 import { suppressSelfWrites } from "./selfWrites.js";
@@ -1179,7 +1180,7 @@ regP(
   {
     title: "Validate project.c3proj",
     description:
-      "Dry-run sync of project.c3proj against disk. Reports any drift (missing or extra file entries, including removals sync-project would withhold) without modifying the file. Also reports image drift and stray files — files under a section root that are neither .json section items nor editor-local (e.g. layouts/notes.txt) — as detection-only notes that never affect `clean`. Pass `section` to check one section only (strays and image drift stay project-wide). Returns structured content { clean, report }: clean is false when the manifest has drift (the CLI exits 1 on the same input); report is the full text report with the current txId footer, the same text as the content block. A manifest that cannot be read or parsed returns isError with no structured content.",
+      "Dry-run sync of project.c3proj against disk. Reports any drift (missing or extra file entries, including removals sync-project would withhold) without modifying the file. Also reports image drift and stray files — files under a section root that are neither .json section items nor editor-local (e.g. layouts/notes.txt) — as detection-only notes that never affect `clean`. Also prints advisory [duplicates] (names C3's lookups treat as one) and [links] (skipped links) sections, which never affect `clean` either. Pass `section` to check one section only (strays, image drift and the advisories stay project-wide). Returns structured content { clean, report }: clean is false when the manifest has drift (the CLI exits 1 on the same input); report is the full text report with the current txId footer, the same text as the content block. A manifest that cannot be read or parsed returns isError with no structured content.",
     annotations: READ_ONLY,
     inputSchema: {
       section: z
@@ -1212,6 +1213,9 @@ regP(
           }
           reportImageDrift(ctx.root, log);
           reportStrayFiles(ctx.root, log);
+          // Advisory (#344): never moves clean or isError. Skipped after a manifest failure, which
+          // is already reported and which the advisories would hit again.
+          if (failure === undefined) reportDriftAdvisories(ctx.root, log);
           if (failure !== undefined) {
             // The response stays isError — the tool DID fail. The diagnostics ride
             // along rather than converting a real failure into a success response.
@@ -1229,7 +1233,7 @@ regP(
   {
     title: "Sync project.c3proj",
     description:
-      "Sync project.c3proj to match files on disk. Adds entries for files on disk. Removals of entries whose files are missing are withheld (reported as [withheld], entry kept) unless prune: true. Stray files — files under a section root that are neither .json section items nor editor-local (e.g. layouts/notes.txt) — are reported detection-only; sync never acts on them. Pass txId for optimistic concurrency. Returns output and new txId.",
+      "Sync project.c3proj to match files on disk. Adds entries for files on disk. Removals of entries whose files are missing are withheld (reported as [withheld], entry kept) unless prune: true. Stray files — files under a section root that are neither .json section items nor editor-local (e.g. layouts/notes.txt) — are reported detection-only; sync never acts on them. Advisory [duplicates] and [links] sections follow. Pass txId for optimistic concurrency. Returns output and new txId.",
     annotations: MUTATE,
     inputSchema: {
       txId: z.string().optional().describe("Expected txId — if stale, sync is rejected"),
@@ -1260,6 +1264,7 @@ regP(
           // mirroring validate-project (#52).
           reportImageDrift(ctx.root, log);
           reportStrayFiles(ctx.root, log);
+          reportDriftAdvisories(ctx.root, log);
           return mcpContent(text(), txIdLine(ctx));
         },
         { prefix: "Error:", extraLines: () => [txIdLine(ctx)] },
@@ -1735,7 +1740,7 @@ regP(
       name: z
         .string()
         .describe(
-          "Target objectType name (e.g. 'VideosIcon'). Must be a name C3 keeps as written (no spaces or punctuation C3 would strip) and not a reserved word (self, true, false, system)",
+          "Target objectType name (e.g. 'VideosIcon'). Must be a name C3 keeps as written (no spaces or punctuation C3 would strip) and not a reserved word (self, true, false, system) or a System expression name (e.g. 'Time', 'random')",
         ),
       txId: z.string().optional().describe("Expected txId — if stale, scaffold is rejected"),
       regenerate: z.boolean().optional().describe("Regenerate extracted/ files after scaffolding (default: true)"),

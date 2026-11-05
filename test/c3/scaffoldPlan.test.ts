@@ -181,7 +181,9 @@ describe("scaffoldPlan (T26, #259)", function () {
         const r = planLayoutScaffold(layoutOpts(pathBase, { name: "a~b" })) as ScaffoldRejection;
         expect(r.ok, pathBase).to.equal(false);
         expect(r.kind, pathBase).to.equal("invalid-name");
-        expect(r.message, pathBase).to.equal("Invalid name 'a~b' — must not contain '~'");
+        expect(r.message, pathBase).to.equal(
+          "Invalid name 'a~b' — must be a name C3 keeps as written: C3 would load it as 'ab'",
+        );
         expect(snapshotTree(tmp)).to.deep.equal(snap);
       }
     });
@@ -545,6 +547,18 @@ describe("scaffoldPlan (T26, #259)", function () {
       }
       expect(got).to.deep.equal(want);
       expect(snapshotTree(tmp)).to.deep.equal(before);
+    });
+
+    it("DB4-S1: sprite --name Time is refused as a System expression name; Timer plans", () => {
+      const before = snapshotTree(tmp);
+      const r = planSpriteScaffold(spriteOpts({ name: "Time" })) as ScaffoldRejection;
+      expect(r.ok).to.equal(false);
+      expect(r.kind).to.equal("invalid-name");
+      expect(r.message).to.equal(
+        "Invalid name 'Time' — must not be 'Time': C3 reserves it as a System expression name (letter case ignored)",
+      );
+      expect(snapshotTree(tmp)).to.deep.equal(before);
+      expect(planSpriteScaffold(spriteOpts({ name: "Timer" })).ok).to.equal(true);
     });
 
     it("I260-S2: sprite names Sprite_2 and TextFamily2 plan; a source named 'My Sprite' still plans", () => {

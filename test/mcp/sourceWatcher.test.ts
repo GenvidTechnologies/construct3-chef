@@ -3,12 +3,13 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, renameSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ExpectedChanges, contentFingerprint, type WatcherFactory } from "@genvidtech/mcp-utils";
+import { ExpectedChanges, ObservedState, type WatcherFactory } from "@genvidtech/mcp-utils";
+import { isEditorLocalPathUnder } from "../../src/c3/editorLocal.js";
 import {
   createSourceWatcher,
   countWatchedEntries,
   ledgerCapacity,
-  editorLocalAwareFingerprint,
+  editorLocalFilteringFactory,
   routeWatcherLog,
 } from "../../src/mcp/sourceWatcher.js";
 
@@ -317,10 +318,19 @@ describe("createSourceWatcher", () => {
     assert.equal(w.txId, 1, "control: editing the source file");
   });
 
-  it("MU12-D11: creating an editor-local file in a subfolder is still a change (upstream residual)", () => {
+  it("DB4-W1: creating an editor-local file in a subfolder is not a change", () => {
     const sub = seedSub();
     const w = build();
     writeFileSync(path.join(sub, "C.uistate.json"), '{"u":1}');
+    emit("eventSheets", "sub");
+    assert.equal(w.txId, 0);
+    assert.deepEqual(fired, [], "the change callback (extractedDirty) must not fire");
+  });
+
+  it("DB4-W2: creating a source file in the same subfolder is a change", () => {
+    const sub = seedSub();
+    const w = build();
+    writeFileSync(path.join(sub, "D.json"), '{"d":1}');
     emit("eventSheets", "sub");
     assert.equal(w.txId, 1);
   });
@@ -344,6 +354,38 @@ describe("createSourceWatcher", () => {
     const hits = info.filter((l) => l.includes("baseline: 1051 files, 60 directories"));
     assert.equal(hits.length, 1, `info lines: ${JSON.stringify(info)}`);
     assert.deepEqual(warnings, []);
+  });
+});
+
+describe("editorLocalFilteringFactory", () => {
+  it("DB4-W4: drops editor-local events and forwards source events", () => {
+    const root = path.join(os.tmpdir(), "c3chef-filter-root");
+    let baseOnEvent: ((filename: string) => void) | undefined;
+    const base: WatcherFactory = (_target, onEvent) => {
+      baseOnEvent = onEvent;
+      return { close: () => {} };
+    };
+    const forwarded: string[] = [];
+    editorLocalFilteringFactory(root, base)(root, (f) => forwarded.push(f));
+    assert.ok(baseOnEvent, "base factory was not invoked");
+
+    const dropped = ["eventSheets/uistate/x", "a/B.uistate.json", "scripts/tsconfig.json"];
+    for (const rel of dropped) baseOnEvent(path.resolve(root, rel));
+    assert.deepEqual(forwarded, [], "editor-local events must not be forwarded");
+
+    const kept = path.resolve(root, "eventSheets/a.json");
+    baseOnEvent(kept);
+    assert.deepEqual(forwarded, [kept]);
+  });
+});
+
+describe("editor-local classification of ledger keys", () => {
+  it("DB4-W7: a POSIX-form ledger key classifies against a native-separator root", () => {
+    const nativeRoot = path.join(os.tmpdir(), "c3chef-key-root");
+    const keyFor = (rel: string): string =>
+      ObservedState.normalize(path.resolve(nativeRoot, rel).split(path.sep).join("/"));
+    assert.equal(isEditorLocalPathUnder(nativeRoot, keyFor("eventSheets/sub/C.uistate.json")), true);
+    assert.equal(isEditorLocalPathUnder(nativeRoot, keyFor("eventSheets/sub/C.json")), false);
   });
 });
 
@@ -376,23 +418,6 @@ describe("sourceWatcher ledger helpers", () => {
     assert.equal(countWatchedEntries(targets), 5 + 2 + 1 + 0);
     assert.equal(ledgerCapacity(99), 10000);
     assert.equal(ledgerCapacity(2741), 10964);
-  });
-
-  it("editorLocalAwareFingerprint hashes source files and reports editor-local ones absent", () => {
-    mkdirSync(path.join(root, "eventSheets"));
-    const src = path.join(root, "eventSheets", "a.json");
-    const local = path.join(root, "eventSheets", "Foo.uistate.json");
-    writeFileSync(src, "one");
-    writeFileSync(local, "x");
-    const fp = editorLocalAwareFingerprint(root);
-    // The fingerprinter relies on "absent" being the ledger's no-content value;
-    // pin that upstream contract so a change to it fails here.
-    assert.equal(contentFingerprint(path.join(root, "eventSheets", "missing.json")), "absent");
-    assert.equal(fp(local), "absent");
-    assert.equal(fp(src), contentFingerprint(src));
-    const before = fp(src);
-    writeFileSync(src, "two");
-    assert.notEqual(fp(src), before);
   });
 
   it("MU12-L1: routeWatcherLog routes baseline summary to info, incomplete/failed to warning, others to null", () => {

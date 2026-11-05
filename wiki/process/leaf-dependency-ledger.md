@@ -77,9 +77,27 @@ The intervening **c3source 1.2.0** added an `isEventVarReference`/`getEventVarRe
 
 **Still open from the 3.0.0 entry:** `find_all_files_path` (`dist/layouts.js`) is byte-identical to 3.0.0, so the `findJsonFiles` decline (ADR [`0021`](../decisions/0021-section-item-axis-does-not-reopen-walk-declines.md)) stands. The next-bump check is unchanged: an upstream walk carrying `walkFiles`' error tolerances. **Correction to the 3.0.0 entry:** its sentence "Chef's barrel re-exports no c3source symbol" was wrong. `src/c3/sidUtils.ts` re-exports `collectSids`, and `src/c3/eventSheetMutator.ts` re-exports the types `ScriptAction`, `IncludeEvent` and `CommentEvent`. **Residual:** the `video` section's facts (the folder name is inferred upstream, the `file-info` key is unattested, and a `.webm` is typed as audio) are requested in [c3source#113](https://github.com/GenvidTechnologies/c3source/issues/113).
 
-### Pending: exported name validators
+### Resolved: exported name validators
 
-[c3source#123](https://github.com/GenvidTechnologies/c3source/issues/123) requests exported validators for C3's name rules. Chef keeps a local copy of the C3 editor r495-2 rules in `src/c3/c3NameRules.ts` for scaffold names and new objectType names (ADR [`0067`](../decisions/0067-scaffold-and-objecttype-names-follow-c3s-name-rules.md)). **Check at the next c3source bump** whether the validators are exported. The `I260-T1` tripwire test goes red when they ship. On adoption, retire `src/c3/c3NameRules.ts` with its call sites and the tripwire, and keep the name-rule tests green.
+[c3source#123](https://github.com/GenvidTechnologies/c3source/issues/123) requested exported validators for C3's name rules. Chef kept a local copy of the C3 editor r495-2 rules in `src/c3/c3NameRules.ts` for scaffold names and new objectType names (ADR [`0067`](../decisions/0067-scaffold-and-objecttype-names-follow-c3s-name-rules.md)), with the `I260-T1` tripwire. The validator shipped in c3source 4.0.0 as `itemNameIssue`. It was adopted, `src/c3/c3NameRules.ts` and `I260-T1` were deleted, and the name-rule tests stayed green. See the 4.0.0 entry below.
+
+### 4.0.0
+
+**c3source 4.0.0** (a major of the dependency) was adopted in [#374](https://github.com/GenvidTechnologies/construct3-chef/issues/374). A dist diff against 3.1.0 changed only `layouts.*`, `manifest.*` and `project.*`. **Adopted:**
+
+- `itemNameIssue`, the exported name validator requested in c3source#123. `src/c3/c3NameRules.ts` and the `I260-T1` tripwire were deleted; chef's refusal wording stays local (ADR [`0067`](../decisions/0067-scaffold-and-objecttype-names-follow-c3s-name-rules.md), amendment). It also refuses System expression names for new objectType names ([#365](https://github.com/GenvidTechnologies/construct3-chef/issues/365)).
+- `fileTypeForSection` for the type of a new file item, and `skipFileSections` in place of the manifest view of ADR [`0066`](../decisions/0066-sync-keeps-its-own-file-section-walk-under-c3source-3-1-0.md) (ADR [`0069`](../decisions/0069-file-section-admission-follows-the-editors-rescan-rule.md)).
+- `ManifestDrift.duplicates` and `ManifestDrift.links`, rendered as the advisory `[duplicates]` and `[links]` reports (ADR [`0070`](../decisions/0070-validate-reports-duplicate-names-and-skipped-links.md)). The `DuplicateName` shape changed incompatibly; chef read nothing from it, so no code change was needed.
+
+**Inherited, not adopted.** The walks no longer follow links below a walk root (`lstatSync`, [c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)), so a link loop under a name-section folder no longer throws; test `I358-R4` was re-pinned as `DB4-R4`. `EXTENSION_FILE_TYPES` gained rows, so sync types more new files.
+
+**Declined.** Consuming upstream's file-section drift (ADR 0069, Option B-2). The editor's rescan admission rule stays a local bridge, `src/c3/fileAdmission.ts`, with the tripwire `DB4-T1` and the upstream request [c3source#130](https://github.com/GenvidTechnologies/c3source/issues/130).
+
+**Revert-confirm.** On the bump alone exactly `I260-T1` and `I358-R4` failed (2404 passing, 2 failing). The guards that overlapped upstream: chef's layout-name device check was replaced by upstream's (decision D1: `NUL.txt`, `COM¹` and `CONIN$` are now refused by the `--out` path-segment check), and the manifest view was replaced by `skipFileSections`. `I358-R2` and `I358-R3` stay green but can no longer go red for their original reason, because 4.0.0 would not throw.
+
+**Answers to the earlier next-bump checks.** [c3source#110](https://github.com/GenvidTechnologies/c3source/issues/110) was discharged in 3.1.0. `find_all_files_path` is not byte-identical to 3.1.0: `statSync` became `lstatSync`, and a doc bullet was added. Against ADR [`0021`](../decisions/0021-section-item-axis-does-not-reopen-walk-declines.md)'s reopen criterion its three costs still stand: a bare `readdirSync` throws on a missing directory, a per-entry stat can throw mid-walk, and the ordering is imposed. The `findJsonFiles` decline stands. New divergence: mcp-utils `walkFiles` follows links and the c3source finders do not ([#375](https://github.com/GenvidTechnologies/construct3-chef/issues/375)).
+
+**Next-bump check.** Whether [c3source#130](https://github.com/GenvidTechnologies/c3source/issues/130) shipped an admission predicate (`DB4-T1` goes red when it does; the retirement steps are in ADR 0069). Whether an upstream walk carries `walkFiles`' error tolerances (ADR 0021).
 
 ## @genvidtech/mcp-utils
 
@@ -185,3 +203,13 @@ Adopted in [#217](https://github.com/GenvidTechnologies/construct3-chef/issues/2
 **Recorded measurement.** Real `fs.watch` on Windows (test MU12-R2): settled deltas for a self-write create at root level, in an existing subfolder and in a new subfolder are `[0, 0, 1]`, stable over 3 runs.
 
 **Next-bump check.** Whether [mcp-utils#35](https://github.com/GenvidTechnologies/mcp-utils/issues/35) (an ignore predicate) shipped; if so, evaluate it for [#299](https://github.com/GenvidTechnologies/construct3-chef/issues/299) (editor-local creates still bump).
+
+### 0.13.0
+
+**mcp-utils 0.13.0** was adopted together with c3source 4.0.0 in [#299](https://github.com/GenvidTechnologies/construct3-chef/issues/299). A dist diff against 0.12.0 changed only `observedState.*`; `optimisticWatcher.js` is byte-identical. The release adds the `ignore` predicate to `ObservedState` ([mcp-utils#35](https://github.com/GenvidTechnologies/mcp-utils/issues/35)). **Adopted:** `createSourceWatcher` passes chef's editor-local classifier as `ignore`, so an editor-local path never enters the ledger and its creation no longer bumps `txId` (#299; ADR [`0053`](../decisions/0053-the-source-watcher-owns-a-project-sized-editor-local-aware-ledger.md)). The ledger stays project-sized.
+
+**Revert-confirm.** Removing `ignore` turns `DB4-W1` red. Removing the check in the editor-local `filteringFactory` turns `DB4-W4` red; the check stays, because on a lossy ledger an ignored path's event still reports changed. Replacing the editor-local fingerprinter with the default content fingerprint turned no test red, so the fingerprinter was deleted. This supersedes the 0.11.0 and 0.12.0 entry's description of the ledger and its "not that decline" paragraph about the fingerprinter.
+
+**Answers to earlier next-bump checks.** The 0.12.0 entry's check on mcp-utils#35 is answered by this adoption. The 0.10.0 check holds again: `_txId` starts at 0 and increments only in `bump()`, so ADR 0037's no-wrapper decline stands.
+
+**Next-bump check.** Whether mcp-utils `walkFiles` gained a link policy ([#375](https://github.com/GenvidTechnologies/construct3-chef/issues/375)).

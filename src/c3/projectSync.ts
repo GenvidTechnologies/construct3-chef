@@ -12,11 +12,14 @@ import {
   C3_ROOT_FILE_FOLDERS,
   EXTENSION_FILE_TYPES,
   fileTypeForName,
+  fileTypeForSection,
+  type C3FileSection,
   type DriftEntry,
   type StrayFile,
   TIMELINE_TRANSITIONS_FOLDER,
 } from "@genvidtech/c3source";
 import { hasEditorLocalSegment } from "./editorLocal.js";
+import { fileAdmissionIssue, folderAdmitted } from "./fileAdmission.js";
 import { mintUniqueSid } from "./sidUtils.js";
 
 // ---------------------------------------------------------------------------
@@ -46,6 +49,11 @@ export interface FileSectionConfig {
   key: string;
   diskDir: string;
   infoKey: string;
+  /**
+   * @deprecated Section membership is decided by the editor's rescan rule (`fileAdmission.ts`), not by an
+   * extension list. A direct `syncFileFolder` caller may still pass one: it narrows which unlisted files are
+   * admitted. The `FILE_SECTIONS` entries no longer set it.
+   */
   extensions?: string[];
   /**
    * Root-level file names `readDiskDir` skips. Inside `syncFileFolder` this is subsumed by editor-local
@@ -111,19 +119,17 @@ export const FILE_SECTIONS: FileSectionConfig[] = [
     key: "script",
     diskDir: "scripts",
     infoKey: "script-info",
-    extensions: [".ts"],
     ignorePaths: ["tsconfig.json"],
     ignoreDirs: ["ts-defs"],
   },
-  { key: "sound", diskDir: "sounds", infoKey: "file-info", extensions: [".webm"] },
-  { key: "music", diskDir: "music", infoKey: "file-info", extensions: [".webm"] },
-  // The `videos` folder name, the `file-info` key and the `.webm` item type are not attested by an
-  // editor-saved project. The type comes from c3source's `fileTypeForName`, which gives every `.webm`
-  // `audio/webm; codecs=opus` (GenvidTechnologies/c3source#113).
-  { key: "video", diskDir: C3_ROOT_FILE_FOLDERS.video, infoKey: "file-info", extensions: [".webm", ".mp4"] },
-  { key: "font", diskDir: "fonts", infoKey: "file-info", extensions: [".ttf"] },
-  { key: "icon", diskDir: "icons", infoKey: "icon-info", extensions: [".png"] },
-  { key: "general", diskDir: "files", infoKey: "file-info" }, // no extension filter — mixed types
+  { key: "sound", diskDir: "sounds", infoKey: "file-info" },
+  { key: "music", diskDir: "music", infoKey: "file-info" },
+  // c3source 4.0.0 attests the video folder and the `video/webm` type from an r506.3 editor save
+  // (GenvidTechnologies/c3source#113). New items take their type from `fileTypeForSection`.
+  { key: "video", diskDir: C3_ROOT_FILE_FOLDERS.video, infoKey: "file-info" },
+  { key: "font", diskDir: "fonts", infoKey: "file-info" },
+  { key: "icon", diskDir: "icons", infoKey: "icon-info" },
+  { key: "general", diskDir: "files", infoKey: "file-info" },
 ];
 
 export const NAME_SECTIONS: NameSectionConfig[] = [
@@ -161,6 +167,21 @@ export const MIME_MAP: Record<string, string> = EXTENSION_FILE_TYPES;
  */
 export function inferMimeType(filename: string): string {
   return fileTypeForName(filename);
+}
+
+const KNOWN_FILE_SECTIONS: ReadonlySet<string> = new Set([
+  "script",
+  "sound",
+  "music",
+  "video",
+  "font",
+  "icon",
+  "general",
+]);
+
+/** The `type` for a new item in section `key`: c3source's per-section type for the seven known keys, else by extension. */
+function newItemType(key: string, filename: string): string {
+  return KNOWN_FILE_SECTIONS.has(key) ? fileTypeForSection(key as C3FileSection, filename) : inferMimeType(filename);
 }
 
 // ---------------------------------------------------------------------------
@@ -231,10 +252,11 @@ export interface DiskTree {
  * 3. THE IGNORE RULES ARE NOT ALL EDITOR-LOCAL CLASSIFICATION. `ignorePaths:
  *    ["tsconfig.json"]` and `ignoreDirs: ["ts-defs"]` (both on the `script` entry of
  *    `FILE_SECTIONS`) ARE covered
- *    by c3source's `EDITOR_LOCAL_EXCLUSIONS`, but the `extensions` filters
- *    (`.ts` / `.webm` / `.mp4` / `.ttf` / `.png`, on the `script`, `sound`, `music`, `video`, `font` and `icon` entries) encode
- *    manifest-section MEMBERSHIP semantics, about which upstream has — and
- *    should have — no opinion.
+ *    by c3source's `EDITOR_LOCAL_EXCLUSIONS`. An `extensions` filter, which a direct
+ *    caller may still pass, is a plain suffix filter on the listing. The
+ *    `FILE_SECTIONS` entries no longer set one: `planFileLevel` reads the disk with
+ *    no extension filter and decides which unlisted files take part with the
+ *    editor's rescan rule (`fileAdmission.ts`).
  *
  * Consequence: delegating ONLY the ignore predicate would have been a BEHAVIOUR
  * CHANGE, not a refactor, so `readDiskDir` keeps its own filters and its
@@ -332,9 +354,27 @@ function planFileLevel(
   parent: PlanNode | undefined,
   name: string | undefined,
 ): PlanNode {
-  const rawDisk = readDiskDir(diskPath, config.extensions, config.ignorePaths, config.ignoreDirs);
+  // Presence: every regular file. Which of them take part is decided below (listed, or admitted by the rescan rule).
+  const rawDisk = readDiskDir(diskPath, undefined, config.ignorePaths, config.ignoreDirs);
   const keep = (n: string): boolean => !hasEditorLocalSegment([...segs, n].join("/"));
-  const disk: DiskTree = { files: rawDisk.files.filter(keep), dirs: rawDisk.dirs.filter(keep) };
+  const atSectionRoot = segs.length === 0;
+  const listedFiles = new Set(folder?.items.map((i) => i.name) ?? []);
+  const listedDirs = new Set((folder?.subfolders ?? []).flatMap((s) => (s.name === undefined ? [] : [s.name])));
+  // A `.js` file's `.ts` twin counts when it is listed in this folder or present on disk beside it.
+  const twinPresent = (f: string): boolean => {
+    if (!f.toLowerCase().endsWith(".js")) return false;
+    const twin = `${f.slice(0, -3)}.ts`;
+    return listedFiles.has(twin) || rawDisk.files.includes(twin);
+  };
+  const admitted = (f: string): boolean =>
+    fileAdmissionIssue(config.key, f, { atSectionRoot, tsTwinListed: twinPresent(f) }) === undefined &&
+    (config.extensions?.some((ext) => f.endsWith(ext)) ?? true);
+  const disk: DiskTree = {
+    files: rawDisk.files.filter(keep).filter((f) => listedFiles.has(f) || admitted(f)),
+    dirs: rawDisk.dirs
+      .filter(keep)
+      .filter((d) => listedDirs.has(d) || folderAdmitted(config.key, d, { atSectionRoot })),
+  };
   const node: PlanNode = {
     segs,
     target: folder,
@@ -482,7 +522,7 @@ export function syncFileFolder(
         changes.push({ section: config.key, action: "+", detail: `${display(node.segs, file)} (new, sid=${sid})` });
         ops.adds.push({
           dest: node,
-          item: { name: file, type: inferMimeType(file), sid, [config.infoKey]: { purpose: "none" } },
+          item: { name: file, type: newItemType(config.key, file), sid, [config.infoKey]: { purpose: "none" } },
         });
       }
     }
@@ -801,11 +841,10 @@ export function runSync(
   // Sync name-based sections via detectManifestDrift + applyNameDrift
   const nameKeys = new Set(nameSections.map((c) => c.key));
   // chef syncs file sections with its own walk (ADR 0066) and discards upstream's file-section drift.
-  // Leaving rootFileFolders out of the view skips those walks: since c3source 3.1.0 they follow links
-  // (statSync), so a loop throws ELOOP and a dangling link throws ENOENT. The view is read-only:
-  // the write below still serializes `project` itself (identity rule, ADR 0024).
-  const { rootFileFolders: _fileSections, ...nameView } = project;
-  const drift = detectManifestDrift(rootDir, nameView);
+  // `skipFileSections` skips those walks, whose result would only be discarded; since c3source 4.0.0
+  // they no longer follow links (c3source#114), so the option is kept for cost alone. The write below
+  // serializes `project` itself (identity rule, ADR 0024).
+  const drift = detectManifestDrift(rootDir, project, { skipFileSections: true });
   for (const s of drift.sections) {
     if (!nameKeys.has(s.section)) continue; // exclude rootFileFolders.*, models3d, containers, images
     const folder: NameFolder = project[s.section];

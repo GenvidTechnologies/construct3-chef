@@ -3,7 +3,6 @@ import * as path from "node:path";
 import {
   ObservedState,
   OptimisticWatcher,
-  contentFingerprint,
   type ExpectedChanges,
   type WatcherFactory,
   type Logger,
@@ -19,8 +18,9 @@ export const LEDGER_HEADROOM = 4;
  * Count the ledger entries a baseline walk of `watchTargets` records, mirroring
  * mcp-utils' `ObservedState.prime()`: a file target counts 1; a directory
  * target counts every file and every subdirectory at any depth (the root itself
- * does not count, and editor-local paths are included since prime does not
- * filter them). A symlinked directory counts 1 and is not descended. A missing
+ * does not count). Editor-local paths are counted although the ledger's
+ * `ignore` predicate makes prime skip them: the over-count only enlarges the
+ * cap, which is harmless. A symlinked directory counts 1 and is not descended. A missing
  * target counts 0. Fails open: an unreadable directory is skipped, since the
  * count only sizes a cap.
  */
@@ -56,24 +56,6 @@ export function countWatchedEntries(watchTargets: string[]): number {
 /** Ledger capacity for a watched tree of `counted` entries: never below {@link LEDGER_FLOOR}. */
 export function ledgerCapacity(counted: number): number {
   return Math.max(LEDGER_FLOOR, LEDGER_HEADROOM * counted);
-}
-
-/**
- * Fingerprinter for the watcher's ledger that ignores editor-local files.
- *
- * Returns `"absent"` for a path where `isEditorLocalPathUnder(projectRoot, …)`
- * holds. `"absent"` is `contentFingerprint`'s ENOENT value, which the ledger
- * treats as "no live content": an editor-local file already in the ledger
- * therefore never reads as changed when edited or deleted, and never flips the
- * ledger lossy when evicted. A newly created one still reads as changed, because
- * the ledger judges a never-seen path before any fingerprint (#299). ADR 0018:
- * editor-local writes are not source changes.
- *
- * Any other path is hashed exactly as the default fingerprinter does, by
- * delegating to `contentFingerprint` unchanged.
- */
-export function editorLocalAwareFingerprint(projectRoot: string): (filePath: string) => string {
-  return (filePath) => (isEditorLocalPathUnder(projectRoot, filePath) ? "absent" : contentFingerprint(filePath));
 }
 
 /**
@@ -135,6 +117,17 @@ const fsWatchFactory: WatcherFactory = (target, onEvent) => {
 };
 
 /**
+ * Wrap `baseFactory` so events for editor-local paths under `root` never reach
+ * the watcher's handler. Other events are forwarded unchanged. See ADR 0018.
+ */
+export function editorLocalFilteringFactory(root: string, baseFactory: WatcherFactory): WatcherFactory {
+  return (target, onEvent) =>
+    baseFactory(target, (filename) => {
+      if (!isEditorLocalPathUnder(root, filename)) onEvent(filename);
+    });
+}
+
+/**
  * Build an OptimisticWatcher over the project's source dirs + project.c3proj.
  *
  * - External source-dir change     → txId bump (by the watcher) + onSourceChange.
@@ -165,20 +158,22 @@ export function createSourceWatcher(opts: SourceWatcherOptions): OptimisticWatch
   // Wraps the SELECTED factory (not just fsWatchFactory), so an injected test
   // stub is filtered too. See ADR 0018.
   const baseFactory = opts.watcherFactory ?? fsWatchFactory;
-  const filteringFactory: WatcherFactory = (target, onEvent) =>
-    baseFactory(target, (filename) => {
-      if (!isEditorLocalPathUnder(opts.projectRoot, filename)) onEvent(filename);
-    });
 
   return new OptimisticWatcher({
     watchDirs,
     expected: opts.expected,
-    watcherFactory: filteringFactory,
+    watcherFactory: editorLocalFilteringFactory(opts.projectRoot, baseFactory),
     logger: opts.logger,
     // One ledger per call, i.e. per project context; sized from the watched tree.
     observed: new ObservedState({
       maxEntries: ledgerCapacity(countWatchedEntries(watchDirs)),
-      fingerprint: editorLocalAwareFingerprint(opts.projectRoot),
+      // An ignored path gets no ledger entry, so creating an editor-local file
+      // is not a change. The ledger uses mcp-utils' default content
+      // fingerprint: the `ignore` predicate keeps editor-local paths out of
+      // the ledger, and editorLocalFilteringFactory keeps them out of the
+      // event stream. The key is the normalized POSIX absolute path;
+      // isEditorLocalPathUnder accepts that form against a native root.
+      ignore: (key) => isEditorLocalPathUnder(opts.projectRoot, key),
     }),
     onExternalChange: (filePath) => {
       // project.c3proj bumps txId but does NOT mark extracted/ dirty.

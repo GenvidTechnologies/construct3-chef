@@ -29,20 +29,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`sync-project` and `validate-project` sync the `video` file section**
-  (`videos/`, `.webm` and `.mp4`, `--section video`); every full report gains a
-  `[video]` line
+  (`videos/`, `--section video`); every full report gains a `[video]` line
   ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358)).
-  Known limitation: c3source types every `.webm` as `audio/webm; codecs=opus`,
-  and the folder name and `file-info` key are not attested by an editor-saved
-  project
+  The folder name, the `file-info` key and the `video/webm` type are attested
+  by an r506.3 editor save, recorded in c3source 4.0.0
   ([c3source#113](https://github.com/GenvidTechnologies/c3source/issues/113)).
 - **MCP `validate-project` accepts `section`**, the same values as the CLI's
   `--section`. It scopes the sync report and `clean` to that section; strays
   and image drift are still reported project-wide
   ([#349](https://github.com/GenvidTechnologies/construct3-chef/issues/349)).
+- **`validate-project` and `sync-project` print two advisory sections after
+  `[strays]`: `[duplicates]` and `[links]`**, on the CLI and the MCP server
+  ([#344](https://github.com/GenvidTechnologies/construct3-chef/issues/344)).
+  Each prints at least one line: `(no duplicates)` or `(no links)` when there
+  is nothing to report. `[duplicates]` lists names that the C3 editor's own
+  name lookups treat as one, read from c3source 4.0.0's `detectManifestDrift`
+  ([c3source#125](https://github.com/GenvidTechnologies/c3source/issues/125)):
+  layouts and event sheets compared ignoring letter case, object types and
+  families as one `objectClasses` scope (an object type and a family with the
+  same name), and images. Each line shows the scope, the folded key and every
+  manifest and disk occurrence, for example
+  `! layouts 'level1': manifest (none); disk layouts/Level1, layouts/sub/level1`.
+  File sections are not checked. `[links]` lists symbolic links and junctions
+  below a name-section root that c3source 4.0.0's walks skip and do not
+  follow, for example `! layouts/sub/loop (not followed)`
+  ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)).
+  Chef's finders no longer see such linked items, and this report is where
+  they show. Both sections are project-wide: `--section` does not narrow
+  them. Known limitation: a link under a file-section folder is skipped by
+  chef's own file walk and is not listed
+  ([#375](https://github.com/GenvidTechnologies/construct3-chef/issues/375)). Both sections are advisory: they change no CLI exit code,
+  `--fail-on-strays` result or MCP `structuredContent.clean`. On MCP the lines
+  are in the report text and in `structuredContent.report`. `validate-project`
+  prints them only when `project.c3proj` could be read. Scaffold commands do
+  not print them. A list of more than 20 entries ends with a count line, as
+  `[strays]` does.
 
 ### Changed
 
+- **`sync-project` adds unlisted disk files by the C3 editor's own rescan rule,
+  not one extension per section.** `sounds/` and `music/` add any audio file
+  (for example `.ogg`, `.wav`, `.mp3`, `.m4a`, `.flac`, `.webm`). `videos/`
+  adds any video file (`.webm`, `.ogv`, `.mp4`, `.mov`). `fonts/` adds `.woff`,
+  `.woff2`, `.ttf`, `.otf` and `.eot`. `icons/` adds any image file.
+  `scripts/` adds `.js` and `.ts`: the editor adds only `.js` there, and chef
+  also adds `.ts` so new TypeScript scripts keep being registered. A `.js`
+  whose `.ts` twin is listed or present beside it is not added. `files/` no
+  longer adds a name the editor's name check refuses (for example a dotfile
+  such as `.gitkeep`, or a name with a forbidden character), one of the 17
+  names the editor reserves directly under `files/` (for example `index.html`,
+  `data.json`, `sw.js`; the same names in a subfolder are still added), or a
+  `.js` with a `.ts` twin. A file that sync does not add stays outside the
+  project, as before. A new file's `type` now comes from c3source's
+  section-aware `fileTypeForSection`, so a new `.webm` in `videos/` is typed
+  `video/webm`. `FileSectionConfig.extensions` is deprecated: sync's own
+  sections no longer set it, and a direct `syncFileFolder` caller may still
+  pass one to narrow which unlisted files are added. Known limitation: the
+  rescan rule is a local copy until c3source exports it
+  ([c3source#130](https://github.com/GenvidTechnologies/c3source/issues/130)).
+  It was read from the r495 editor bundle and is observed in a real editor
+  save only for `videos/`.
 - **Breaking: `sync-project` withholds removals unless `--prune` is passed.**
   It used to drop a manifest entry as soon as its file was missing from disk,
   so a file that was only temporarily absent lost its entry and SID. It now
@@ -67,9 +113,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `false`); and optional `withheld`, `movedTo` and `movedFrom` fields on
   `Change`. A direct `syncFileFolder` caller still gets removals applied by
   default, but now also gets SID-keeping moves and one line per entry of a
-  removed subfolder. Known limitation: a present non-`.ts` script is withheld
-  rather than removed by default, though still removed with prune
-  ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354))
+  removed subfolder
   ([#346](https://github.com/GenvidTechnologies/construct3-chef/issues/346)).
 - **`@genvidtech/c3source` is updated to `^3.1.0`**
   ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358)).
@@ -77,11 +121,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   links, so a link loop or a dangling link under `files/`, `scripts/` and the
   other file folders would make it throw `ELOOP` or `ENOENT`. Sync keeps its own
   file-section walk and does not run c3source's, so links there are still
-  skipped, as before (ADR 0066). Known limitation: a link loop under a
-  name-section folder still fails the run with `ELOOP`, as it did with 3.0.0
-  ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)).
+  skipped, as before (ADR 0066).
+- **`@genvidtech/c3source` is updated to `^4.0.0` and `@genvidtech/mcp-utils`
+  to `^0.13.0`**
+  ([#374](https://github.com/GenvidTechnologies/construct3-chef/issues/374),
+  [#299](https://github.com/GenvidTechnologies/construct3-chef/issues/299)).
+  Two behaviour changes come from c3source 4.0.0:
+  - `sync-project` writes a specific file `type` for the extensions that
+    c3source's `EXTENSION_FILE_TYPES` now maps, such as `.ogg`, `.wav`,
+    `.woff`, `.zip`, `.ogv`, `.mov` and `.glb`. It wrote
+    `application/octet-stream` for them before. Existing mappings are
+    unchanged. `MIME_MAP` (a deprecated alias of the same object) and
+    `inferMimeType` return the new values
+    ([c3source#115](https://github.com/GenvidTechnologies/c3source/issues/115)).
+  - The c3source disk walks no longer follow symbolic links or junctions below
+    a walk root. A linked layout, event sheet or objectType below a section
+    root is no longer seen by the c3source finders that the generators, recipe
+    apply, scaffold and read tools use, nor by sync's name-section drift. A
+    symlinked image file is no longer counted present by the `[images]` report.
+    A walk root that is itself a link is still followed
+    ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)).
+
+  Known divergence: the `walkFiles` function of `@genvidtech/mcp-utils` still
+  follows links. `findJsonFiles`, `scaffold-sprite`, the MCP `search` tool,
+  generator outputs and CLI paths use it. The c3source finders skip links, so
+  one linked file can be seen by some operations and not by others
+  ([#375](https://github.com/GenvidTechnologies/construct3-chef/issues/375)).
 
 ### Fixed
+
+- **`sync-project` and `validate-project` no longer report a listed file as
+  missing because of its extension.** A listed `scripts/helper.js` is present:
+  the default sync leaves it alone, `--prune` keeps it, and `validate-project`
+  passes. The C3 editor loads every listed file whatever its extension
+  ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354)).
+- **Creating an editor-local file in a watched folder no longer bumps `txId`
+  or marks `extracted/` stale.** On the MCP server, a new `*.uistate.json`,
+  a file under `uistate/`, a `tsconfig.json` or a file under `ts-defs/` in a
+  watched source subfolder raised the subfolder's directory event. The
+  watcher then re-checked the subtree and reported the never-seen
+  editor-local path as changed. The watcher now uses the `ignore` predicate
+  of `@genvidtech/mcp-utils` 0.13.0's `ObservedState`
+  ([mcp-utils#35](https://github.com/GenvidTechnologies/mcp-utils/issues/35)),
+  fed with chef's editor-local classifier, so editor-local paths never enter
+  its ledger. Deleting or rewriting an existing editor-local file was
+  already ignored. A source file created in the same subfolder still bumps
+  `txId`
+  ([#299](https://github.com/GenvidTechnologies/construct3-chef/issues/299)).
+
+- **A link loop or dangling link under a name-section folder no longer fails
+  `validate-project` or `sync-project`.** A junction loop under
+  `eventSheets/sub`, for example, made the run fail with `ELOOP` or `ENOENT`.
+  The c3source 4.0.0 walks skip such links
+  ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114),
+  [#374](https://github.com/GenvidTechnologies/construct3-chef/issues/374)).
 
 - **MCP findings tools report pass or fail in `structuredContent`.**
   `validate-project`, `validate-addons`, `scan-addon-usage`,
@@ -119,7 +212,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     letter case ignored (`a layout with this JSON name already exists`).
   - `scaffold-layout` refuses a layout name that breaks C3's layout-name rule:
     one of `\ / : * ? " < > | ~`, a leading or trailing `.` or space, 200 or
-    more characters, or a Windows reserved device name.
+    more characters, or a Windows reserved device name. A name with a
+    character C3 strips reads `must be a name C3 keeps as written: C3 would
+    load it as 'ab'` (input `a~b`). The name check uses C3's own device-name
+    set, which holds exact names such as `NUL`. Names such as `NUL.txt`, `COM¹`
+    and `CONIN$` are refused by the `--out` path-segment check, with that
+    check's wording.
   - `scaffold-sprite` and recipe `objectTypes` CREATE (dry-run, `--preview`,
     `validate-recipe` and apply) refuse a name that matches an existing family
     in any `families/` folder (`a family with this name already exists`).
@@ -129,11 +227,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (`must be a name C3 keeps as written: C3 would load it as 'MySprite'`).
     Names accepted before and now refused include `a..b`, `Foo..Bar` and
     `My.Widget v2`. The rules apply to the new name only, never to `--source`.
+    A name C3 would rewrite into a reserved word names the stored form, for
+    example `must not be 's-elf': C3 would load it as 'self', which C3 reserves
+    (self, true, false and system, letter case ignored)`.
+  - New objectType names, on both surfaces, also refuse a name that C3 reserves
+    as a System expression name, such as `Time`, `random` or `LayoutName`,
+    letter case ignored (`must not be 'Time': C3 reserves it as a System
+    expression name (letter case ignored)`). `Timer` and `Times` are accepted.
+    A recipe that re-declares an existing objectType with such a name is
+    refused too, because `validate-recipe` checks every `objectTypes` entry.
+    The `scaffold-sprite --name` help text says so
+    ([#365](https://github.com/GenvidTechnologies/construct3-chef/issues/365)).
 
-  Known limitations: C3 also reserves System expression names, which are not
-  refused yet
-  ([#365](https://github.com/GenvidTechnologies/construct3-chef/issues/365));
-  event-sheet names created by recipe `files` entries are not checked
+  Known limitations: event-sheet names created by recipe `files` entries are not
+  checked
   ([#366](https://github.com/GenvidTechnologies/construct3-chef/issues/366));
   `--out` folder segments are not checked against C3's folder rule
   ([#367](https://github.com/GenvidTechnologies/construct3-chef/issues/367));
@@ -159,9 +266,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the folder. A manifest item whose only disk copy is under an
   editor-local folder is now a withheld removal, not a withheld move
   ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358),
-  ADR 0066). Known limitation: a present non-`.ts` script is still reported as
-  missing
-  ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354)).
+  ADR 0066).
 
 - **Windows reserved device names are refused in every write target.** A path
   segment that is a reserved device name (`NUL`, `con.txt`, `COM1`, `CONIN$`) is
