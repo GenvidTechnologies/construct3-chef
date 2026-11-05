@@ -53,7 +53,7 @@ import { validateAddons, formatAddonValidation, countFatal } from "../c3/addonVa
 import { listAddons, formatAddonInventory } from "../c3/addonInventory.js";
 import { diffAddonAces, formatAceDiff, resolveAceSource } from "../c3/addonAceDiff.js";
 import { scanAddonUsage, formatAddonUsage, blastRadiusAffected } from "../c3/addonAceUsage.js";
-import { syncAddonMetadata, formatAddonMetadataSync } from "../c3/addonMetadataSync.js";
+import { syncAddonMetadata, formatAddonMetadataSync, addonSyncLeavesWork } from "../c3/addonMetadataSync.js";
 import { lookup, formatLookupResult } from "../c3/aceLookup.js";
 import { formatOpsList } from "../c3/opTemplate.js";
 import {
@@ -1486,12 +1486,18 @@ regP(
     description:
       "Dry-run report of version/author drift between bundled .c3addon packages and project.c3proj's " +
       "usedAddons manifest entries — the read-only preview for sync-addon-metadata. Never writes. With " +
-      "`addon`, scope to a single addon by discovered id.",
+      "`addon`, scope to a single addon by discovered id. Returns structured content { clean, report }: " +
+      "clean is false when a sync would change a field or a row is blocked, which is when the CLI with " +
+      "--dry-run exits 1; report is the full text report with the current txId footer, the same text as the " +
+      "content block. An unknown addon or an unreadable manifest returns isError with no structured content.",
     annotations: READ_ONLY,
     inputSchema: {
       direction: ADDON_METADATA_SYNC_DIRECTION_SCHEMA,
       addon: z.string().optional().describe("Scope to a single addon by discovered id. Omit to preview all."),
     },
+    outputSchema: cleanReportSchema(
+      "false when outstanding human work remains: a would-change row (nothing is written by a preview) or a blocked row; the CLI with --dry-run exits 1 on the same input.",
+    ),
   },
   async (ctx, { direction, addon }) =>
     ctx.rwlock.read(
@@ -1501,7 +1507,7 @@ regP(
           if ("error" in result) {
             return mcpError(result.error, { prefix: "preview-addon-metadata-sync:", extraLines: [txIdLine(ctx)] });
           }
-          return mcpContent(formatAddonMetadataSync(result), txIdLine(ctx));
+          return cleanReportContent(formatAddonMetadataSync(result), txIdLine(ctx), !addonSyncLeavesWork(result));
         },
         { prefix: "preview-addon-metadata-sync:", extraLines: () => [txIdLine(ctx)] },
       ),
@@ -1517,13 +1523,20 @@ regP(
       "'manifest-from-package' writes anything (chef has no .c3addon writer, so 'package-from-manifest' is " +
       "a read-only report identical to preview-addon-metadata-sync). With `addon`, scope to a single addon. " +
       "Pass txId from preview-addon-metadata-sync (or a prior call) for optimistic concurrency. Returns the " +
-      "sync report and the current txId — bumped only when the manifest was actually written.",
+      "sync report and the current txId — bumped only when the manifest was actually written. Returns " +
+      "structured content { clean, report }: clean is false when outstanding human work remains after the " +
+      "call (a blocked row, or under 'package-from-manifest' a stale package), which is when the CLI exits " +
+      "1; report is the full text report with the txId footer, the same text as the content block. A stale " +
+      "txId, an unknown addon or an unreadable manifest returns isError with no structured content.",
     annotations: MUTATE,
     inputSchema: {
       direction: ADDON_METADATA_SYNC_DIRECTION_SCHEMA,
       addon: z.string().optional().describe("Scope to a single addon by discovered id. Omit to sync all."),
       txId: z.string().optional().describe("Expected txId — if stale, sync is rejected"),
     },
+    outputSchema: cleanReportSchema(
+      "false when outstanding human work remains after the call: a blocked row, or under package-from-manifest (which never writes) a stale package; the CLI exits 1 on the same input.",
+    ),
   },
   async (ctx, { direction, addon, txId: expectedTxId }) =>
     ctx.rwlock.write(
@@ -1556,7 +1569,8 @@ regP(
           // only) and the ctx.watcher itself excludes it from onSourceChange.
           if (result.wrote) ctx.watcher.bump();
 
-          return mcpContent(formatAddonMetadataSync(result), txIdLine(ctx));
+          // Built after the bump, so the footer and report carry the post-write txId.
+          return cleanReportContent(formatAddonMetadataSync(result), txIdLine(ctx), !addonSyncLeavesWork(result));
         },
         { prefix: "sync-addon-metadata:", extraLines: () => [txIdLine(ctx)] },
       ),

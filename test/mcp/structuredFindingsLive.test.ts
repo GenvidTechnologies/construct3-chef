@@ -6,9 +6,12 @@ import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { __getServer, __setTestWatcher, __setProjectRoot, __resetTestState } from "../../src/mcp/server.js";
+import { ALL_SECTION_KEYS } from "../../src/c3/projectSync.js";
+import { seedManifestDrift } from "../helpers/seedManifestDrift.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = path.join(__dirname, "..", "fixtures", "construct3-chef-sample");
+const ADDON_VALIDATE_FIXTURE = path.join(__dirname, "..", "fixtures", "addon-validate");
 
 function makeFakeWatcher(txId = 0): any {
   return {
@@ -55,6 +58,30 @@ describe("MCP structured findings through the live SDK (#349)", function () {
     return result.content[0].text;
   }
 
+  it("I349-L1: tools/list carries the outputSchema on exactly the five findings tools", async () => {
+    const { tools } = await client.listTools();
+    const withSchema = tools.filter((t: any) => t.outputSchema !== undefined);
+    const vp: any = tools.find((t) => t.name === "validate-project");
+    expect({
+      names: withSchema.map((t) => t.name).sort(),
+      shapes: withSchema.map((t: any) => ({
+        type: t.outputSchema.type,
+        required: [...(t.outputSchema.required ?? [])].sort(),
+      })),
+      sectionEnum: vp?.inputSchema?.properties?.section?.enum,
+    }).to.deep.equal({
+      names: [
+        "preview-addon-metadata-sync",
+        "scan-addon-usage",
+        "sync-addon-metadata",
+        "validate-addons",
+        "validate-project",
+      ],
+      shapes: Array.from({ length: 5 }, () => ({ type: "object", required: ["clean", "report"] })),
+      sectionEnum: ALL_SECTION_KEYS,
+    });
+  });
+
   it("I349-L2a: live validate-project survives SDK validation", async () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), "c3chef-i349-live-"));
     fs.cpSync(FIXTURE_DIR, tmp, { recursive: true });
@@ -91,6 +118,40 @@ describe("MCP structured findings through the live SDK (#349)", function () {
     const result: any = await client.callTool({
       name: "scan-addon-usage",
       arguments: { addon: "MyCompany_MyEffect", from: "MyCompany_MyEffect" },
+    });
+    expect({
+      isError: result.isError,
+      blocks: result.content.length,
+      clean: result.structuredContent?.clean,
+      reportIsText: result.structuredContent?.report === textOf(result),
+      noSubstitution: !textOf(result).includes("Output validation error"),
+    }).to.deep.equal({ isError: undefined, blocks: 1, clean: false, reportIsText: true, noSubstitution: true });
+  });
+
+  it("I349-L2d: live preview-addon-metadata-sync survives SDK validation", async () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "c3chef-i349-live-"));
+    seedManifestDrift(FIXTURE_DIR, tmp, [{ id: "MyCompany_MyBehavior", version: "0.9.0.0" }]);
+    __setProjectRoot(tmp);
+    const result: any = await client.callTool({
+      name: "preview-addon-metadata-sync",
+      arguments: { direction: "manifest-from-package" },
+    });
+    expect({
+      isError: result.isError,
+      blocks: result.content.length,
+      clean: result.structuredContent?.clean,
+      reportIsText: result.structuredContent?.report === textOf(result),
+      noSubstitution: !textOf(result).includes("Output validation error"),
+    }).to.deep.equal({ isError: undefined, blocks: 1, clean: false, reportIsText: true, noSubstitution: true });
+  });
+
+  it("I349-L2e: live sync-addon-metadata survives SDK validation", async () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "c3chef-i349-live-"));
+    fs.cpSync(ADDON_VALIDATE_FIXTURE, tmp, { recursive: true });
+    __setProjectRoot(tmp);
+    const result: any = await client.callTool({
+      name: "sync-addon-metadata",
+      arguments: { direction: "manifest-from-package" },
     });
     expect({
       isError: result.isError,

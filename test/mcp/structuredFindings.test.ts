@@ -4,9 +4,16 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { cleanReportContent } from "../../src/mcp/structuredReport.js";
-import { __getHandler, __setTestWatcher, __setProjectRoot, __resetTestState } from "../../src/mcp/server.js";
+import {
+  __getHandler,
+  __getToolConfig,
+  __setTestWatcher,
+  __setProjectRoot,
+  __resetTestState,
+} from "../../src/mcp/server.js";
 import { runCli } from "../helpers/runCli.js";
 import { seedAbsentFile } from "../helpers/seedAbsentFile.js";
+import { seedManifestDrift } from "../helpers/seedManifestDrift.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = path.join(__dirname, "..", "fixtures", "construct3-chef-sample");
@@ -347,6 +354,157 @@ describe("MCP scan-addon-usage structured content (#349)", function () {
       none: [0, true],
       plain: [0, true],
       missing: [1, "isError"],
+    });
+  });
+});
+
+describe("MCP addon metadata sync structured content (#349)", function () {
+  this.timeout(120000);
+  const cleanup: string[] = [];
+  let watcher: any;
+
+  afterEach(() => {
+    for (const dir of cleanup.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+    __resetTestState();
+  });
+
+  function tempDir(): string {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "c3chef-i349-sync-"));
+    cleanup.push(root);
+    return root;
+  }
+
+  /** A temp copy of the sample's manifest and addons/, with MyCompany_MyBehavior's version drifted when asked. */
+  function seededProject(drift: boolean): string {
+    const root = tempDir();
+    seedManifestDrift(FIXTURE_DIR, root, drift ? [{ id: "MyCompany_MyBehavior", version: "0.9.0.0" }] : []);
+    return root;
+  }
+
+  /** A temp copy of test/fixtures/addon-validate (blocked rows CorruptZip and LfsPointer, stale package Complete). */
+  function addonValidateProject(): string {
+    const root = tempDir();
+    fs.cpSync(ADDON_VALIDATE_FIXTURE, root, { recursive: true });
+    return root;
+  }
+
+  async function call(tool: string, root: string, args: Record<string, unknown>): Promise<any> {
+    __setProjectRoot(root);
+    watcher = makeFakeWatcher(5);
+    __setTestWatcher(watcher);
+    return __getHandler(tool)!(args, makeExtra());
+  }
+
+  const preview = (root: string, args: Record<string, unknown>) => call("preview-addon-metadata-sync", root, args);
+  const sync = (root: string, args: Record<string, unknown>) => call("sync-addon-metadata", root, args);
+  const MFP = { direction: "manifest-from-package" };
+  const PFM = { direction: "package-from-manifest" };
+
+  it("I349-MS1: preview with drift or a blocked row gives clean false", async () => {
+    const drifted = await preview(seededProject(true), MFP);
+    const blocked = await preview(addonValidateProject(), MFP);
+    expect({
+      drifted: { isError: drifted.isError, clean: drifted.structuredContent?.clean },
+      blocked: { isError: blocked.isError, clean: blocked.structuredContent?.clean },
+    }).to.deep.equal({
+      drifted: { isError: undefined, clean: false },
+      blocked: { isError: undefined, clean: false },
+    });
+  });
+
+  it("I349-MS2: preview of an in-sync project, or of a no-manifest-entry row only, is clean", async () => {
+    const pristine = await preview(seededProject(false), MFP);
+    const noEntry = await preview(addonValidateProject(), { ...PFM, addon: "Misnamed.c3addon" });
+    expect({
+      pristine: pristine.structuredContent?.clean,
+      noEntry: {
+        clean: noEntry.structuredContent?.clean,
+        row: noEntry.content[0].text.includes("[no-manifest-entry] NotMisnamed"),
+      },
+    }).to.deep.equal({ pristine: true, noEntry: { clean: true, row: true } });
+  });
+
+  it("I349-MS3: sync-addon-metadata reports clean after the call", async () => {
+    const written = await sync(seededProject(true), MFP);
+    const bumped = watcher.txId - 5;
+    const blocked = await sync(addonValidateProject(), MFP);
+    const stale = await sync(addonValidateProject(), PFM);
+    expect({
+      written: { clean: written.structuredContent?.clean, bumped },
+      blocked: blocked.structuredContent?.clean,
+      stale: stale.structuredContent?.clean,
+    }).to.deep.equal({ written: { clean: true, bumped: 1 }, blocked: false, stale: false });
+  });
+
+  it("I349-MS4: sync CLI exit code and MCP clean agree", async () => {
+    const cli = (root: string, extra: string[]) =>
+      runCli(["sync-addon-metadata", "--project-dir", root, ...extra]).exitCode;
+    const mfp = ["--direction", "manifest-from-package"];
+    const pfm = ["--direction", "package-from-manifest"];
+    const cleanOf = (r: any) => r.structuredContent?.clean;
+    expect({
+      seededApply: [cli(seededProject(true), mfp), cleanOf(await sync(seededProject(true), MFP))],
+      blockedApply: [cli(addonValidateProject(), mfp), cleanOf(await sync(addonValidateProject(), MFP))],
+      seededDryRun: [cli(seededProject(true), [...mfp, "--dry-run"]), cleanOf(await preview(seededProject(true), MFP))],
+      pristineDryRun: [
+        cli(seededProject(false), [...mfp, "--dry-run"]),
+        cleanOf(await preview(seededProject(false), MFP)),
+      ],
+      stale: [
+        cli(addonValidateProject(), pfm),
+        cleanOf(await sync(addonValidateProject(), PFM)),
+        cleanOf(await preview(addonValidateProject(), PFM)),
+      ],
+    }).to.deep.equal({
+      seededApply: [0, true],
+      blockedApply: [1, false],
+      seededDryRun: [1, false],
+      pristineDryRun: [0, true],
+      stale: [1, false, false],
+    });
+  });
+
+  it("I349-MS5: sync error results carry no structured content", async () => {
+    const staleTx = await sync(seededProject(true), { ...MFP, txId: "default:4" });
+    const syncMissing = await sync(seededProject(false), { ...MFP, addon: "NoSuchAddon" });
+    const previewMissing = await preview(seededProject(false), { ...MFP, addon: "NoSuchAddon" });
+    const shape = (r: any) => ({ isError: r.isError, structured: r.structuredContent });
+    expect({
+      staleTx: shape(staleTx),
+      syncMissing: shape(syncMissing),
+      previewMissing: shape(previewMissing),
+    }).to.deep.equal({
+      staleTx: { isError: true, structured: undefined },
+      syncMissing: { isError: true, structured: undefined },
+      previewMissing: { isError: true, structured: undefined },
+    });
+  });
+});
+
+describe("MCP findings tool descriptions (#349)", () => {
+  it("I349-VP7: each findings tool's description states the structured result", () => {
+    const desc = (name: string) => String(__getToolConfig(name)?.description ?? "");
+    const vp = desc("validate-project");
+    expect({
+      "validate-project": {
+        clean: vp.includes("clean"),
+        section: vp.includes("section"),
+        isError: vp.includes("isError"),
+        strays: /stray/i.test(vp),
+      },
+      "validate-addons": { clean: desc("validate-addons").includes("clean") },
+      "scan-addon-usage": {
+        clean: desc("scan-addon-usage").includes("clean"),
+        from: desc("scan-addon-usage").includes("from"),
+      },
+      "preview-addon-metadata-sync": { clean: desc("preview-addon-metadata-sync").includes("clean") },
+      "sync-addon-metadata": { clean: desc("sync-addon-metadata").includes("clean") },
+    }).to.deep.equal({
+      "validate-project": { clean: true, section: true, isError: true, strays: true },
+      "validate-addons": { clean: true },
+      "scan-addon-usage": { clean: true, from: true },
+      "preview-addon-metadata-sync": { clean: true },
+      "sync-addon-metadata": { clean: true },
     });
   });
 });
