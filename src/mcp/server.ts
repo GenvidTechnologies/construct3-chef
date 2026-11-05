@@ -26,7 +26,8 @@ import type { Logger } from "@genvidtech/mcp-utils";
 import { applyParsed } from "../c3/recipeApplier.js";
 import { validateRecipe, type Recipe } from "../c3/recipeInterpreter.js";
 import { findJsonFiles, SID_SOURCE_DIRS } from "../c3/generators.js";
-import { runSync, reportImageDrift, reportStrayFiles } from "../c3/projectSync.js";
+import { runSync, reportImageDrift, reportStrayFiles, ALL_SECTION_KEYS } from "../c3/projectSync.js";
+import { cleanReportSchema, cleanReportContent } from "./structuredReport.js";
 import { newWriteLedger, failureEffects, type WriteLedger } from "./writeLedger.js";
 import { suppressSelfWrites } from "./selfWrites.js";
 import { isEditorLocalPathUnder } from "../c3/editorLocal.js";
@@ -1178,11 +1179,21 @@ regP(
   {
     title: "Validate project.c3proj",
     description:
-      "Dry-run sync of project.c3proj against disk. Reports any drift (missing or extra file entries) without modifying the file. Also reports stray files — files under a section root that are neither .json section items nor editor-local (e.g. layouts/notes.txt) — as a detection-only note that never affects the result. Returns output and current txId.",
+      "Dry-run sync of project.c3proj against disk. Reports any drift (missing or extra file entries, including removals sync-project would withhold) without modifying the file. Also reports image drift and stray files — files under a section root that are neither .json section items nor editor-local (e.g. layouts/notes.txt) — as detection-only notes that never affect `clean`. Pass `section` to check one section only (strays and image drift stay project-wide). Returns structured content { clean, report }: clean is false when the manifest has drift (the CLI exits 1 on the same input); report is the full text report with the current txId footer, the same text as the content block. A manifest that cannot be read or parsed returns isError with no structured content.",
     annotations: READ_ONLY,
-    inputSchema: {},
+    inputSchema: {
+      section: z
+        .enum(ALL_SECTION_KEYS as [string, ...string[]])
+        .optional()
+        .describe(
+          "Only validate one section (CLI --section). Strays and image drift are always reported project-wide.",
+        ),
+    },
+    outputSchema: cleanReportSchema(
+      "false when project.c3proj has drift against disk in the checked sections (all, or section), withheld removals included; the CLI exits 1 on the same input. Strays and image drift never affect it.",
+    ),
   },
-  async (ctx) =>
+  async (ctx, { section }) =>
     ctx.rwlock.read(
       withMcpErrors(
         async () => {
@@ -1193,8 +1204,9 @@ regP(
           // help most. Caught at the CALL SITE — runSync's own fail-fast contract, and
           // the three rows in syncC3Proj.test.ts that pin it, stay untouched.
           let failure: unknown;
+          let clean = false;
           try {
-            runSync(ctx.root, true, log);
+            clean = runSync(ctx.root, true, log, section).clean;
           } catch (err) {
             failure = err;
           }
@@ -1205,7 +1217,7 @@ regP(
             // along rather than converting a real failure into a success response.
             return mcpError(failure, { prefix: "Error:", extraLines: [text(), txIdLine(ctx)] });
           }
-          return mcpContent(text(), txIdLine(ctx));
+          return cleanReportContent(text(), txIdLine(ctx), clean);
         },
         { prefix: "Error:", extraLines: () => [txIdLine(ctx)] },
       ),
