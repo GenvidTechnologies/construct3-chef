@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, renameSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ExpectedChanges, contentFingerprint, type WatcherFactory } from "@genvidtech/mcp-utils";
+import { ExpectedChanges, ObservedState, contentFingerprint, type WatcherFactory } from "@genvidtech/mcp-utils";
+import { isEditorLocalPathUnder } from "../../src/c3/editorLocal.js";
 import {
   createSourceWatcher,
   countWatchedEntries,
@@ -318,10 +319,19 @@ describe("createSourceWatcher", () => {
     assert.equal(w.txId, 1, "control: editing the source file");
   });
 
-  it("MU12-D11: creating an editor-local file in a subfolder is still a change (upstream residual)", () => {
+  it("DB4-W1: creating an editor-local file in a subfolder is not a change", () => {
     const sub = seedSub();
     const w = build();
     writeFileSync(path.join(sub, "C.uistate.json"), '{"u":1}');
+    emit("eventSheets", "sub");
+    assert.equal(w.txId, 0);
+    assert.deepEqual(fired, [], "the change callback (extractedDirty) must not fire");
+  });
+
+  it("DB4-W2: creating a source file in the same subfolder is a change", () => {
+    const sub = seedSub();
+    const w = build();
+    writeFileSync(path.join(sub, "D.json"), '{"d":1}');
     emit("eventSheets", "sub");
     assert.equal(w.txId, 1);
   });
@@ -367,6 +377,16 @@ describe("editorLocalFilteringFactory", () => {
     const kept = path.resolve(root, "eventSheets/a.json");
     baseOnEvent(kept);
     assert.deepEqual(forwarded, [kept]);
+  });
+});
+
+describe("editor-local classification of ledger keys", () => {
+  it("DB4-W7: a POSIX-form ledger key classifies against a native-separator root", () => {
+    const nativeRoot = path.join(os.tmpdir(), "c3chef-key-root");
+    const keyFor = (rel: string): string =>
+      ObservedState.normalize(path.resolve(nativeRoot, rel).split(path.sep).join("/"));
+    assert.equal(isEditorLocalPathUnder(nativeRoot, keyFor("eventSheets/sub/C.uistate.json")), true);
+    assert.equal(isEditorLocalPathUnder(nativeRoot, keyFor("eventSheets/sub/C.json")), false);
   });
 });
 

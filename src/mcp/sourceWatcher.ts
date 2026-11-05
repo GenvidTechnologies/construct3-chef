@@ -19,8 +19,9 @@ export const LEDGER_HEADROOM = 4;
  * Count the ledger entries a baseline walk of `watchTargets` records, mirroring
  * mcp-utils' `ObservedState.prime()`: a file target counts 1; a directory
  * target counts every file and every subdirectory at any depth (the root itself
- * does not count, and editor-local paths are included since prime does not
- * filter them). A symlinked directory counts 1 and is not descended. A missing
+ * does not count). Editor-local paths are counted although the ledger's
+ * `ignore` predicate makes prime skip them: the over-count only enlarges the
+ * cap, which is harmless. A symlinked directory counts 1 and is not descended. A missing
  * target counts 0. Fails open: an unreadable directory is skipped, since the
  * count only sizes a cap.
  */
@@ -186,6 +187,10 @@ export function createSourceWatcher(opts: SourceWatcherOptions): OptimisticWatch
     observed: new ObservedState({
       maxEntries: ledgerCapacity(countWatchedEntries(watchDirs)),
       fingerprint: editorLocalAwareFingerprint(opts.projectRoot),
+      // An ignored path gets no ledger entry, so creating an editor-local file
+      // is not a change. The key is the normalized POSIX absolute path;
+      // isEditorLocalPathUnder accepts that form against a native root.
+      ignore: (key) => isEditorLocalPathUnder(opts.projectRoot, key),
     }),
     onExternalChange: (filePath) => {
       // project.c3proj bumps txId but does NOT mark extracted/ dirty.

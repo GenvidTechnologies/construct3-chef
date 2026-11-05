@@ -106,6 +106,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Creating an editor-local file in a watched folder no longer bumps `txId`
+  or marks `extracted/` stale.** On the MCP server, a new `*.uistate.json`,
+  a file under `uistate/`, a `tsconfig.json` or a file under `ts-defs/` in a
+  watched source subfolder raised the subfolder's directory event. The
+  watcher then re-checked the subtree and reported the never-seen
+  editor-local path as changed. The watcher now uses the `ignore` predicate
+  of `@genvidtech/mcp-utils` 0.13.0's `ObservedState`
+  ([mcp-utils#35](https://github.com/GenvidTechnologies/mcp-utils/issues/35)),
+  fed with chef's editor-local classifier, so editor-local paths never enter
+  its ledger. Deleting or rewriting an existing editor-local file was
+  already ignored. A source file created in the same subfolder still bumps
+  `txId`
+  ([#299](https://github.com/GenvidTechnologies/construct3-chef/issues/299)).
+
 - **A link loop or dangling link under a name-section folder no longer fails
   `validate-project` or `sync-project`.** A junction loop under
   `eventSheets/sub`, for example, made the run fail with `ELOOP` or `ENOENT`.
