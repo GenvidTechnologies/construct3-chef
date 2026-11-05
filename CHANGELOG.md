@@ -74,7 +74,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.woff2`, `.ttf`, `.otf` and `.eot`. `icons/` adds any image file.
   `scripts/` adds `.js` and `.ts`: the editor adds only `.js` there, and chef
   also adds `.ts` so new TypeScript scripts keep being registered. A `.js`
-  whose `.ts` twin is listed or present beside it is not added. `files/` no
+  whose `.ts` twin counts is not added. In `scripts/` a twin counts when it is
+  listed and present, or when the same sync adds it. In `files/` only a listed
+  and present twin counts, so an unlisted `x.ts` and `x.js` pair adds both.
+  Letter case is ignored after Unicode NFC, and a listed `.ts` that is missing
+  on disk does not count. `validate-project` follows the same rule, so its
+  `clean` can turn true when a listed `Case.ts` sits beside an unlisted
+  `case.js`. `files/` no
   longer adds a name the editor's name check refuses (for example a dotfile
   such as `.gitkeep`, or a name with a forbidden character), one of the 17
   names the editor reserves directly under `files/` (for example `index.html`,
@@ -85,10 +91,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `video/webm`. `FileSectionConfig.extensions` is deprecated: sync's own
   sections no longer set it, and a direct `syncFileFolder` caller may still
   pass one to narrow which unlisted files are added. Known limitation: the
-  rescan rule is a local copy until c3source exports it
+  rule is c3source's `rescanAdmissionIssue`
   ([c3source#130](https://github.com/GenvidTechnologies/c3source/issues/130)).
-  It was read from the r495 editor bundle and is observed in a real editor
-  save only for `videos/`.
+  The twin lookup searches only its own section, while the editor searches
+  the whole project. The missing-`.ts` exclusion is inferred from the editor
+  bundle. The rule was read from the r495 editor bundle and is observed in a
+  real editor save only for `videos/`.
+- **c3source `^4.1.0` and mcp-utils `^0.14.0`**
+  ([#378](https://github.com/GenvidTechnologies/construct3-chef/issues/378)).
+  Sync's rescan rule now comes from c3source's `rescanAdmissionIssue`
+  ([c3source#130](https://github.com/GenvidTechnologies/c3source/issues/130)).
+  The MCP findings result is built with mcp-utils' `mcpStructuredContent`, and
+  its output is unchanged.
 - **Breaking: `sync-project` withholds removals unless `--prune` is passed.**
   It used to drop a manifest entry as soon as its file was missing from disk,
   so a file that was only temporarily absent lost its entry and SID. It now

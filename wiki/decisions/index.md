@@ -615,11 +615,12 @@ See the [wiki index](../index.md) for the other sections.
 * [0069. File-section admission follows the editor's rescan rule](0069-file-section-admission-follows-the-editors-rescan-rule.md) -
   sync keeps its own lockstep walk of the file sections (c3source 4.0.0 /
   Option B-2). A disk file takes part in classification when the manifest
-  lists it, or when the C3 editor's rescan rule would add it. The rule is a
-  local bridge, `src/c3/fileAdmission.ts`, with the tripwire DB4-T1 and the
-  upstream request c3source#130. It replaces the per-section extension filters
-  of ADR 0066, which treated an extension list as section membership. The
-  editor trace that settles #354 is recorded, with its bundle hashes and
+  lists it, or when the C3 editor's rescan rule would add it. The rule was
+  first a local bridge, `src/c3/fileAdmission.ts`, with the tripwire DB4-T1;
+  c3source 4.1.0 shipped it as `rescanAdmissionIssue` (c3source#130) and the
+  amendment records the retirement. It replaces the per-section extension
+  filters of ADR 0066, which treated an extension list as section membership.
+  The editor trace that settles #354 is recorded, with its bundle hashes and
   offsets
   ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354))
 * [0070. validate and sync report duplicate names and skipped links as advisories](0070-validate-reports-duplicate-names-and-skipped-links.md) -
