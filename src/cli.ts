@@ -12,6 +12,7 @@ import { GENERATORS, GENERATOR_NAMES, type GeneratorName } from "./c3/generators
 import { applyParsed, renameSymbols } from "./c3/recipeApplier.js";
 import type { Recipe } from "./c3/recipeInterpreter.js";
 import { ALL_SECTION_KEYS, runSync, reportImageDrift, reportStrayFiles } from "./c3/projectSync.js";
+import { reportDriftAdvisories } from "./c3/driftAdvisories.js";
 import { planLayoutScaffold, writeLayoutScaffold, planSpriteScaffold, writeSpriteScaffold } from "./c3/scaffoldPlan.js";
 import { findTemplates } from "./c3/templateLister.js";
 import {
@@ -213,6 +214,7 @@ guardAllHandlers(yargs(hideBin(process.argv)))
       // help most. Caught at the CALL SITE — runSync's own fail-fast contract, and
       // the three rows in syncC3Proj.test.ts that pin it, stay untouched.
       let driftFailed = false;
+      let manifestReadable = true;
       try {
         driftFailed = !runSync(rootDir, true, console.log, argv.section).clean;
       } catch (err) {
@@ -221,9 +223,13 @@ guardAllHandlers(yargs(hideBin(process.argv)))
         // the reports below stay on stdout and each stream can be asserted alone.
         console.error(err instanceof Error ? err.message : String(err));
         driftFailed = true;
+        manifestReadable = false;
       }
       reportImageDrift(rootDir, console.log);
       const strays = reportStrayFiles(rootDir, console.log);
+      // Advisory (#344): never moves the exit code. Skipped when the manifest was unreadable, since
+      // that failure is already reported above and the advisories read the same manifest.
+      if (manifestReadable) reportDriftAdvisories(rootDir, console.log);
       if (driftFailed) process.exitCode = 1;
       if (argv.failOnStrays && strays.length > 0) process.exitCode = 1;
     },
@@ -252,6 +258,7 @@ guardAllHandlers(yargs(hideBin(process.argv)))
       // shows it. Reported unconditionally, mirroring validate-project (#52).
       reportImageDrift(rootDir, console.log);
       reportStrayFiles(rootDir, console.log);
+      reportDriftAdvisories(rootDir, console.log);
     },
   )
   .command(

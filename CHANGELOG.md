@@ -38,6 +38,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--section`. It scopes the sync report and `clean` to that section; strays
   and image drift are still reported project-wide
   ([#349](https://github.com/GenvidTechnologies/construct3-chef/issues/349)).
+- **`validate-project` and `sync-project` print two advisory sections after
+  `[strays]`: `[duplicates]` and `[links]`**, on the CLI and the MCP server
+  ([#344](https://github.com/GenvidTechnologies/construct3-chef/issues/344)).
+  Each prints at least one line: `(no duplicates)` or `(no links)` when there
+  is nothing to report. `[duplicates]` lists names that the C3 editor's own
+  name lookups treat as one, read from c3source 4.0.0's `detectManifestDrift`
+  ([c3source#125](https://github.com/GenvidTechnologies/c3source/issues/125)):
+  layouts and event sheets compared ignoring letter case, object types and
+  families as one `objectClasses` scope (an object type and a family with the
+  same name), and images. Each line shows the scope, the folded key and every
+  manifest and disk occurrence, for example
+  `! layouts 'level1': manifest (none); disk layouts/Level1, layouts/sub/level1`.
+  File sections are not checked. `[links]` lists symbolic links and junctions
+  below a section root that c3source 4.0.0's walks skip and do not follow, for
+  example `! layouts/sub/loop (not followed)`
+  ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)).
+  Chef's finders no longer see such linked items, so this is the only report
+  of them. Both sections are advisory: they change no CLI exit code,
+  `--fail-on-strays` result or MCP `structuredContent.clean`. On MCP the lines
+  are in the report text and in `structuredContent.report`. `validate-project`
+  prints them only when `project.c3proj` could be read. Scaffold commands do
+  not print them. A list of more than 20 entries ends with a count line, as
+  `[strays]` does.
 
 ### Changed
 

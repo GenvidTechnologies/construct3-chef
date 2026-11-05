@@ -27,6 +27,7 @@ import { applyParsed } from "../c3/recipeApplier.js";
 import { validateRecipe, type Recipe } from "../c3/recipeInterpreter.js";
 import { findJsonFiles, SID_SOURCE_DIRS } from "../c3/generators.js";
 import { runSync, reportImageDrift, reportStrayFiles, ALL_SECTION_KEYS } from "../c3/projectSync.js";
+import { reportDriftAdvisories } from "../c3/driftAdvisories.js";
 import { cleanReportSchema, cleanReportContent } from "./structuredReport.js";
 import { newWriteLedger, failureEffects, type WriteLedger } from "./writeLedger.js";
 import { suppressSelfWrites } from "./selfWrites.js";
@@ -1212,6 +1213,9 @@ regP(
           }
           reportImageDrift(ctx.root, log);
           reportStrayFiles(ctx.root, log);
+          // Advisory (#344): never moves clean or isError. Skipped after a manifest failure, which
+          // is already reported and which the advisories would hit again.
+          if (failure === undefined) reportDriftAdvisories(ctx.root, log);
           if (failure !== undefined) {
             // The response stays isError — the tool DID fail. The diagnostics ride
             // along rather than converting a real failure into a success response.
@@ -1260,6 +1264,7 @@ regP(
           // mirroring validate-project (#52).
           reportImageDrift(ctx.root, log);
           reportStrayFiles(ctx.root, log);
+          reportDriftAdvisories(ctx.root, log);
           return mcpContent(text(), txIdLine(ctx));
         },
         { prefix: "Error:", extraLines: () => [txIdLine(ctx)] },

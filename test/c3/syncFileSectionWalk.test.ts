@@ -16,6 +16,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { runSync } from "../../src/c3/projectSync.js";
+import { reportDriftAdvisories } from "../../src/c3/driftAdvisories.js";
 
 // Each row runs against a temp COPY of the canonical fixture, never the fixture itself. Rows seed
 // directory links (junctions, which need no admin rights on Windows) and run a dry-run sync.
@@ -139,6 +140,19 @@ describe("sync file-section walk and links", function () {
       { threw },
       "c3source 4.0.0 walks no longer follow links below a walk root (c3source#114), so a name-section link loop does not fail the run",
     ).to.deep.equal({ threw: null });
+  });
+
+  it("DB4-U7: a junction at layouts/sub/loop gives the exact [links] line", () => {
+    const root = copy();
+    mkdirSync(path.join(root, "layouts", "sub"), { recursive: true });
+    seedLink(root, "layouts/sub/loop", path.join(root, "layouts", "sub"));
+
+    const lines: string[] = [];
+    reportDriftAdvisories(root, (l) => lines.push(l));
+
+    expect(lines.filter((l) => l.startsWith("[links]"))).to.deep.equal([
+      "[links]".padEnd(16) + "! layouts/sub/loop (not followed)",
+    ]);
   });
 
   const EDITOR_LOCAL_MESSAGE =

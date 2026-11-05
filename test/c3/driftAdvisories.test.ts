@@ -5,6 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { reportDriftAdvisories } from "../../src/c3/driftAdvisories.js";
+import { runCli } from "../helpers/runCli.js";
 
 // Each row runs against a temp COPY of the canonical fixture, never the fixture itself. The seeded
 // files are on disk only, so the manifest side of a duplicate is empty.
@@ -64,5 +65,22 @@ describe("drift advisories", function () {
     const root = copy();
     const lines = run(root);
     expect(lines).to.deep.equal(["[duplicates]".padEnd(16) + "(no duplicates)", "[links]".padEnd(16) + "(no links)"]);
+  });
+
+  it("DB4-U6: an unparsable project.c3proj gives one Could not parse line, then [images] and [strays], and no advisories", () => {
+    const root = mkdtempSync(path.join(realpathSync.native(os.tmpdir()), "c3chef-da344-"));
+    dirs.push(root);
+    writeFileSync(path.join(root, "project.c3proj"), "{ NOT JSON");
+    seedFile(root, "layouts/notes.txt", "a stray note\n");
+
+    const result = runCli(["validate-project", "--project-dir", root]);
+    const outLines = result.stdout.split(/\r?\n/).filter((l) => l !== "");
+    const errLines = result.stderr.split(/\r?\n/).filter((l) => l !== "");
+
+    expect({
+      stderrLines: errLines.length,
+      stderrIsParseError: /^Could not parse .*project\.c3proj as JSON/.test(errLines[0] ?? ""),
+      stdoutLabels: outLines.map((l) => l.split(/\s/)[0]),
+    }).to.deep.equal({ stderrLines: 1, stderrIsParseError: true, stdoutLabels: ["[images]", "[strays]"] });
   });
 });
