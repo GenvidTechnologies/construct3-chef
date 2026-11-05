@@ -141,7 +141,10 @@ describe("MCP validate-project structured content (#349)", function () {
 
   it("I349-VP5: CLI exit code and MCP clean agree", async () => {
     seedLayoutDrift(tmp);
-    const driftCli = runCli(["validate-project", "--project-dir", tmp]).exitCode;
+    // A crash also exits 1, so the drift case also asserts the CLI reached its report.
+    const driftRun = runCli(["validate-project", "--project-dir", tmp]);
+    const driftCli = driftRun.exitCode;
+    const driftReported = driftRun.stdout.includes("change(s) found");
     const driftMcp = (await validate()).structuredContent?.clean;
     const pristine = copyFixture();
     try {
@@ -149,10 +152,10 @@ describe("MCP validate-project structured content (#349)", function () {
       __setProjectRoot(pristine);
       const inSyncMcp = (await validate()).structuredContent?.clean;
       expect({
-        drift: { cliExit: driftCli, mcpClean: driftMcp },
+        drift: { cliExit: driftCli, cliReported: driftReported, mcpClean: driftMcp },
         inSync: { cliExit: inSyncCli, mcpClean: inSyncMcp },
       }).to.deep.equal({
-        drift: { cliExit: 1, mcpClean: false },
+        drift: { cliExit: 1, cliReported: true, mcpClean: false },
         inSync: { cliExit: 0, mcpClean: true },
       });
     } finally {
@@ -163,7 +166,8 @@ describe("MCP validate-project structured content (#349)", function () {
   it("I349-VP6: section scopes clean", async () => {
     seedLayoutDrift(tmp);
     const otherCli = runCli(["validate-project", "--project-dir", tmp, "--section", "eventSheets"]).exitCode;
-    const ownCli = runCli(["validate-project", "--project-dir", tmp, "--section", "layouts"]).exitCode;
+    const ownRun = runCli(["validate-project", "--project-dir", tmp, "--section", "layouts"]);
+    const ownCli = ownRun.exitCode;
     const other = await validate({ section: "eventSheets" });
     const own = await validate({ section: "layouts" });
     expect({
@@ -172,11 +176,15 @@ describe("MCP validate-project structured content (#349)", function () {
         mcpClean: other.structuredContent?.clean,
         noLayoutsLine: !textOf(other).includes("[layouts]"),
       },
-      own: { cliExit: ownCli, mcpClean: own.structuredContent?.clean },
+      own: {
+        cliExit: ownCli,
+        cliReported: ownRun.stdout.includes("change(s) found"),
+        mcpClean: own.structuredContent?.clean,
+      },
       strays: textOf(other).includes("[strays]"),
     }).to.deep.equal({
       other: { cliExit: 0, mcpClean: true, noLayoutsLine: true },
-      own: { cliExit: 1, mcpClean: false },
+      own: { cliExit: 1, cliReported: true, mcpClean: false },
       strays: true,
     });
   });
@@ -333,27 +341,34 @@ describe("MCP scan-addon-usage structured content (#349)", function () {
   });
 
   it("I349-SU4: scan CLI exit code and MCP result agree", async () => {
-    const pair = async (cliArgs: string[], args: Record<string, unknown>) => {
-      const cliExit = runCli(["scan-addon-usage", ...cliArgs, "--project-dir", tmp]).exitCode;
+    // A crash also exits 1, so each case also reports whether the CLI printed its own verdict line.
+    const pair = async (cliArgs: string[], args: Record<string, unknown>, marker: string) => {
+      const run = runCli(["scan-addon-usage", ...cliArgs, "--project-dir", tmp]);
       const result = await scan(args);
-      return [cliExit, result.isError ? "isError" : result.structuredContent?.clean];
+      return [
+        run.exitCode,
+        (run.stdout + run.stderr).includes(marker),
+        result.isError ? "isError" : result.structuredContent?.clean,
+      ];
     };
     expect({
-      blast: await pair(["MyCompany_MyEffect", "--from", "MyCompany_MyEffect"], {
-        addon: "MyCompany_MyEffect",
-        from: "MyCompany_MyEffect",
-      }),
-      none: await pair(["MyCompany_MyBehavior", "--from", "MyCompany_MyBehavior"], {
-        addon: "MyCompany_MyBehavior",
-        from: "MyCompany_MyBehavior",
-      }),
-      plain: await pair(["MyCompany_MyEffect"], { addon: "MyCompany_MyEffect" }),
-      missing: await pair(["NoSuchAddonXYZ"], { addon: "NoSuchAddonXYZ" }),
+      blast: await pair(
+        ["MyCompany_MyEffect", "--from", "MyCompany_MyEffect"],
+        { addon: "MyCompany_MyEffect", from: "MyCompany_MyEffect" },
+        "3 site(s) affected",
+      ),
+      none: await pair(
+        ["MyCompany_MyBehavior", "--from", "MyCompany_MyBehavior"],
+        { addon: "MyCompany_MyBehavior", from: "MyCompany_MyBehavior" },
+        "scan-addon-usage: MyCompany_MyBehavior",
+      ),
+      plain: await pair(["MyCompany_MyEffect"], { addon: "MyCompany_MyEffect" }, "applied at 3 site(s)"),
+      missing: await pair(["NoSuchAddonXYZ"], { addon: "NoSuchAddonXYZ" }, "addon source not found: NoSuchAddonXYZ"),
     }).to.deep.equal({
-      blast: [1, false],
-      none: [0, true],
-      plain: [0, true],
-      missing: [1, "isError"],
+      blast: [1, true, false],
+      none: [0, true, true],
+      plain: [0, true, true],
+      missing: [1, true, "isError"],
     });
   });
 });
