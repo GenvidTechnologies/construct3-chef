@@ -49,7 +49,7 @@ import {
 import { resolveNavConvention } from "../c3/navConvention.js";
 import { discoverAddons, resolveAddonTarget } from "../c3/addonDiscovery.js";
 import { readAddon, readAddonEntry, formatAddonInfo, formatAddonList } from "../c3/addonReader.js";
-import { validateAddons, formatAddonValidation } from "../c3/addonValidator.js";
+import { validateAddons, formatAddonValidation, countFatal } from "../c3/addonValidator.js";
 import { listAddons, formatAddonInventory } from "../c3/addonInventory.js";
 import { diffAddonAces, formatAceDiff, resolveAceSource } from "../c3/addonAceDiff.js";
 import { scanAddonUsage, formatAddonUsage } from "../c3/addonAceUsage.js";
@@ -1334,7 +1334,7 @@ regP(
   {
     title: "Validate Addons",
     description:
-      "Validate every bundled .c3addon package under addons/ against the project.c3proj usedAddons manifest: reports metadata mismatches (author/version), package-integrity failures (malformed zip, missing addon.json/aces.json, un-materialized git-lfs pointer, addon-id vs filename), aces.json vs lang/ ACE-entry consistency, orphan packages (on disk but not in usedAddons), missing packages (usedAddons bundled:true with no package on disk), and duplicate packages (multiple archives resolving to the same addon id). With `addon`, scope validation to a single addon (by discovered id, or by path to an addon source tree) instead of the whole project. Read-only; no mutation.",
+      "Validate every bundled .c3addon package under addons/ against the project.c3proj usedAddons manifest: reports metadata mismatches (author/version), package-integrity failures (malformed zip, missing addon.json/aces.json, un-materialized git-lfs pointer, addon-id vs filename), aces.json vs lang/ ACE-entry consistency, orphan packages (on disk but not in usedAddons), missing packages (usedAddons bundled:true with no package on disk), and duplicate packages (multiple archives resolving to the same addon id). With `addon`, scope validation to a single addon (by discovered id, or by path to an addon source tree) instead of the whole project. Read-only; no mutation. Returns structured content { clean, report }: clean is false when any finding is reported, in any of the four families (metadata, integrity, package-consistency, lang), which is when the CLI without --skip-gate exits 1; report is the full text report with the current txId footer, the same text as the content block. An invalid or unknown addon returns isError with no structured content.",
     annotations: READ_ONLY,
     inputSchema: {
       addon: z
@@ -1344,6 +1344,9 @@ regP(
           "Validate a single addon by discovered id or by path to an addon source tree (aces.json + lang/). Omit to validate all bundled addons.",
         ),
     },
+    outputSchema: cleanReportSchema(
+      "false when any finding is reported, in any of the four families (metadata, integrity, package-consistency, lang); the CLI without --skip-gate exits 1 on the same input.",
+    ),
   },
   async (ctx, { addon }) =>
     ctx.rwlock.read(
@@ -1364,7 +1367,12 @@ regP(
           } else {
             result = validateAddons(ctx.root);
           }
-          return mcpContent(formatAddonValidation(result), txIdLine(ctx));
+          // countFatal with no skipped family is the CLI's default gate (ADR 0038, ADR 0068).
+          return cleanReportContent(
+            formatAddonValidation(result),
+            txIdLine(ctx),
+            countFatal(result.findings, []) === 0,
+          );
         },
         { prefix: "validate-addons:", extraLines: () => [txIdLine(ctx)] },
       ),

@@ -70,6 +70,20 @@ describe("MCP structured findings through the live SDK (#349)", function () {
     }).to.deep.equal({ isError: undefined, blocks: 1, clean: false, reportIsText: true, noSubstitution: true });
   });
 
+  it("I349-L2b: live validate-addons survives SDK validation", async () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "c3chef-i349-live-"));
+    fs.cpSync(FIXTURE_DIR, tmp, { recursive: true });
+    __setProjectRoot(tmp);
+    const result: any = await client.callTool({ name: "validate-addons", arguments: {} });
+    expect({
+      isError: result.isError,
+      blocks: result.content.length,
+      clean: result.structuredContent?.clean,
+      reportIsText: result.structuredContent?.report === textOf(result),
+      noSubstitution: !textOf(result).includes("Output validation error"),
+    }).to.deep.equal({ isError: undefined, blocks: 1, clean: false, reportIsText: true, noSubstitution: true });
+  });
+
   it("I349-L3a: live validate-project failure paths", async () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), "c3chef-i349-live-"));
     fs.mkdirSync(path.join(tmp, "layouts"), { recursive: true });

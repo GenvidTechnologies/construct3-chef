@@ -174,3 +174,96 @@ describe("MCP validate-project structured content (#349)", function () {
     });
   });
 });
+
+const ADDON_VALIDATE_FIXTURE = path.join(__dirname, "..", "fixtures", "addon-validate");
+
+/** A project with no bundled packages and one unbundled usedAddons entry (the I311 shape). */
+function makeZeroPackageProject(): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "c3chef-i349-zero-"));
+  fs.writeFileSync(
+    path.join(root, "project.c3proj"),
+    JSON.stringify({ usedAddons: [{ id: "Genvid_YouTube", type: "plugin", bundled: false }] }),
+  );
+  return root;
+}
+
+describe("MCP validate-addons structured content (#349)", function () {
+  this.timeout(120000);
+  const cleanup: string[] = [];
+
+  afterEach(() => {
+    for (const dir of cleanup.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+    __resetTestState();
+  });
+
+  async function validateAddonsAt(root: string, args: Record<string, unknown> = {}): Promise<any> {
+    __setProjectRoot(root);
+    __setTestWatcher(makeFakeWatcher(5));
+    return __getHandler("validate-addons")!(args, makeExtra());
+  }
+
+  function textOf(result: any): string {
+    return result.content[0].text;
+  }
+
+  it("I349-VA1: validate-addons findings give clean false", async () => {
+    const root = copyFixture();
+    cleanup.push(root);
+    const result = await validateAddonsAt(root);
+    expect({
+      isError: result.isError,
+      clean: result.structuredContent?.clean,
+      reportIsText: result.structuredContent?.report === textOf(result),
+    }).to.deep.equal({ isError: undefined, clean: false, reportIsText: true });
+  });
+
+  it("I349-VA2: validate-addons accept controls are clean", async () => {
+    const root = copyFixture();
+    const zero = makeZeroPackageProject();
+    cleanup.push(root, zero);
+    const effect = await validateAddonsAt(root, { addon: "MyCompany_MyEffect" });
+    const none = await validateAddonsAt(zero);
+    expect({
+      effect: { clean: effect.structuredContent?.clean, consistent: textOf(effect).includes("all consistent") },
+      zero: { clean: none.structuredContent?.clean, nothing: textOf(none).includes("nothing to validate") },
+    }).to.deep.equal({
+      effect: { clean: true, consistent: true },
+      zero: { clean: true, nothing: true },
+    });
+  });
+
+  it("I349-VA3: validate-addons CLI exit code and MCP clean agree", async () => {
+    const root = copyFixture();
+    const zero = makeZeroPackageProject();
+    cleanup.push(root, zero);
+    const pair = async (dir: string, cliExtra: string[], args: Record<string, unknown>) => [
+      runCli(["validate-addons", "--project-dir", dir, ...cliExtra]).exitCode,
+      (await validateAddonsAt(dir, args)).structuredContent?.clean,
+    ];
+    expect({
+      sample: await pair(root, [], {}),
+      effect: await pair(root, ["--addon", "MyCompany_MyEffect"], { addon: "MyCompany_MyEffect" }),
+      addonValidate: await pair(ADDON_VALIDATE_FIXTURE, [], {}),
+      zero: await pair(zero, [], {}),
+    }).to.deep.equal({
+      sample: [1, false],
+      effect: [0, true],
+      addonValidate: [1, false],
+      zero: [0, true],
+    });
+  });
+
+  it("I349-VA4: validate-addons error results carry no structured content", async () => {
+    const root = copyFixture();
+    cleanup.push(root);
+    const traversal = await validateAddonsAt(root, { addon: "../x" });
+    const missing = await validateAddonsAt(root, { addon: "NoSuchAddonXYZ" });
+    expect({
+      traversal: { isError: traversal.isError, structured: traversal.structuredContent },
+      missing: { isError: missing.isError, structured: missing.structuredContent },
+    }).to.deep.equal({
+      traversal: { isError: true, structured: undefined },
+      missing: { isError: true, structured: undefined },
+    });
+  });
+});
