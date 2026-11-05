@@ -84,7 +84,7 @@ describe("sync file-section walk and links", function () {
   });
 
   const GUARD_MESSAGE =
-    "runSync must keep c3source's file-section drift walks out of sync (the nameView in runSync, ADR 0066): since c3source 3.1.0 they follow links";
+    "runSync must keep c3source's file-section drift walks out of sync (the skipFileSections option in runSync, ADR 0066): since c3source 3.1.0 they follow links";
 
   it("I358-R2: a junction loop under undeclared files/undecl and scripts/undecl does not throw", () => {
     const root = copy();

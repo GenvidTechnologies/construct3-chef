@@ -1373,7 +1373,7 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
     );
   });
 
-  it("SR346-R13: a present scripts/helper.js declared under script is kept (withheld) by default and removed with prune", () => {
+  it("DB4-S354: a present scripts/helper.js declared under script gives no change by default, and prune still keeps it declared", () => {
     const build = () => {
       const c = copyFixture();
       const m = readManifest(c.manifestPath);
@@ -1397,14 +1397,46 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
     assert.deepEqual(
       {
         keptDeclared: has(kept.manifestPath),
-        keptWithheld: keptResult.changes.map((c) => ({ detail: c.detail, withheld: c.withheld })),
+        keptChanges: keptResult.changes.map((c) => ({ detail: c.detail, withheld: c.withheld })),
         prunedDeclared: has(removed.manifestPath),
       },
       {
         keptDeclared: true,
-        keptWithheld: [{ detail: "helper.js", withheld: true }],
-        prunedDeclared: false,
+        keptChanges: [],
+        prunedDeclared: true,
       },
+    );
+  });
+
+  it("DB4-S2: sync adds only what the editor rescan admits, per section", () => {
+    const c = copyFixture();
+    const put = (rel: string): void => {
+      const abs = path.join(c.root, rel);
+      mkdirSync(path.dirname(abs), { recursive: true });
+      writeFileSync(abs, "x");
+    };
+    put("sounds/a.ogg");
+    put("sounds/readme.txt");
+    put("files/.gitkeep");
+    put("files/index.html");
+    put("files/sub/index.html");
+    runSync(c.root, false, () => {});
+    const m = readManifest(c.manifestPath);
+    const names = (f: any, prefix = ""): string[] => [
+      ...f.items.map((i: FileItem) => prefix + i.name),
+      ...f.subfolders.flatMap((s: any) => names(s, `${prefix}${s.name}/`)),
+    ];
+    const sound = m.rootFileFolders.sound.items.find((i: FileItem) => i.name === "a.ogg");
+    const general = names(m.rootFileFolders.general);
+    assert.deepEqual(
+      {
+        aOgg: sound?.type,
+        readme: names(m.rootFileFolders.sound).includes("readme.txt"),
+        gitkeep: general.includes(".gitkeep"),
+        rootIndex: general.includes("index.html"),
+        subIndex: general.includes("sub/index.html"),
+      },
+      { aOgg: "audio/ogg; codecs=vorbis", readme: false, gitkeep: false, rootIndex: false, subIndex: true },
     );
   });
 });

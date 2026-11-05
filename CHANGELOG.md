@@ -29,12 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`sync-project` and `validate-project` sync the `video` file section**
-  (`videos/`, `.webm` and `.mp4`, `--section video`); every full report gains a
-  `[video]` line
+  (`videos/`, `--section video`); every full report gains a `[video]` line
   ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358)).
-  Known limitation: c3source types every `.webm` as `audio/webm; codecs=opus`,
-  and the folder name and `file-info` key are not attested by an editor-saved
-  project
+  The folder name, the `file-info` key and the `video/webm` type are attested
+  by an r506.3 editor save, recorded in c3source 4.0.0
   ([c3source#113](https://github.com/GenvidTechnologies/c3source/issues/113)).
 - **MCP `validate-project` accepts `section`**, the same values as the CLI's
   `--section`. It scopes the sync report and `clean` to that section; strays
@@ -43,6 +41,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`sync-project` adds unlisted disk files by the C3 editor's own rescan rule,
+  not one extension per section.** `sounds/` and `music/` add any audio file
+  (for example `.ogg`, `.wav`, `.mp3`, `.m4a`, `.flac`, `.webm`). `videos/`
+  adds any video file (`.webm`, `.ogv`, `.mp4`, `.mov`). `fonts/` adds `.woff`,
+  `.woff2`, `.ttf`, `.otf` and `.eot`. `icons/` adds any image file.
+  `scripts/` adds `.js` and `.ts`: the editor adds only `.js` there, and chef
+  also adds `.ts` so new TypeScript scripts keep being registered. A `.js`
+  whose `.ts` twin is listed or present beside it is not added. `files/` no
+  longer adds a name the editor's name check refuses (for example a dotfile
+  such as `.gitkeep`, or a name with a forbidden character), one of the 17
+  names the editor reserves directly under `files/` (for example `index.html`,
+  `data.json`, `sw.js`; the same names in a subfolder are still added), or a
+  `.js` with a `.ts` twin. A file that sync does not add stays outside the
+  project, as before. A new file's `type` now comes from c3source's
+  section-aware `fileTypeForSection`, so a new `.webm` in `videos/` is typed
+  `video/webm`. `FileSectionConfig.extensions` is deprecated: sync's own
+  sections no longer set it, and a direct `syncFileFolder` caller may still
+  pass one to narrow which unlisted files are added. Known limitation: the
+  rescan rule is a local copy until c3source exports it
+  ([c3source#130](https://github.com/GenvidTechnologies/c3source/issues/130)).
+  It was read from the r495 editor bundle and is observed in a real editor
+  save only for `videos/`.
 - **Breaking: `sync-project` withholds removals unless `--prune` is passed.**
   It used to drop a manifest entry as soon as its file was missing from disk,
   so a file that was only temporarily absent lost its entry and SID. It now
@@ -67,9 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `false`); and optional `withheld`, `movedTo` and `movedFrom` fields on
   `Change`. A direct `syncFileFolder` caller still gets removals applied by
   default, but now also gets SID-keeping moves and one line per entry of a
-  removed subfolder. Known limitation: a present non-`.ts` script is withheld
-  rather than removed by default, though still removed with prune
-  ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354))
+  removed subfolder
   ([#346](https://github.com/GenvidTechnologies/construct3-chef/issues/346)).
 - **`@genvidtech/c3source` is updated to `^3.1.0`**
   ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358)).
@@ -106,6 +124,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`sync-project` and `validate-project` no longer report a listed file as
+  missing because of its extension.** A listed `scripts/helper.js` is present:
+  the default sync leaves it alone, `--prune` keeps it, and `validate-project`
+  passes. The C3 editor loads every listed file whatever its extension
+  ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354)).
 - **Creating an editor-local file in a watched folder no longer bumps `txId`
   or marks `extracted/` stale.** On the MCP server, a new `*.uistate.json`,
   a file under `uistate/`, a `tsconfig.json` or a file under `ts-defs/` in a
@@ -217,9 +240,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the folder. A manifest item whose only disk copy is under an
   editor-local folder is now a withheld removal, not a withheld move
   ([#358](https://github.com/GenvidTechnologies/construct3-chef/issues/358),
-  ADR 0066). Known limitation: a present non-`.ts` script is still reported as
-  missing
-  ([#354](https://github.com/GenvidTechnologies/construct3-chef/issues/354)).
+  ADR 0066).
 
 - **Windows reserved device names are refused in every write target.** A path
   segment that is a reserved device name (`NUL`, `con.txt`, `COM1`, `CONIN$`) is
