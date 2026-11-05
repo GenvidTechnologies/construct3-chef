@@ -105,7 +105,7 @@ The intervening **c3source 1.2.0** added an `isEventVarReference`/`getEventVarRe
 
 **Inherited, not adopted.** `C3_FONT_FILE_TYPES` and `C3_GENERAL_ROOT_RESERVED_FILE_NAMES`, through the function. The font set covers exactly `.woff`, `.woff2`, `.ttf`, `.otf` and `.eot`, so ADR 0069's local font deviation is retired.
 
-**Declined.** A request to c3source for a folder-prefix argument, so that a twin could be found across sections. The twin lookup stays section-local and the limitation is recorded in ADR 0069.
+**Not requested.** No request was filed with c3source for a folder-prefix table, which a cross-section twin lookup would need: the twin lookup stays section-local, and the limitation is recorded in ADR 0069.
 
 **Revert-confirm.** On the bump alone the full suite ran 2424 passing, 2 pending and 1 failing, and the one failure was `DB4-T1`, the tripwire, as designed. Against the base total of 2425 nothing else moved.
 

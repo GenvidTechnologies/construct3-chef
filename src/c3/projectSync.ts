@@ -51,9 +51,8 @@ export interface FileSectionConfig {
   infoKey: string;
   /**
    * @deprecated Section membership is decided by the editor's rescan rule (`rescanAdmission.ts` over c3source's
-   * `rescanAdmissionIssue`), not by an
-   * extension list. A direct `syncFileFolder` caller may still pass one: it narrows which unlisted files are
-   * admitted. The `FILE_SECTIONS` entries no longer set it.
+   * `rescanAdmissionIssue`), not by an extension list. A direct `syncFileFolder` caller may still pass one: it
+   * narrows which unlisted files are admitted. The `FILE_SECTIONS` entries no longer set it.
    */
   extensions?: string[];
   /**
