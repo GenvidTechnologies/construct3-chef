@@ -1373,22 +1373,25 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
     );
   });
 
-  it("DB4-S354: a present scripts/helper.js declared under script gives no change by default, and prune still keeps it declared", () => {
+  it("DB4-S354: present scripts/helper.js and scripts/notes.md declared under script give no change by default, and prune still keeps both declared", () => {
+    // notes.md is a file the editor's rescan rule would not admit (script admits .js and .ts only),
+    // so only the listed-file rule keeps it present; helper.js is admitted either way.
     const build = () => {
       const c = copyFixture();
       const m = readManifest(c.manifestPath);
-      m.rootFileFolders.script.items.push({
-        name: "helper.js",
-        type: "application/javascript",
-        sid: 311111111111111,
-        "script-info": { purpose: "none" },
-      });
+      m.rootFileFolders.script.items.push(
+        { name: "helper.js", type: "application/javascript", sid: 311111111111111, "script-info": { purpose: "none" } },
+        { name: "notes.md", type: "text/markdown", sid: 311111111111112, "script-info": { purpose: "none" } },
+      );
       writeManifest(c.manifestPath, m);
       writeFileSync(path.join(c.root, "scripts", "helper.js"), "");
+      writeFileSync(path.join(c.root, "scripts", "notes.md"), "");
       return c;
     };
-    const has = (manifestPath: string) =>
-      readManifest(manifestPath).rootFileFolders.script.items.some((i: FileItem) => i.name === "helper.js");
+    const has = (manifestPath: string) => {
+      const items = readManifest(manifestPath).rootFileFolders.script.items.map((i: FileItem) => i.name);
+      return items.includes("helper.js") && items.includes("notes.md");
+    };
 
     const kept = build();
     const keptResult = runSync(kept.root, false, () => {}, "script", { prune: false });
