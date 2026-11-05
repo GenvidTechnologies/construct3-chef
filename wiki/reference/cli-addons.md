@@ -328,7 +328,7 @@ Call sites:
     event #8  events[2]   [action] GCoreFamily.sync-progress(slot)
 ```
 
-The clean case prints `No usage of addon "<id>" found.` An unresolvable addon prints `addon source not found: <arg>` and exits 1. The MCP tool returns the same text as an `isError` result.
+The clean case prints `No usage of addon "<id>" found.` An unresolvable addon prints `addon source not found: <arg>` to stderr and exits 1. The MCP tool returns an `isError` result whose text is `scan-addon-usage: addon source not found: <arg>`, followed by the `txId` footer.
 
 ### Behavior addons
 
@@ -453,6 +453,6 @@ Call sites:
 - **0** — plain scan (no `--from`), or blast-radius scan with zero affected call sites.
 - **1** — blast-radius scan with `affectedCount > 0` (fits a project's `commands.validate` chain as an upgrade gate), or an unresolvable `addon`/`--from` source.
 
-The MCP tool returns `structuredContent.clean` by the same rule. It is false in blast mode (`from` given) when any site is affected. Without `from` it is always `true`: usage is reported, not judged. An unresolvable `addon` or `from` returns `isError` with the same text the CLI prints (for an unknown addon, `scan-addon-usage: addon source not found: <name>`), matching the CLI's exit 1 ([ADR 0068](../decisions/0068-mcp-findings-ride-in-structured-content-and-iserror-stays-tool-failure.md)).
+The MCP tool returns `structuredContent.clean` by the same rule. It is false in blast mode (`from` given) when any site is affected. Without `from` it is always `true`: usage is reported, not judged. An unresolvable `addon` or `from` returns `isError`, matching the CLI's exit 1. Its text is the CLI's error message with a `scan-addon-usage: ` prefix and the `txId` footer, the same text the tool returned before as a success result ([ADR 0068](../decisions/0068-mcp-findings-ride-in-structured-content-and-iserror-stays-tool-failure.md)).
 
 Output uses the shared `formatAddonUsage` formatter, so the CLI and MCP `scan-addon-usage` surfaces are byte-identical.
