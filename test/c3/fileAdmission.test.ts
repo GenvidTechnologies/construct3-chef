@@ -84,7 +84,7 @@ describe("fileAdmission", () => {
       `c3source now exports an admission predicate (GenvidTechnologies/c3source#130): ${hits.join(", ")}. ` +
         "Adopt it. Delete src/c3/fileAdmission.ts, its call site in src/c3/projectSync.ts, " +
         "test/c3/fileAdmission.test.ts and this tripwire. Afterwards DB4-A1, DB4-A2, DB4-A3, DB4-A4 " +
-        "(moved over the adopted export), DB4-S354, DB4-S2 and DB4-S3 must stay green.",
+        "(moved over the adopted export), DB4-S354, DB4-S2 and I358-V1 must stay green.",
     ).to.deep.equal([]);
   });
 });

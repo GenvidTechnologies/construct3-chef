@@ -1420,6 +1420,10 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
     put("files/.gitkeep");
     put("files/index.html");
     put("files/sub/index.html");
+    put("scripts/extra.js");
+    put("scripts/notes.md");
+    put("scripts/twin.ts");
+    put("scripts/twin.js");
     runSync(c.root, false, () => {});
     const m = readManifest(c.manifestPath);
     const names = (f: any, prefix = ""): string[] => [
@@ -1428,6 +1432,7 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
     ];
     const sound = m.rootFileFolders.sound.items.find((i: FileItem) => i.name === "a.ogg");
     const general = names(m.rootFileFolders.general);
+    const script = names(m.rootFileFolders.script);
     assert.deepEqual(
       {
         aOgg: sound?.type,
@@ -1435,8 +1440,22 @@ describe("sync-project file-section moves and subfolder contents (#346)", functi
         gitkeep: general.includes(".gitkeep"),
         rootIndex: general.includes("index.html"),
         subIndex: general.includes("sub/index.html"),
+        extraJs: script.includes("extra.js"),
+        notesMd: script.includes("notes.md"),
+        twinTs: script.includes("twin.ts"),
+        twinJs: script.includes("twin.js"),
       },
-      { aOgg: "audio/ogg; codecs=vorbis", readme: false, gitkeep: false, rootIndex: false, subIndex: true },
+      {
+        aOgg: "audio/ogg; codecs=vorbis",
+        readme: false,
+        gitkeep: false,
+        rootIndex: false,
+        subIndex: true,
+        extraJs: true,
+        notesMd: false,
+        twinTs: true,
+        twinJs: false,
+      },
     );
   });
 });

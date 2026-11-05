@@ -119,7 +119,6 @@ export const FILE_SECTIONS: FileSectionConfig[] = [
     key: "script",
     diskDir: "scripts",
     infoKey: "script-info",
-    extensions: [".ts"],
     ignorePaths: ["tsconfig.json"],
     ignoreDirs: ["ts-defs"],
   },
