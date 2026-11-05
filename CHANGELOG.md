@@ -77,11 +77,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   links, so a link loop or a dangling link under `files/`, `scripts/` and the
   other file folders would make it throw `ELOOP` or `ENOENT`. Sync keeps its own
   file-section walk and does not run c3source's, so links there are still
-  skipped, as before (ADR 0066). Known limitation: a link loop under a
-  name-section folder still fails the run with `ELOOP`, as it did with 3.0.0
-  ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)).
+  skipped, as before (ADR 0066).
+- **`@genvidtech/c3source` is updated to `^4.0.0` and `@genvidtech/mcp-utils`
+  to `^0.13.0`**
+  ([#374](https://github.com/GenvidTechnologies/construct3-chef/issues/374),
+  [#299](https://github.com/GenvidTechnologies/construct3-chef/issues/299)).
+  Two behaviour changes come from c3source 4.0.0:
+  - `sync-project` writes a specific file `type` for the extensions that
+    c3source's `EXTENSION_FILE_TYPES` now maps, such as `.ogg`, `.wav`,
+    `.woff`, `.zip`, `.ogv`, `.mov` and `.glb`. It wrote
+    `application/octet-stream` for them before. Existing mappings are
+    unchanged. `MIME_MAP` (a deprecated alias of the same object) and
+    `inferMimeType` return the new values
+    ([c3source#115](https://github.com/GenvidTechnologies/c3source/issues/115)).
+  - The c3source disk walks no longer follow symbolic links or junctions below
+    a walk root. A linked layout, event sheet or objectType below a section
+    root is no longer seen by the c3source finders that the generators, recipe
+    apply, scaffold and read tools use, nor by sync's name-section drift. A
+    symlinked image file is no longer counted present by the `[images]` report.
+    A walk root that is itself a link is still followed
+    ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114)).
+
+  Known divergence: the `walkFiles` function of `@genvidtech/mcp-utils` still
+  follows links. `findJsonFiles`, `scaffold-sprite`, the MCP `search` tool,
+  generator outputs and CLI paths use it. The c3source finders skip links, so
+  one linked file can be seen by some operations and not by others
+  ([#375](https://github.com/GenvidTechnologies/construct3-chef/issues/375)).
 
 ### Fixed
+
+- **A link loop or dangling link under a name-section folder no longer fails
+  `validate-project` or `sync-project`.** A junction loop under
+  `eventSheets/sub`, for example, made the run fail with `ELOOP` or `ENOENT`.
+  The c3source 4.0.0 walks skip such links
+  ([c3source#114](https://github.com/GenvidTechnologies/c3source/issues/114),
+  [#374](https://github.com/GenvidTechnologies/construct3-chef/issues/374)).
 
 - **MCP findings tools report pass or fail in `structuredContent`.**
   `validate-project`, `validate-addons`, `scan-addon-usage`,

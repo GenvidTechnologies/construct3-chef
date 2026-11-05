@@ -123,7 +123,7 @@ describe("sync file-section walk and links", function () {
     });
   });
 
-  it("I358-R4: a junction loop under eventSheets/sub still throws ELOOP", () => {
+  it("DB4-R4: a junction loop under eventSheets/sub does not throw", () => {
     const root = copy();
     mkdirSync(path.join(root, "eventSheets", "sub"), { recursive: true });
     seedLink(root, "eventSheets/sub/loop", path.join(root, "eventSheets", "sub"));
@@ -137,8 +137,8 @@ describe("sync file-section walk and links", function () {
 
     expect(
       { threw },
-      "a junction loop under a name-section folder still throws ELOOP; if this goes red, c3source fixed link handling: update ADR 0066 and the c3source 3.1.0 ledger entry",
-    ).to.deep.equal({ threw: "ELOOP" });
+      "c3source 4.0.0 walks no longer follow links below a walk root (c3source#114), so a name-section link loop does not fail the run",
+    ).to.deep.equal({ threw: null });
   });
 
   const EDITOR_LOCAL_MESSAGE =
