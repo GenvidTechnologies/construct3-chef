@@ -321,7 +321,7 @@ guardAllHandlers(yargs(hideBin(process.argv)))
           type: "string",
           demandOption: true,
           describe:
-            "Target objectType name (one name: not empty, no '/', '\\' or ':', not '.' or '..', not a Windows reserved device name; a name C3 keeps as written, not a reserved word)",
+            "Target objectType name (one name: not empty, no '/', '\\' or ':', not '.' or '..', not a Windows reserved device name; a name C3 keeps as written, not a reserved word or a System expression name)",
         })
         .option("regenerate", {
           type: "boolean",

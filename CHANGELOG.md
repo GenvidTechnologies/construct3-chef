@@ -149,7 +149,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     letter case ignored (`a layout with this JSON name already exists`).
   - `scaffold-layout` refuses a layout name that breaks C3's layout-name rule:
     one of `\ / : * ? " < > | ~`, a leading or trailing `.` or space, 200 or
-    more characters, or a Windows reserved device name.
+    more characters, or a Windows reserved device name. A name with a
+    character C3 strips reads `must be a name C3 keeps as written: C3 would
+    load it as 'ab'` (input `a~b`). The name check uses C3's own device-name
+    set, which holds exact names such as `NUL`. Names such as `NUL.txt`, `COM¹`
+    and `CONIN$` are refused by the `--out` path-segment check, with that
+    check's wording.
   - `scaffold-sprite` and recipe `objectTypes` CREATE (dry-run, `--preview`,
     `validate-recipe` and apply) refuse a name that matches an existing family
     in any `families/` folder (`a family with this name already exists`).
@@ -159,11 +164,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (`must be a name C3 keeps as written: C3 would load it as 'MySprite'`).
     Names accepted before and now refused include `a..b`, `Foo..Bar` and
     `My.Widget v2`. The rules apply to the new name only, never to `--source`.
+    A name C3 would rewrite into a reserved word names the stored form, for
+    example `must not be 's-elf': C3 would load it as 'self', which C3 reserves
+    (self, true, false and system, letter case ignored)`.
+  - New objectType names, on both surfaces, also refuse a name that C3 reserves
+    as a System expression name, such as `Time`, `random` or `LayoutName`,
+    letter case ignored (`must not be 'Time': C3 reserves it as a System
+    expression name (letter case ignored)`). `Timer` and `Times` are accepted.
+    A recipe that re-declares an existing objectType with such a name is
+    refused too, because `validate-recipe` checks every `objectTypes` entry.
+    The `scaffold-sprite --name` help text says so
+    ([#365](https://github.com/GenvidTechnologies/construct3-chef/issues/365)).
 
-  Known limitations: C3 also reserves System expression names, which are not
-  refused yet
-  ([#365](https://github.com/GenvidTechnologies/construct3-chef/issues/365));
-  event-sheet names created by recipe `files` entries are not checked
+  Known limitations: event-sheet names created by recipe `files` entries are not
+  checked
   ([#366](https://github.com/GenvidTechnologies/construct3-chef/issues/366));
   `--out` folder segments are not checked against C3's folder rule
   ([#367](https://github.com/GenvidTechnologies/construct3-chef/issues/367));

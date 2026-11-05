@@ -16,7 +16,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "nod
 import * as path from "node:path";
 import { find_all_objectTypes_path, isSectionItemName } from "@genvidtech/c3source";
 import { resolveWithin } from "@genvidtech/mcp-utils";
-import { layoutNameIssue, layoutNameIssueText, objectClassNameIssue, objectClassNameIssueText } from "./c3NameRules.js";
+import { layoutNameRefusal, objectClassNameRefusal } from "./itemNameRefusals.js";
 import { cloneLayout, collectAllUids } from "./layoutScaffold.js";
 import { lookupObjectTypeByName } from "./objectTypeIdentity.js";
 import { findLayoutScaffoldConflicts, findSpriteScaffoldConflicts, formatScaffoldRefusal } from "./scaffoldGuard.js";
@@ -166,9 +166,9 @@ export function planLayoutScaffold(opts: LayoutScaffoldPlanOptions): LayoutScaff
   if (name === "") {
     return { ok: false, kind: "invalid-name", message: formatScaffoldEmptyInput("name") };
   }
-  const nameIssue = layoutNameIssue(name);
-  if (nameIssue !== undefined) {
-    return { ok: false, kind: "invalid-name", message: `Invalid name '${name}' — ${layoutNameIssueText(nameIssue)}` };
+  const nameReason = layoutNameRefusal(name);
+  if (nameReason !== undefined) {
+    return { ok: false, kind: "invalid-name", message: `Invalid name '${name}' — ${nameReason}` };
   }
   if (eventSheet === "") {
     return { ok: false, kind: "invalid-name", message: formatScaffoldEmptyInput("event sheet") };
@@ -253,12 +253,12 @@ export function planSpriteScaffold(opts: SpriteScaffoldPlanOptions): SpriteScaff
     }
   }
   // Only the new name is held to C3's reserved-word and normalizer rules; `source` is read, never created.
-  const classNameIssue = objectClassNameIssue(name);
-  if (classNameIssue !== undefined) {
+  const classNameReason = objectClassNameRefusal(name);
+  if (classNameReason !== undefined) {
     return {
       ok: false,
       kind: "invalid-name",
-      message: `Invalid name '${name}' — ${objectClassNameIssueText(classNameIssue)}`,
+      message: `Invalid name '${name}' — ${classNameReason}`,
     };
   }
 

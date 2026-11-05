@@ -47,7 +47,6 @@ import {
   formatScaffoldRegistryMissing,
   formatScaffoldLayoutNameMismatch,
 } from "../../src/c3/scaffoldPlan.js";
-import { layoutNameIssue, layoutNameIssueText } from "../../src/c3/c3NameRules.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = path.join(__dirname, "..", "fixtures", "construct3-chef-sample");
@@ -2127,7 +2126,6 @@ describe("MCP server handler response shaping", () => {
       fs.writeFileSync(path.join(tmp, "layouts", "Other.json"), JSON.stringify({ name: "Renamed", layers: [] }));
       __setExtractedDirty(false);
       const before = snapshotTree(tmp);
-      const nameRuleIssue = layoutNameIssue("a~b")!;
 
       const cases = [
         {
@@ -2145,7 +2143,7 @@ describe("MCP server handler response shaping", () => {
         {
           out: "PlanB",
           name: "a~b",
-          expected: `Invalid name 'a~b' — ${layoutNameIssueText(nameRuleIssue)}`,
+          expected: "Invalid name 'a~b' — must be a name C3 keeps as written: C3 would load it as 'ab'",
         },
       ];
       for (const c of cases) {
@@ -2196,6 +2194,40 @@ describe("MCP server handler response shaping", () => {
           tree: before,
         });
       }
+    });
+
+    it("DB4-B1: scaffold-sprite --name Time is refused alike on CLI and MCP, nothing written, no bump", async function () {
+      this.timeout(60_000);
+      const handler = __getHandler("scaffold-sprite")!;
+      __setExtractedDirty(false);
+      const before = snapshotTree(tmp);
+      const expected =
+        "Invalid name 'Time' — must not be 'Time': C3 reserves it as a System expression name (letter case ignored)";
+
+      const mcp = (await handler({ source: "Text", name: "Time" }, makeExtra())) as any;
+      expect(mcp.isError).to.be.true;
+      const lines = textOf(mcp).split("\n");
+      const txLine = lines.pop();
+      const mcpMessage = lines.join("\n");
+      const cli = runCli(["scaffold-sprite", "--project-dir", tmp, "--source", "Text", "--name", "Time"]);
+
+      expect({
+        txLine,
+        mcpMessage,
+        cliExit: cli.exitCode,
+        cliStderr: cli.stderr.trimEnd(),
+        bumped: watcher.bumped,
+        dirty: __getExtractedDirty(),
+        tree: snapshotTree(tmp),
+      }).to.deep.equal({
+        txLine: "txId: default:5",
+        mcpMessage: expected,
+        cliExit: 1,
+        cliStderr: expected,
+        bumped: 0,
+        dirty: false,
+        tree: before,
+      });
     });
 
     it("I260-B4: scaffold-sprite with a name next to an existing family's name succeeds and bumps once", async () => {

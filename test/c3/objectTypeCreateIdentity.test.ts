@@ -223,6 +223,22 @@ describe("objectType create identity (#274)", () => {
       assert.deepEqual(got, want);
     });
 
+    it("DB4-RC1: validateRecipe refuses System expression names Time and random; Timer and Times pass", () => {
+      const sysExpr = (n: string): string =>
+        `objectTypes[0]: "name" must not be '${n}': C3 reserves it as a System expression name (letter case ignored)`;
+      const want: Record<string, string[]> = {
+        Time: [sysExpr("Time")],
+        random: [sysExpr("random")],
+        Timer: [],
+        Times: [],
+      };
+      const got: Record<string, string[]> = {};
+      for (const n of Object.keys(want)) {
+        got[n] = validateRecipe({ objectTypes: [{ name: n, plugin: "Json" }] } as unknown as Recipe);
+      }
+      assert.deepEqual(got, want);
+    });
+
     it("I260-RC4: validateRecipe accepts selfish, 9patch and Sprite_2 as objectType names", () => {
       const got: Record<string, string[]> = {};
       const want: Record<string, string[]> = {};

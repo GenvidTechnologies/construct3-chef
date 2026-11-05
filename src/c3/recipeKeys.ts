@@ -5,7 +5,7 @@
  * key-identity fixes #252 and #273, not published API.
  */
 import path from "node:path";
-import { objectClassNameIssue, objectClassNameIssueText } from "./c3NameRules.js";
+import { objectClassNameRefusal } from "./itemNameRefusals.js";
 import { nameSegmentIssueText, segmentIssueText, segmentsIssue, type SegmentIssue } from "./pathSegments.js";
 
 /** The two recipe sections whose keys name a JSON file under a fixed top-level project folder. */
@@ -88,7 +88,7 @@ export type ObjectTypeNameIssue =
  * The label-agnostic name-only rule shared by recipe `objectTypes` CREATE and scaffold-sprite (`--source`/`--name`):
  * ONE path segment that is not empty, has no `/` or `\`, is not `.` or `..`, has no `:`, and is not only dots and
  * spaces, and is not a Windows reserved device name (#330). `a..b` passes this rule; a NEW name is then also held to
- * C3's reserved-word and normalizer rules (`objectClassNameIssue`, #260), which refuse it. `undefined` when the name
+ * C3's reserved-word and normalizer rules (`objectClassNameRefusal`, #260), which refuse it. `undefined` when the name
  * passes this rule.
  */
 export function objectTypeNameIssue(name: string): ObjectTypeNameIssue | undefined {
@@ -104,7 +104,7 @@ export function objectTypeNameIssue(name: string): ObjectTypeNameIssue | undefin
  * no `/` or `\`, not `.` or `..`, no `:`, not only dots and spaces. `folder` (when not `undefined`) must be a non-empty
  * relative path: no `..` segment (backslashes count as `/`), not absolute or drive-letter, no `:`, no segment made
  * only of dots and spaces, no segment that is a Windows reserved device name. `name` is refused as a reserved device
- * name too (#330), and must be a name C3 keeps as written and not a C3 reserved word (`objectClassNameIssue`, #260).
+ * name too (#330), and must be a name C3 keeps as written and not a C3 reserved word (`objectClassNameRefusal`, #260).
  * An empty-string folder is refused (omit `folder` instead). A trailing `/` and interior `//` are tolerated (they name
  * the same folder).
  */
@@ -128,8 +128,8 @@ export function objectTypeEntryIssue(name: string, folder: string | undefined): 
       }
     }
   }
-  const classNameIssue = objectClassNameIssue(name);
-  if (classNameIssue !== undefined) return `"name" ${objectClassNameIssueText(classNameIssue)}`;
+  const classNameReason = objectClassNameRefusal(name);
+  if (classNameReason !== undefined) return `"name" ${classNameReason}`;
   if (folder === undefined) return undefined;
   if (folder === "") return '"folder" must not be empty (omit it for the objectTypes root)';
   const slashed = toSlashes(folder);
