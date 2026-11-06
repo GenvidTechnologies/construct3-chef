@@ -219,7 +219,7 @@ guardAllHandlers(yargs(hideBin(process.argv)))
         driftFailed = !runSync(rootDir, true, console.log, argv.section).clean;
       } catch (err) {
         // err.message verbatim: runSync stays the single source of the
-        // "Could not read" / "Could not parse ... as JSON" wording. stderr, so
+        // "Could not read" / "Could not parse ... as JSON" / shape-violation wording. stderr, so
         // the reports below stay on stdout and each stream can be asserted alone.
         console.error(err instanceof Error ? err.message : String(err));
         driftFailed = true;
