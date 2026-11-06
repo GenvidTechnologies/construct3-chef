@@ -26,6 +26,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`sync-project` and `validate-project` no longer report a `project.c3proj`
+  that is valid JSON but fails shape validation as `Could not parse … as JSON`**
+  ([#345](https://github.com/GenvidTechnologies/construct3-chef/issues/345)).
+  The error now carries c3source's own explanation followed by the manifest
+  path, for example `invalid project.c3proj: name must be a string
+  (<root>/project.c3proj)`, on the CLI and the MCP server alike. A JSON syntax
+  error still reads `Could not parse … as JSON`. This includes a manifest the C3
+  flowcharts editor saved with a nameless flowchart (an item named `""`), which
+  c3source rejects.
+
 ## [3.0.0] - 2026-11-05
 
 ### Added

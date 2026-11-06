@@ -257,18 +257,34 @@ describe("syncC3Proj", () => {
       assert.throws(() => runSync(dir, true), /Could not read/);
     });
 
-    it("throws 'Could not parse' on malformed JSON", () => {
+    it("I345-R2: throws 'Could not parse … as JSON' on malformed JSON", () => {
       const dir = createTmpDir();
       writeFileSync(path.join(dir, "project.c3proj"), "{ not valid json");
-      assert.throws(() => runSync(dir, true), /Could not parse/);
+      assert.throws(() => runSync(dir, true), /^Could not parse .*project\.c3proj as JSON$/);
     });
 
-    it("throws 'Could not parse' on a structurally-invalid manifest (valid JSON, missing fields)", () => {
-      // Valid JSON but not a well-formed manifest (no name/runtime/...). Before the
-      // readProjectManifest adoption this slipped through; it now fails fast.
+    it("I345-R1: reports c3source's shape violation on a valid-JSON but malformed manifest, not a parse failure", () => {
+      // Valid JSON but not a well-formed manifest (no name/runtime/...). The message carries
+      // c3source's own explanation plus the manifest path, so nobody hunts for a syntax error.
       const dir = createTmpDir();
       writeFileSync(path.join(dir, "project.c3proj"), JSON.stringify({ foo: "bar" }));
-      assert.throws(() => runSync(dir, true), /Could not parse/);
+      let message = "(did not throw)";
+      try {
+        runSync(dir, true);
+      } catch (err) {
+        message = err instanceof Error ? err.message : String(err);
+      }
+      assert.match(message, /^invalid project\.c3proj: name must be a string \(.*project\.c3proj\)$/);
+      assert.notMatch(message, /Could not parse/);
+    });
+
+    it("I345-R1b: reports a non-object top level as a shape violation too", () => {
+      const dir = createTmpDir();
+      writeFileSync(path.join(dir, "project.c3proj"), "42");
+      assert.throws(
+        () => runSync(dir, true),
+        /^invalid project\.c3proj: top-level value must be an object \(.*project\.c3proj\)$/,
+      );
     });
   });
 

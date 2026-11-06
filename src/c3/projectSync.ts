@@ -797,6 +797,24 @@ export function formatSyncReport(changes: Change[], sectionKeys: string[]): stri
 }
 
 /**
+ * The one message for a failed strict manifest read, so the CLI and the MCP tools render the same text.
+ * Three cases, told apart by the error itself:
+ * - a filesystem failure carries an errno `code` (ENOENT, EACCES, …): "Could not read <path>";
+ * - `JSON.parse` throws a `SyntaxError`: "Could not parse <path> as JSON";
+ * - anything else is c3source's shape validation (`invalid project.c3proj: …`, #345): its own message,
+ *   followed by the path, so a valid-JSON manifest is never reported as a syntax error.
+ * Not exported: `projectSync.ts` is on the barrel, and this wording is not public API.
+ */
+function formatManifestReadError(projectPath: string, err: unknown): string {
+  if (err instanceof Error && typeof (err as NodeJS.ErrnoException).code === "string") {
+    return `Could not read ${projectPath}`;
+  }
+  if (err instanceof SyntaxError) return `Could not parse ${projectPath} as JSON`;
+  const message = err instanceof Error ? err.message : String(err);
+  return `${message} (${projectPath})`;
+}
+
+/**
  * Sync `project.c3proj` to match the files on disk, printing the report through `log`.
  *
  * **Additions are applied; removals are withheld by default (#346).** A manifest entry whose file is
@@ -819,21 +837,11 @@ export function runSync(
   const projectPath = path.join(rootDir, "project.c3proj");
 
   // readProjectManifest reads + parses + validates the manifest shape in one call.
-  // Preserve our two-message contract by discriminating on the error type: a
-  // filesystem read failure carries an errno `code` (ENOENT/EACCES/...), whereas
-  // both a JSON SyntaxError and c3source's shape-violation Error do not. So a
-  // coded error → "Could not read"; anything else → "Could not parse". The shape
-  // check is new behavior: a valid-JSON-but-malformed manifest (missing required
-  // fields) previously slipped past JSON.parse and crashed downstream — it now
-  // fails fast here.
   let project: any;
   try {
     project = readProjectManifest(projectPath) as any;
   } catch (err: unknown) {
-    if (err instanceof Error && typeof (err as NodeJS.ErrnoException).code === "string") {
-      throw new Error(`Could not read ${projectPath}`);
-    }
-    throw new Error(`Could not parse ${projectPath} as JSON`);
+    throw new Error(formatManifestReadError(projectPath, err));
   }
 
   // Snapshot before any section mutates `project`: the write below happens only if the

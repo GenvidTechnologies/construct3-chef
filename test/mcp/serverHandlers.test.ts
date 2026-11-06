@@ -1545,6 +1545,29 @@ describe("MCP server handler response shaping", () => {
         fs.rmSync(unparseableRoot, { recursive: true, force: true });
       }
     });
+
+    it("I345-R3: CLI and MCP sync-project render the same shape-violation line", async () => {
+      // Valid JSON that fails c3source's shape validation: the error must name the shape
+      // violation on both surfaces, through runSync's one message, not a JSON parse failure.
+      const shapeRoot = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "c3chef-i345-"));
+      fs.writeFileSync(path.join(shapeRoot, "project.c3proj"), JSON.stringify({ foo: "bar" }));
+      __setProjectRoot(shapeRoot);
+      try {
+        const cli = runCli(["sync-project", "--project-dir", shapeRoot]);
+        const mcp = (await __getHandler("sync-project")!({}, makeExtra())) as any;
+        const cliLine = cli.stderr.split(/\r?\n/).find((l) => l.startsWith("Error:"));
+        const mcpLine = String(mcp.content[0].text).split(/\r?\n/)[0];
+        expect({
+          cliExit: cli.exitCode,
+          mcpIsError: mcp.isError,
+          sameLine: cliLine === mcpLine,
+          shape: /^Error: invalid project\.c3proj: name must be a string \(.*project\.c3proj\)$/.test(mcpLine),
+          parse: /Could not parse/.test(cli.stderr + mcp.content[0].text),
+        }).to.deep.equal({ cliExit: 1, mcpIsError: true, sameLine: true, shape: true, parse: false });
+      } finally {
+        fs.rmSync(shapeRoot, { recursive: true, force: true });
+      }
+    });
   });
 
   // ── writeSourceJson wiring — no trailing newline on real write paths ──────
