@@ -10,7 +10,7 @@ generated: { by: process:maintain-wiki, at: 2026-08-20T15:40:03Z }
 
 # 0028. Documentation consolidated into the wiki tier; docs/ retired
 
-- **Status:** Accepted
+- **Status:** Accepted, superseded in part by [0071](0071-only-the-external-wiki-tier-ships-and-is-served.md) (the wiki no longer ships whole)
 - **Date:** 2026-08-20
 - **Deciders:** repo owner (explicit direction), executed via `/gvt-dev:maintain-wiki`
 

@@ -197,6 +197,17 @@ was when captured.
 - This is what makes `<wikiDir>/` pages re-verifiable: every claim traces back to
   an immutable file, not a source that may have moved on since.
 
+## External and internal pages
+
+The wiki has two tiers. A page's tier is its directory, except at the bundle root, where only `index.md` is external.
+
+- **External:** `wiki/reference/` and the bundle-root `wiki/index.md`, plus the package's `README.md` and `CHANGELOG.md`. The npm package ships all of them. The MCP server serves `docs:///index`, `docs:///reference/*` and `docs:///readme`. It does not serve `CHANGELOG.md`.
+- **Internal:** every other page, including the other root pages (`log.md`, this schema, `local-verification-practice.md`), `decisions/`, `process/`, `architecture/` and all of `raw/`. These stay in the repository and do not ship.
+
+An external page states user-visible behaviour itself. It links only to other external pages or to absolute `https:` URLs. It reaches an internal page by its `https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/…` URL. A new page is external only if it is created under `wiki/reference/`.
+
+`test/packagedDocs.test.ts` enforces the rule against the real tarball. The reason and the rejected mechanisms are in ADR [0071](decisions/0071-only-the-external-wiki-tier-ships-and-is-served.md).
+
 ## Decay / staleness policy
 
 Staleness is modelled **per page** by the frontmatter `stale_after` key

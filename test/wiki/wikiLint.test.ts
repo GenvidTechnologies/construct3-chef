@@ -37,6 +37,23 @@ describe("wiki-lint: accidental setext headings", () => {
     }
   });
 
+  it("WL387-R1: an absolute GitHub wiki link to a missing page is a dead link; one to a present page is not", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "c3chef-wikilint-"));
+    try {
+      mkdirSync(path.join(root, "wiki"));
+      writeFileSync(path.join(root, "wiki", "present.md"), "---\ntype: guide\n---\n\nBody.\n");
+      const base = "https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/";
+      writeFileSync(
+        path.join(root, "wiki", "page.md"),
+        `---\ntype: guide\n---\n\n[ok](${base}present.md) [gone](${base}missing.md) [other](https://example.com/x.md)\n`,
+      );
+      const r = lintWiki(root, "2026-10-08");
+      expect(r.dead).to.deep.equal([`wiki/page.md -> /missing.md`]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("is wired into lintWiki's report", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "c3chef-wikilint-"));
     try {

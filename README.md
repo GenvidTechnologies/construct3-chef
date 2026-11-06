@@ -150,7 +150,7 @@ The `extracted/` directory is written by `generate` and read by the MCP server. 
 
 ## Documentation
 
-All project documentation lives in the [wiki](./wiki/index.md) — reference manuals, architecture and research notes, process docs, and the decision records. Start at [wiki/index.md](./wiki/index.md); the most-used pages are:
+The reference manuals ship with the package and are served as `docs:///` resources. The rest of the wiki — architecture and research notes, process docs, and the decision records — is in the [GitHub repository](https://github.com/GenvidTechnologies/construct3-chef/tree/main/wiki). Start at [wiki/index.md](./wiki/index.md); the most-used pages are:
 
 - [wiki/reference/recipe-reference.md](./wiki/reference/recipe-reference.md) — Complete recipe reference: format, SID addressing, all 15 event sheet operations, all 12 layout operations, builder shorthands, gotchas
 - [wiki/reference/generators.md](./wiki/reference/generators.md) — Generator internals, output format, cross-referencing C3 errors, localVars matching
