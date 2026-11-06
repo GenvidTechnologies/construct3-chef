@@ -49,15 +49,15 @@ const dest = path.join(repoRoot, "test", "fixtures", "construct3-chef-sample");
 //    branch tip, and the fixture repo is small enough that a full fetch is cheap.
 //
 //    `.gitmodules` uses the ssh remote so maintainers can push straight from the
-//    submodule. CI can't: the runner authenticates over https with GITHUB_TOKEN
-//    and has no ssh key, so ssh would fail `Permission denied (publickey)` —
-//    same-org membership grants authorization, not an ssh credential. Rewrite
-//    ssh->https for this invocation only when running in CI (construct3-sample
-//    is public, so anonymous https works). `-c` propagates to the child clone via
-//    GIT_CONFIG_PARAMETERS and leaves the developer's config untouched.
-const sshToHttps = process.env.CI
-  ? `-c url."https://github.com/GenvidTechnologies/".insteadOf=git@github.com:GenvidTechnologies/ `
-  : "";
+//    submodule. The fetch here always goes over https instead: a CI runner has no
+//    ssh key (`Permission denied (publickey)`), and on a developer machine an ssh
+//    fetch can need an agent approval for each signature, which a fresh worktree
+//    or an unattended agent session cannot give. construct3-sample is public, so
+//    anonymous https works. The rewrite applies to this invocation only: `-c`
+//    propagates to the child clone via GIT_CONFIG_PARAMETERS, the clone's stored
+//    `origin` stays the ssh URL from `.gitmodules`, and the developer's config is
+//    untouched, so pushing from the submodule still uses ssh.
+const sshToHttps = `-c url."https://github.com/GenvidTechnologies/".insteadOf=git@github.com:GenvidTechnologies/ `;
 execSync(`git ${sshToHttps}submodule update --init -- "${submodule}"`, { cwd: repoRoot, stdio: "inherit" });
 
 // 2. Materialize the canonical `project/` bytes over the fixture root, then the
