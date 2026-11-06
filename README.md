@@ -126,75 +126,7 @@ Configure it in your MCP client (example for Claude Desktop or similar):
 }
 ```
 
-### Available MCP tools
-
-The server can host more than one C3 project root at once (see [Multi-project support](#multi-project-support) below). Every tool listed here except `list-projects` accepts an optional `project` id parameter to target a non-default registered project; omit it to target the default project. `txId` values are the composite `<projectId>:<counter>` string described in [Optimistic concurrency](#optimistic-concurrency).
-
-**Read tools** (read-only, idempotent):
-
-| Tool | Description |
-| ---- | ----------- |
-| `list-event-sheets` | List all event sheet JSON files in the project |
-| `list-layouts` | List all layout JSON files in the project |
-| `list-global-layers` | List each global layer with its source layout, overriding layouts, and instance count |
-| `read-dsl` | Read the human-readable DSL for an event sheet |
-| `read-dsl-index` | Read the JSON-path/SID index for recipe targeting (supports grep filter) |
-| `read-event-sids` | Read SIDs directly from source JSON (useful after apply-recipe, before regenerate) |
-| `read-scripts` | Read the extracted TypeScript for an event sheet |
-| `read-layout` | Read the layout summary (layers, instances, templates) |
-| `read-template-scope` | Read the cross-layout template scope reference |
-| `read-sid-registry` | Read the global SID registry |
-| `list-include-tree` | Show the transitive include tree for an event sheet |
-| `search` | Regex search across extracted files (DSL, TypeScript, layout summaries, JSON) |
-| `search-docs` | Search the C3 ACE reference (action/condition/expression ids, param names) for custom addons and the built-in reference cache |
-| `resolve-anchor` | Look up a DSL coordinate by line number, SID, or name pattern |
-| `navigation-graph` | Show the layout navigation graph as a from→to→line table, or as PlantUML with `format:"plantuml"` |
-| `validate-recipe` | Validate a recipe JSON without applying it (returns txId) |
-| `validate-project` | Dry-run project.c3proj sync check; returns structured `clean`; optional `section` |
-| `read-addon` | Read a C3 addon's metadata + ACE summary (or a raw entry, or list all addons); works on extracted and archive-only addons |
-| `validate-addons` | Returns structured `clean` (false on any finding in any family). Validate bundled `.c3addon` packages against `project.c3proj.usedAddons` (metadata, integrity, orphan/missing/duplicate) and each addon's `aces.json`/`plugin.js` properties against its `lang/*.json` locales; optional `addon` param scopes to one addon (by id or source-tree path). Read-only |
-| `list-addons` | Unified addon inventory — one row per addon reconciling bundled `.c3addon` packages, `usedAddons` entries, and editor-only addons, with status and version |
-| `diff-addon-aces` | Diff the ACE contract between two addon versions: added/removed ACEs plus changed param signatures |
-| `scan-addon-usage` | Returns structured `clean` (with `from`, false when any site is affected). Find where a plugin, behavior, or effect addon is used: object/family presence, event-sheet ACE call sites, and expression references; `from` reports blast radius against a prior version |
-| `preview-addon-metadata-sync` | Returns structured `clean`. Dry-run report of `version`/`author` drift between bundled `.c3addon` packages and `project.c3proj.usedAddons` — the read-only preview for `sync-addon-metadata`. Optional `addon` param scopes to one addon by id. Never writes |
-| `list-ops` | List the target project's user-defined ops (parameterized recipe templates) with their parameters |
-| `get-state` | Return server state for the target project: txId and extractedDirty flag |
-| `list-projects` | List every project registered at launch (id, root, extractedDir, default). The only tool with no `project` parameter — it enumerates the registry itself |
-
-**Mutate tools** (modify source files):
-
-| Tool | Description |
-| ---- | ----------- |
-| `apply-recipe` | Apply a recipe JSON string, optionally regenerate extracted/ |
-| `sync-project` | Sync project.c3proj to match disk; removals are withheld unless `prune: true` |
-| `scaffold-layout` | Clone a layout with new UIDs/SIDs |
-| `scaffold-sprite` | Clone a sprite objectType with new SIDs and copied images |
-| `remove-layer` | Remove a layer from a layout; strict by default, with `cascade` / `removeInstances` overrides |
-| `extract-template` | Extract an instance + its scene-graph children into a reusable master template, converting the original into a replica |
-| `templatize-in-place` | Convert an existing instance into the master template on its current layout |
-| `clone-replica-to-layouts` | Add a replica of an existing template to one or more target layouts in one call |
-| `replace-instance-with-replica` | Remove an instance and place a replica of a named template in its spot (same layer, same world props) |
-| `sync-addon-metadata` | Returns structured `clean`, evaluated after the apply. Sync `project.c3proj.usedAddons` `version`/`author` fields against bundled `.c3addon` packages; only `direction: "manifest-from-package"` writes. Optional `addon` param scopes to one addon by id |
-
-**Non-idempotent read tool** (reads source only, but returns different output per call — do not treat as idempotent for retry or caching):
-
-| Tool | Description |
-| ---- | ----------- |
-| `generate-sids` | Mint fresh unique C3 SIDs seeded from `sid-registry.txt`; minted SIDs are **not** persisted back to the registry |
-
-**Regenerate tool**:
-
-| Tool | Description |
-| ---- | ----------- |
-| `regenerate` | Run all 6 generators and update extracted/ |
-
-### Optimistic concurrency
-
-Each registered project maintains its own `txId` counter that increments on every source-file mutation, emitted and accepted on the wire as a composite `<projectId>:<counter>` string (e.g. `alpha:12`) rather than a bare integer — a bare integer would make an equal counter across two projects, the common case, silently acceptable against the wrong one. Read the current `txId` from `validate-recipe` or `get-state`, then pass it to `apply-recipe` or `sync-project`. If the target project changed between validate and apply, or the token names a different project than the call's `project` parameter, the server rejects the operation and returns the current `txId` so you can re-validate.
-
-### Multi-project support
-
-`server` can host more than one C3 project root in a single process: pass `--project-dir` repeatedly (each optionally prefixed `<id>=`), or set `C3_PROJECT_DIRS` (a `path.delimiter`-separated list of the same `[<id>=]<path>` specs). A bare `--project-dir` or `C3_PROJECT_DIR` continues to register exactly one project, unchanged. Every tool call targets exactly one project, selected by the optional `project` id parameter (see `list-projects` to discover registered ids); user-defined ops are namespaced per project as `op-<projectId>_<opName>`. See [wiki/reference/cli.md](./wiki/reference/cli.md#server) for the full launch-config precedence and [wiki/decisions/0034](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0034-mcp-server-multi-project-support.md) for the design.
+The server hosts one or more C3 projects and offers tools in four classes: read, mutate, non-idempotent read and regenerate. See [wiki/reference/mcp.md](./wiki/reference/mcp.md) for the tool list, the `txId` optimistic-concurrency token, project selection and the `docs:///` resources.
 
 ## Project structure expected
 
@@ -223,4 +155,5 @@ All project documentation lives in the [wiki](./wiki/index.md) — reference man
 - [wiki/reference/recipe-reference.md](./wiki/reference/recipe-reference.md) — Complete recipe reference: format, SID addressing, all 15 event sheet operations, all 12 layout operations, builder shorthands, gotchas
 - [wiki/reference/generators.md](./wiki/reference/generators.md) — Generator internals, output format, cross-referencing C3 errors, localVars matching
 - [wiki/reference/cli.md](./wiki/reference/cli.md) — Full CLI flag documentation for all subcommands
+- [wiki/reference/mcp.md](./wiki/reference/mcp.md) — MCP server reference: tools, responses, `txId` optimistic concurrency, project selection, user-defined op tools, `docs:///` resources
 - [wiki/reference/cli-addons.md](./wiki/reference/cli-addons.md) — Addon-tooling commands (`read-addon`, `validate-addons`, `list-addons`, `diff-addon-aces`, `scan-addon-usage`, `sync-addon-metadata`)
