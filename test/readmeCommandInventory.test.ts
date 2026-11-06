@@ -21,6 +21,7 @@ import path from "node:path";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const CLI_PATH = path.join(REPO_ROOT, "src", "cli.ts");
 const README_PATH = path.join(REPO_ROOT, "README.md");
+const MCP_PAGE_PATH = path.join(REPO_ROOT, "wiki", "reference", "mcp.md");
 const SERVER_PATH = path.join(REPO_ROOT, "src", "mcp", "server.ts");
 const OPS_REGISTRY_PATH = path.join(REPO_ROOT, "src", "mcp", "opsRegistry.ts");
 
@@ -47,7 +48,7 @@ function registeredCommands(): string[] {
  * file-wide would conflate the two and make this assertion meaningless.
  *
  * That scoping is still right, but it is no longer the whole story: the MCP
- * surface has its own guard below (`README MCP tool inventory`), added by #199.
+ * surface has its own guard below (`MCP page tool inventory`), added by #199.
  * The two stay separate parsers over separate sections rather than one merged
  * one — conflating them is exactly what this comment warns against.
  */
@@ -114,9 +115,9 @@ interface McpTool {
 }
 
 /**
- * Sub-table label each annotation preset renders under in the README.
+ * Sub-table label each annotation preset renders under in `wiki/reference/mcp.md` § `## Tools`.
  *
- * The mapping is deliberately **total**: the README's bold-labelled sub-tables
+ * The mapping is deliberately **total**: the page's bold-labelled sub-tables
  * *are* a rendering of the annotation classes, so every class has exactly one
  * slot and the placement assertion needs no per-tool exception. A fifth preset
  * therefore requires a fifth sub-table, by construction — which is the point.
@@ -174,19 +175,20 @@ function registeredMcpTools(): McpTool[] {
 }
 
 /**
- * Tool names per sub-table in the README's `### Available MCP tools` section.
+ * Tool names per sub-table in `wiki/reference/mcp.md` § `## Tools`. The page
+ * has owned the tool inventory since #386; the README no longer lists tools.
  *
  * The section is heading-scoped (to the next `## `), but the read/mutate split
  * inside it is expressed by **bold labels**, not headings — so the sub-split
  * needs its own boundary mechanism rather than the `indexOf("\n## ")` the CLI
  * half uses.
  */
-function readmeMcpTables(): Map<string, string[]> {
-  const readme = readFileSync(README_PATH, "utf-8");
-  const start = readme.indexOf("### Available MCP tools");
-  expect(start, "README is missing its '### Available MCP tools' heading").to.be.greaterThan(-1);
-  const end = readme.indexOf("\n## ", start + 1);
-  const section = readme.slice(start, end === -1 ? undefined : end);
+function mcpPageTables(): Map<string, string[]> {
+  const page = readFileSync(MCP_PAGE_PATH, "utf-8");
+  const start = page.indexOf("\n## Tools\n");
+  expect(start, "wiki/reference/mcp.md is missing its '## Tools' heading").to.be.greaterThan(-1);
+  const end = page.indexOf("\n## ", start + 1);
+  const section = page.slice(start, end === -1 ? undefined : end);
 
   const labels = [...section.matchAll(/^\*\*([^*]+?)\*\*/gm)];
   const tables = new Map<string, string[]>();
@@ -200,10 +202,10 @@ function readmeMcpTables(): Map<string, string[]> {
 }
 
 function documentedMcpTools(): string[] {
-  return [...new Set([...readmeMcpTables().values()].flat())].sort();
+  return [...new Set([...mcpPageTables().values()].flat())].sort();
 }
 
-describe("README MCP tool inventory", () => {
+describe("MCP page tool inventory", () => {
   it("documents every MCP tool the server statically registers", () => {
     const documented = documentedMcpTools();
     const missing = registeredMcpTools()
@@ -211,7 +213,7 @@ describe("README MCP tool inventory", () => {
       .map((t) => `${t.name} [${t.annotation}]`);
     expect(
       missing,
-      `Statically registered but absent from the README '### Available MCP tools' tables: ${missing.join(", ")}. ` +
+      `Statically registered but absent from the wiki/reference/mcp.md '## Tools' tables: ${missing.join(", ")}. ` +
         `Add a row for each under the sub-table matching its annotation.`,
     ).to.deep.equal([]);
   });
@@ -221,18 +223,18 @@ describe("README MCP tool inventory", () => {
     const stale = documentedMcpTools().filter((n) => !registered.includes(n));
     expect(
       stale,
-      `Listed in the README '### Available MCP tools' tables but not registered: ${stale.join(", ")}. ` +
+      `Listed in the wiki/reference/mcp.md '## Tools' tables but not registered: ${stale.join(", ")}. ` +
         `Remove the row, or restore the registration if the removal was accidental.`,
     ).to.deep.equal([]);
   });
 
   it("places every tool in the sub-table matching its annotation", () => {
-    const tables = readmeMcpTables();
+    const tables = mcpPageTables();
     const misplaced: string[] = [];
     for (const tool of registeredMcpTools()) {
       const expected = ANNOTATION_TABLE[tool.annotation];
       if (!expected) {
-        misplaced.push(`${tool.name} has annotation ${tool.annotation}, which maps to no README sub-table`);
+        misplaced.push(`${tool.name} has annotation ${tool.annotation}, which maps to no mcp.md sub-table`);
         continue;
       }
       for (const [label, names] of tables) {
@@ -243,7 +245,7 @@ describe("README MCP tool inventory", () => {
     }
     expect(
       misplaced,
-      `README MCP sub-table placement disagrees with src/mcp annotations:\n  ${misplaced.join("\n  ")}`,
+      `wiki/reference/mcp.md sub-table placement disagrees with src/mcp annotations:\n  ${misplaced.join("\n  ")}`,
     ).to.deep.equal([]);
   });
 
@@ -270,17 +272,20 @@ describe("README MCP tool inventory", () => {
   });
 
   it("states a generator count matching src/c3/generators.ts", () => {
-    const readme = readFileSync(README_PATH, "utf-8");
+    const page = readFileSync(MCP_PAGE_PATH, "utf-8");
     const generators = readFileSync(path.join(REPO_ROOT, "src", "c3", "generators.ts"), "utf-8");
     const declared = generators.match(/export const GENERATORS[^=]*=\s*\[([\s\S]*?)\n\]/);
     expect(declared, "could not find the GENERATORS array in src/c3/generators.ts").to.not.equal(null);
     const total = (declared![1].match(/name:/g) ?? []).length;
 
-    const stated = readme.match(/Run all (\d+) generators\b/);
-    expect(stated, "README's regenerate row no longer states a 'Run all N generators' count").to.not.equal(null);
+    const stated = page.match(/Run all (\d+) generators\b/);
+    expect(
+      stated,
+      "wiki/reference/mcp.md's regenerate row no longer states a 'Run all N generators' count",
+    ).to.not.equal(null);
     expect(
       Number(stated![1]),
-      `README says "Run all ${stated![1]} generators" but src/c3/generators.ts declares ${total}.`,
+      `wiki/reference/mcp.md says "Run all ${stated![1]} generators" but src/c3/generators.ts declares ${total}.`,
     ).to.equal(total);
   });
 
@@ -295,11 +300,11 @@ describe("README MCP tool inventory", () => {
     ).to.be.greaterThan(30);
     expect(
       documentedMcpTools().length,
-      "parsed no tools out of the README MCP tables — the row regex has gone stale",
+      "parsed no tools out of the wiki/reference/mcp.md tables — the row regex has gone stale",
     ).to.be.greaterThan(20);
     expect(
-      [...readmeMcpTables().keys()],
-      "the README MCP section no longer renders one bold-labelled sub-table per annotation class",
+      [...mcpPageTables().keys()],
+      "the wiki/reference/mcp.md '## Tools' section no longer renders one bold-labelled sub-table per annotation class",
     ).to.have.members(Object.values(ANNOTATION_TABLE));
   });
 });

@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A reference page for the MCP server.** `wiki/reference/mcp.md`, served as the `docs:///reference/mcp` resource, documents the MCP tools, the response shape, `txId` optimistic concurrency, project selection, user-defined op tools and the `docs:///` resources. The README now links to it instead of carrying the tool table ([#386](https://github.com/GenvidTechnologies/construct3-chef/issues/386)).
+
 ### Fixed
 
 - **`sync-project` and `validate-project` no longer report a `project.c3proj`

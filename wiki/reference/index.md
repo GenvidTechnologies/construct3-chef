@@ -15,6 +15,10 @@ See the [wiki index](../index.md) for the other sections.
 * [Generators Reference](generators.md) -
   The 6 generators, `extracted/` output format, cross-referencing, localVars
   matching
+* [MCP Server Reference](mcp.md) -
+  The MCP server surface: how to start it, the tools it offers, the response
+  shape, optimistic concurrency, project selection, user-defined op tools and
+  the docs resources
 * [User-Defined Ops](ops.md) -
   User-defined ops: op file format, param types, substitution rules, MCP
   (`list-ops` / `op-<projectId>_<opName>` / hot reload) and CLI (`list-ops` /
