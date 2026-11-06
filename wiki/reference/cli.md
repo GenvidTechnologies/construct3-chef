@@ -103,7 +103,7 @@ npx @genvidtech/construct3-chef server
 
 The server auto-generates `extracted/` on startup if it does not exist. It warns but does not fail if `project.c3proj` is not found.
 
-See [README.md](../../README.md#mcp-server) for the full list of MCP tools.
+See [README.md](https://github.com/GenvidTechnologies/construct3-chef/blob/main/README.md#mcp-server) for the full list of MCP tools.
 
 ### Multi-root launch config
 
@@ -119,7 +119,7 @@ With **two or more** specs, every root is resolved explicitly (no discovery call
 - Otherwise the id is the path's basename, lowercased, with any character outside `[a-z0-9-]` collapsed to `-` (runs of `-` collapsed, leading/trailing `-` trimmed; falls back to `"project"` if that leaves nothing).
 - A derived id colliding with one already in use gets a `-2`, `-3`, … suffix, with a warning to **stderr** (never stdout — stdout is reserved for the MCP protocol stream).
 
-An optional `--default-project <id>` names which registered project a tool call targets when its `project` parameter is omitted; it defaults to the **first** resolved spec. Project ids must satisfy `@genvidtech/mcp-utils`' `isValidProjectId`: non-empty, no `:`, and no whitespace. `:` is reserved as the separator in the composite `<projectId>:<counter>` `txId` wire format (see [README.md § Optimistic concurrency](../../README.md#optimistic-concurrency)); the whitespace and non-empty rules come from the same shared codec, so an id chef accepts is one every consumer of that format can parse back (ADR [`0036`](../decisions/0036-project-id-guard-uses-the-upstream-wire-format-rule.md)). Note this constrains only the explicit `<id>=<path>` form — a bare path is sanitized to `[a-z0-9-]`, so `--project-dir "/games/My Game"` is fine and yields `my-game`.
+An optional `--default-project <id>` names which registered project a tool call targets when its `project` parameter is omitted; it defaults to the **first** resolved spec. Project ids must satisfy `@genvidtech/mcp-utils`' `isValidProjectId`: non-empty, no `:`, and no whitespace. `:` is reserved as the separator in the composite `<projectId>:<counter>` `txId` wire format (see [README.md § Optimistic concurrency](https://github.com/GenvidTechnologies/construct3-chef/blob/main/README.md#optimistic-concurrency)); the whitespace and non-empty rules come from the same shared codec, so an id chef accepts is one every consumer of that format can parse back (ADR [`0036`](../decisions/0036-project-id-guard-uses-the-upstream-wire-format-rule.md)). Note this constrains only the explicit `<id>=<path>` form — a bare path is sanitized to `[a-z0-9-]`, so `--project-dir "/games/My Game"` is fine and yields `my-game`.
 
 ```bash
 # Two explicit roots, ids derived from each path's basename

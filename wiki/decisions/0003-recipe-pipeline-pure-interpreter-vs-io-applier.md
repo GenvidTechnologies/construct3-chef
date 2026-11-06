@@ -34,7 +34,7 @@ The recipe pipeline is split across two modules:
 
 These are different layers: a runtime-resolution defect (chokepoint 2) passes editor validation (chokepoint 1) and renders byte-identical DSL — invisible until C3 runtime.
 
-See [CLAUDE.md](../../CLAUDE.md) § "Recipe pipeline" and [wiki/reference/recipe-reference.md](../reference/recipe-reference.md) for full detail.
+See [CLAUDE.md](https://github.com/GenvidTechnologies/construct3-chef/blob/main/CLAUDE.md) § "Recipe pipeline" and [wiki/reference/recipe-reference.md](../reference/recipe-reference.md) for full detail.
 
 **Amended by ADR [0047](0047-recipe-apply-computes-every-step-in-memory-then-writes.md):** apply now computes all steps in memory and writes only after every step passed.
 

@@ -28,7 +28,7 @@ The project is exposed through two distinct views:
 
 The core workflow loop is: **read `extracted/` to locate a target → write a recipe targeting it by SID → apply to source JSON → regenerate `extracted/` → sync `project.c3proj`.**
 
-See [CLAUDE.md](../../CLAUDE.md) § "The two-surface data model" for the operational summary, and [wiki/reference/generators.md](../reference/generators.md) for generator internals and output format.
+See [CLAUDE.md](https://github.com/GenvidTechnologies/construct3-chef/blob/main/CLAUDE.md) § "The two-surface data model" for the operational summary, and [wiki/reference/generators.md](../reference/generators.md) for generator internals and output format.
 
 ## Compromise
 

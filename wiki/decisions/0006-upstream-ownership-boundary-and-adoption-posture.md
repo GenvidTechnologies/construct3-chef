@@ -31,7 +31,7 @@ The boundary runs as follows:
 
 **Young-package adoption posture**: while a `@genvid` package is young / pre-1.0, **prefer adopting upstream + accepting a local contract break** over entrenching a local workaround. When a needed primitive's *shape* doesn't fit the consuming operation, **request the right shape upstream and gate the local issue on it** rather than forcing a partial fit. The `#42 → c3source#21` case (a detection-only flat `detectManifestDrift` that couldn't back a mutating nested op; waited for the path-bearing `SectionDrift`/`DriftEntry` API) is the canonical "request the right shape, wait" precedent.
 
-See [CLAUDE.md](../../CLAUDE.md) § "Leaf dependencies" for the adoption posture, and the [leaf-dependency ledger](../process/leaf-dependency-ledger.md) for the version-by-version history and the specific adoption decisions — including the deliberate declines, recorded there so they are not re-litigated.
+See [CLAUDE.md](https://github.com/GenvidTechnologies/construct3-chef/blob/main/CLAUDE.md) § "Leaf dependencies" for the adoption posture, and the [leaf-dependency ledger](../process/leaf-dependency-ledger.md) for the version-by-version history and the specific adoption decisions — including the deliberate declines, recorded there so they are not re-litigated.
 
 ## Compromise
 

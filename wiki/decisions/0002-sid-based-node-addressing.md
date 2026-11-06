@@ -25,7 +25,7 @@ Every C3 node carries a stable `sid` (a random integer in `[1e14, 1e15)`). Recip
 
 A **module-level SID context** (`initSidContext` / `resetSidContext` in `src/c3/sidUtils.ts`) is initialized from `sid-registry.txt` before any SID is generated and reset after, guaranteeing that every newly generated SID is globally unique against the project's existing registry. `recipeApplier.applyParsed` wraps the whole apply call in `initSidContext`/`resetSidContext`; tests touching SID generation must initialize the context themselves.
 
-See [CLAUDE.md](../../CLAUDE.md) § "SIDs are the addressing system" and [wiki/reference/recipe-reference.md](../reference/recipe-reference.md) § "SID-based addressing" for operational detail.
+See [CLAUDE.md](https://github.com/GenvidTechnologies/construct3-chef/blob/main/CLAUDE.md) § "SIDs are the addressing system" and [wiki/reference/recipe-reference.md](../reference/recipe-reference.md) § "SID-based addressing" for operational detail.
 
 ## Compromise
 

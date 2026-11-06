@@ -194,7 +194,7 @@ Each registered project maintains its own `txId` counter that increments on ever
 
 ### Multi-project support
 
-`server` can host more than one C3 project root in a single process: pass `--project-dir` repeatedly (each optionally prefixed `<id>=`), or set `C3_PROJECT_DIRS` (a `path.delimiter`-separated list of the same `[<id>=]<path>` specs). A bare `--project-dir` or `C3_PROJECT_DIR` continues to register exactly one project, unchanged. Every tool call targets exactly one project, selected by the optional `project` id parameter (see `list-projects` to discover registered ids); user-defined ops are namespaced per project as `op-<projectId>_<opName>`. See [wiki/reference/cli.md](./wiki/reference/cli.md#server) for the full launch-config precedence and [wiki/decisions/0034](./wiki/decisions/0034-mcp-server-multi-project-support.md) for the design.
+`server` can host more than one C3 project root in a single process: pass `--project-dir` repeatedly (each optionally prefixed `<id>=`), or set `C3_PROJECT_DIRS` (a `path.delimiter`-separated list of the same `[<id>=]<path>` specs). A bare `--project-dir` or `C3_PROJECT_DIR` continues to register exactly one project, unchanged. Every tool call targets exactly one project, selected by the optional `project` id parameter (see `list-projects` to discover registered ids); user-defined ops are namespaced per project as `op-<projectId>_<opName>`. See [wiki/reference/cli.md](./wiki/reference/cli.md#server) for the full launch-config precedence and [wiki/decisions/0034](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0034-mcp-server-multi-project-support.md) for the design.
 
 ## Project structure expected
 
