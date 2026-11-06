@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A reference page for the MCP server.** `wiki/reference/mcp.md`, served as the `docs:///reference/mcp` resource, documents the MCP tools, the response shape, `txId` optimistic concurrency, project selection, user-defined op tools and the `docs:///` resources. The README now links to it instead of carrying the tool table ([#386](https://github.com/GenvidTechnologies/construct3-chef/issues/386)).
 
+### Changed
+
+- **The package ships and serves only the external docs; the internal wiki pages and `raw/` no longer ship** ([#387](https://github.com/GenvidTechnologies/construct3-chef/issues/387), part of [#339](https://github.com/GenvidTechnologies/construct3-chef/issues/339)). Consumer-visible: these `docs:///` resources are removed: `docs:///decisions/*`, `docs:///process/*`, `docs:///architecture/*`, `docs:///log`, `docs:///wiki-schema` and `docs:///local-verification-practice`. These stay: `docs:///index`, `docs:///reference/*` and `docs:///readme`. The `raw/` folder is no longer in the npm package. Anything that addresses a removed URI must repoint; the internal pages remain in the GitHub repository under `wiki/`.
+
 ### Fixed
 
 - **`sync-project` and `validate-project` no longer report a `project.c3proj`

@@ -17,7 +17,7 @@ generated: { by: process:tech-writer, at: 2026-08-24T00:00:00Z }
 
 # 0033. The MCP docs resource serves wiki/ directly; the pack-time alias is retired
 
-- **Status:** Accepted
+- **Status:** Accepted, superseded in part by [0071](0071-only-the-external-wiki-tier-ships-and-is-served.md) (an installed package serves only the external tier)
 - **Date:** 2026-08-24
 - **Issue:** [#207](https://github.com/GenvidTechnologies/construct3-chef/issues/207), closes [#200](https://github.com/GenvidTechnologies/construct3-chef/issues/200)
 

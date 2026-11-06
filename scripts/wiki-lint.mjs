@@ -22,7 +22,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
-import { resolveWikiDir } from "./gen-wiki-index.mjs";
+import { resolveWikiDir, GITHUB_WIKI_BASE } from "./gen-wiki-index.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const slash = (p) => p.split(path.sep).join("/");
@@ -123,8 +123,12 @@ export function lintWiki(repoRoot = REPO_ROOT, today = new Date().toISOString().
     const body = stripCode(raw);
     const dir = slash(path.dirname(f));
     for (const m of body.matchAll(/\]\(([^)\s]+?)(#[^)\s]*)?\)/g)) {
-      const target = m[1];
-      if (EXTERNAL.test(target)) continue;
+      let target = m[1];
+      // The shipped root index names internal pages by absolute GitHub URL.
+      // Map that form to its bundle path so a stale one is reported like a
+      // relative link. Every other http(s) URL stays external.
+      if (target.startsWith(GITHUB_WIKI_BASE)) target = "/" + target.slice(GITHUB_WIKI_BASE.length);
+      else if (EXTERNAL.test(target)) continue;
       const abs = resolveTarget(target, dir, absWiki);
       const inBundle = abs === absWiki || abs.startsWith(absWiki + "/");
       const rel = slash(path.relative(repoRoot, f));
@@ -146,7 +150,13 @@ export function lintWiki(repoRoot = REPO_ROOT, today = new Date().toISOString().
   for (const idx of indexes) {
     const dir = slash(path.dirname(idx));
     for (const m of stripCode(readFileSync(idx, "utf8")).matchAll(/\]\(([^)\s#]+\.md)/g)) {
-      listed.add(resolveTarget(m[1], dir, absWiki));
+      // The shipped root index links internal pages by absolute GitHub URL;
+      // that URL names the bundle page, so it counts as listing it.
+      listed.add(
+        m[1].startsWith(GITHUB_WIKI_BASE)
+          ? slash(path.join(absWiki, m[1].slice(GITHUB_WIKI_BASE.length)))
+          : resolveTarget(m[1], dir, absWiki),
+      );
     }
   }
   const orphans = pages.filter((p) => !listed.has(p)).map((p) => slash(path.relative(repoRoot, p)));

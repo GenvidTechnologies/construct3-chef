@@ -630,3 +630,12 @@ See the [wiki index](../index.md) for the other sections.
   (no exit code and no `clean` change), and render every occurrence on both
   sides as written. The record holds the eight policy answers of #344
   ([#344](https://github.com/GenvidTechnologies/construct3-chef/issues/344))
+* [0071. Only the external wiki tier ships in the package and is served as docs:/// resources](0071-only-the-external-wiki-tier-ships-and-is-served.md) -
+  The npm package ships only `wiki/index.md` and `wiki/reference/` (plus
+  `README.md` and `CHANGELOG.md`), and the MCP server serves only
+  `docs:///index`, `docs:///reference/*` and `docs:///readme`. Decision
+  records, process docs, architecture notes, the log, the schema and `raw/`
+  stay in the repository. The mechanism is a narrower `package.json` `files`
+  list; `exposeDocs` keeps `docsDir: "wiki"`, so every external URI is
+  unchanged
+  ([#387](https://github.com/GenvidTechnologies/construct3-chef/issues/387))
