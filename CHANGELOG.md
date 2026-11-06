@@ -363,13 +363,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recipe `objectTypes` CREATE, which never refused such a name; only `..`,
   `.`, and names made only of dots and spaces are refused
   ([#267](https://github.com/GenvidTechnologies/construct3-chef/issues/267),
-  ADR [`0060`](wiki/decisions/0060-scaffold-sprite-shares-the-objecttype-name-rule.md)).
+  ADR [`0060`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0060-scaffold-sprite-shares-the-objecttype-name-rule.md)).
 
 - **MCP `sync-project` bumps the project's `txId` only when it wrote
   `project.c3proj`.** It used to bump on every successful call. A no-op sync
   now leaves the token unchanged, as `sync-addon-metadata` already did
   ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310),
-  ADR [`0061`](wiki/decisions/0061-sync-treats-the-timelines-transitions-container-as-always-present.md)).
+  ADR [`0061`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0061-sync-treats-the-timelines-transitions-container-as-always-present.md)).
 
 - **`applyNameDrift` now throws on a drift entry it cannot resolve**
   (`sync: cannot apply <kind> drift for <section> "<name>"`). It used to record
@@ -453,7 +453,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other sections. Sync no longer rewrites unchanged bytes or logs `Updated`
   for a no-op
   ([#310](https://github.com/GenvidTechnologies/construct3-chef/issues/310),
-  ADR [`0061`](wiki/decisions/0061-sync-treats-the-timelines-transitions-container-as-always-present.md)).
+  ADR [`0061`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0061-sync-treats-the-timelines-transitions-container-as-always-present.md)).
   Known limitation: a manifest an earlier sync already corrupted with a named
   `transitions` subfolder still validates clean and is not repaired
   ([#333](https://github.com/GenvidTechnologies/construct3-chef/issues/333)).
@@ -468,7 +468,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is case-sensitive, so `Foo.JSON` is refused),
   and a `--source` that is a directory (a raw `EISDIR` before)
   ([#267](https://github.com/GenvidTechnologies/construct3-chef/issues/267),
-  ADR [`0060`](wiki/decisions/0060-scaffold-sprite-shares-the-objecttype-name-rule.md)).
+  ADR [`0060`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0060-scaffold-sprite-shares-the-objecttype-name-rule.md)).
 
 - **A recipe `objectTypes` CREATE and an `addInstVars` `type` now use one
   objectType identity (basename, any subfolder, letter case ignored).**
@@ -723,7 +723,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `normalizeRecipePaths` keeps its signature but now **throws** on a collision.
   The public `normalizeFileKey`/`normalizeLayoutKey` now return the canonical
   form for backslash, `./`, `//` and `.JSON` inputs.
-  See ADR [0046](wiki/decisions/0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md).
+  See ADR [0046](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0046-recipe-and-scaffold-paths-have-one-canonical-case-insensitive-identity.md).
 - **`scaffold-layout` and `scaffold-sprite` compare names with letter case
   ignored.** **Behaviour change:** a case-only name conflict is now refused and
   names the on-disk spelling; `output-exists` uses the exact name on disk. Part
@@ -816,7 +816,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same breakdown line but no gate parameter, since it has no exit code to
   control.
   ([#220](https://github.com/GenvidTechnologies/construct3-chef/issues/220),
-  ADR [`0038`](wiki/decisions/0038-validate-addons-deny-list-family-gating.md))
+  ADR [`0038`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0038-validate-addons-deny-list-family-gating.md))
 - **A `Changelog Notice` CI check now runs on every PR.** It flags a PR that
   carries a user-visible change but adds no `## [Unreleased]` entry.
   "User-visible" is a deny-list: exempt only when the Conventional-Commit
@@ -828,7 +828,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   PR-body line `Changelog: none — <reason>`; the reason is mandatory. The
   check is advisory — it does not block a merge.
   ([#218](https://github.com/GenvidTechnologies/construct3-chef/issues/218),
-  ADR [`0039`](wiki/decisions/0039-changelog-notice-workflow-deny-list.md))
+  ADR [`0039`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0039-changelog-notice-workflow-deny-list.md))
 
 - **The MCP server gains `--discover-projects`**, opt-in multi-root
   auto-discovery. With the flag, a launch given no explicit `--project-dir`
@@ -844,7 +844,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   otherwise silently become the default and discovery order is not a
   meaningful ranking.
   ([#216](https://github.com/GenvidTechnologies/construct3-chef/issues/216),
-  ADR [`0040`](wiki/decisions/0040-opt-in-multi-root-discovery.md))
+  ADR [`0040`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0040-opt-in-multi-root-discovery.md))
 
 - **One MCP server process now hosts N Construct 3 project roots.** Every tool
   call still targets exactly one project — there is no fan-out and no
@@ -863,7 +863,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   call, byte-for-byte, including its cwd-fallback stderr warning.
   ([#212](https://github.com/GenvidTechnologies/construct3-chef/pull/212),
   closes [#95](https://github.com/GenvidTechnologies/construct3-chef/issues/95),
-  ADR [`0034`](wiki/decisions/0034-mcp-server-multi-project-support.md))
+  ADR [`0034`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0034-mcp-server-multi-project-support.md))
 - **`list-projects`** — enumerates the registered projects (id, root,
   `extractedDir`, which one is default). It is the sole tool kept on the plain
   registration path rather than the per-project one every other tool now
@@ -908,7 +908,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   staleness rather than silently serving stale output.
   ([#212](https://github.com/GenvidTechnologies/construct3-chef/pull/212),
   closes [#95](https://github.com/GenvidTechnologies/construct3-chef/issues/95),
-  ADR [`0034`](wiki/decisions/0034-mcp-server-multi-project-support.md))
+  ADR [`0034`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0034-mcp-server-multi-project-support.md))
 - Bumped `@genvidtech/mcp-utils` to `^0.9.0`. Verified inert for chef today —
   the full `dist/` diff is a `walkFiles` docstring path fix, a
   `resolveRootFolder` reimplementation over a new plural
@@ -940,7 +940,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [mcp-utils#25](https://github.com/GenvidTechnologies/mcp-utils/issues/25);
   see the codec-adoption entry below for how that gate resolved.
   ([#217](https://github.com/GenvidTechnologies/construct3-chef/issues/217),
-  ADR [`0036`](wiki/decisions/0036-project-id-guard-uses-the-upstream-wire-format-rule.md))
+  ADR [`0036`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0036-project-id-guard-uses-the-upstream-wire-format-rule.md))
 
 - **Breaking: the txId parser now rejects four input shapes it previously
   accepted or silently mangled, and one of those was a genuine bug fix.**
@@ -968,7 +968,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     can't coincide with a live counter, since real counters stay small — but
     it accepted input it should have rejected.
   ([#217](https://github.com/GenvidTechnologies/construct3-chef/issues/217),
-  ADR [`0037`](wiki/decisions/0037-adopt-upstream-txtoken-codec-and-make-the-no-wrapper-decline-permanent.md))
+  ADR [`0037`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0037-adopt-upstream-txtoken-codec-and-make-the-no-wrapper-decline-permanent.md))
 
 ### Fixed
 
@@ -985,7 +985,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `createProjectContext` merges, so the two paths were not guaranteed to agree
   even in principle. Restart the server to pick up a config edit.
   ([#211](https://github.com/GenvidTechnologies/construct3-chef/issues/211),
-  ADR [`0035`](wiki/decisions/0035-mcp-chef-config-is-launch-fixed-per-context.md))
+  ADR [`0035`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0035-mcp-chef-config-is-launch-fixed-per-context.md))
 
   > `DEFAULT_CHEF_CONFIG` is deliberately **not** unified along with it. Its use
   > by the `__setProjectRoot`/`__resetTestState` test seams is defended by the
@@ -1010,7 +1010,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs:///` name from `1.1.0` must be repointed.**
   ([#207](https://github.com/GenvidTechnologies/construct3-chef/issues/207),
   closes [#200](https://github.com/GenvidTechnologies/construct3-chef/issues/200),
-  ADR [`0033`](wiki/decisions/0033-mcp-docs-resource-serves-wiki-directly.md))
+  ADR [`0033`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0033-mcp-docs-resource-serves-wiki-directly.md))
 
   > The resolvable form is `@construct3-chef:docs://<path>`
   > (`@server:protocol://resource`). A bare `construct3-chef://docs` transposes
@@ -1020,7 +1020,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and enumerable-`list` capabilities behind the change above
   ([mcp-utils#15](https://github.com/GenvidTechnologies/mcp-utils/issues/15)).
   This was the explicit retirement condition ADR
-  [`0029`](wiki/decisions/0029-flat-docs-alias-generated-into-the-tarball.md)
+  [`0029`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0029-flat-docs-alias-generated-into-the-tarball.md)
   named for itself; that ADR is now **superseded**, and the machinery it
   introduced — `scripts/gen-docs-alias.mjs`, its test, the `docs:alias` npm
   script, and the `prepack`/`postpack` steps — is deleted. The docs resource is
@@ -1032,7 +1032,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   retired; `wiki/` is this repo's only documentation tier.
   ([#194](https://github.com/GenvidTechnologies/construct3-chef/pull/194),
   [#197](https://github.com/GenvidTechnologies/construct3-chef/pull/197), ADR
-  [`0028`](wiki/decisions/0028-documentation-consolidated-into-the-wiki-tier.md))
+  [`0028`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0028-documentation-consolidated-into-the-wiki-tier.md))
 
 ### Fixed
 
@@ -1048,7 +1048,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   source file. `extracted/` is unchanged and keeps its trailing newline — it is
   chef's own read surface, not C3 source.
   ([#195](https://github.com/GenvidTechnologies/construct3-chef/issues/195), ADR
-  [`0030`](wiki/decisions/0030-c3-source-json-written-without-a-trailing-newline.md))
+  [`0030`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0030-c3-source-json-written-without-a-trailing-newline.md))
 
 - The MCP `docs:///` resource served **zero** documents and threw `ENOENT` on
   every read between the `docs/` → `wiki/` consolidation and the adoption above.
@@ -1069,7 +1069,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "formerly …" provenance prose stays intact and needs no exclusion — a pointer
   exists to resolve, whereas rewriting the prose would make the sentence false.
   ([#203](https://github.com/GenvidTechnologies/construct3-chef/issues/203), ADR
-  [`0032`](wiki/decisions/0032-retired-org-link-targets-are-repointed-prose-is-not.md))
+  [`0032`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0032-retired-org-link-targets-are-repointed-prose-is-not.md))
 
 - Documented the `list-global-layers` MCP tool and the `global-layers.txt` report
   format in `wiki/reference/generators.md`, and extended the README inventory
@@ -1079,7 +1079,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   five against six.
   ([#196](https://github.com/GenvidTechnologies/construct3-chef/issues/196),
   [#199](https://github.com/GenvidTechnologies/construct3-chef/issues/199), ADR
-  [`0031`](wiki/decisions/0031-mcp-tool-inventory-guard-spans-two-modules.md))
+  [`0031`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0031-mcp-tool-inventory-guard-spans-two-modules.md))
 ## [1.1.0] - 2026-08-16
 
 ### Added

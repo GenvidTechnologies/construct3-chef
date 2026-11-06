@@ -51,7 +51,7 @@ implementations of the same validation, one in `src/cli.ts` and one in
 ## Decision
 
 1. **A read-only plan step plus write primitives, off-barrel.**
-   [`src/c3/scaffoldPlan.ts`](../../src/c3/scaffoldPlan.ts) exports
+   [`src/c3/scaffoldPlan.ts`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/src/c3/scaffoldPlan.ts) exports
    `planLayoutScaffold` and `planSpriteScaffold`, which validate in a fixed
    order and never write: containment, name check, source existence, the #254
    conflict guard from ADR 0044, then the clone. A plan is either a rejection

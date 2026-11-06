@@ -27,7 +27,7 @@ Both surfaces are **thin wrappers** over the pure library in `src/c3/`. All logi
 
 When adding a capability: implement it in `src/c3/`, then surface it in both `cli.ts` and `server.ts`.
 
-See [CLAUDE.md](../../CLAUDE.md) § "What this is" for the guiding statement.
+See [CLAUDE.md](https://github.com/GenvidTechnologies/construct3-chef/blob/main/CLAUDE.md) § "What this is" for the guiding statement.
 
 ## Compromise
 
