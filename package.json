@@ -43,8 +43,8 @@
 	},
 	"files": [
 		"dist",
-		"wiki",
-		"raw",
+		"wiki/index.md",
+		"wiki/reference",
 		"CHANGELOG.md",
 		"LICENSE",
 		"README.md"
