@@ -244,8 +244,8 @@ read the published `dist`, not the issue title.
 
 The exact commands the triage skill runs to apply **approved** changes. `{id}`,
 `{type}`, `{p}`, `{a}`, `{text}`, `{canonical}`, `{other}`, `{title}`, `{body}`,
-`{tmpfile}`, `{triagedLabel}`, `{needsInfoLabel}`, `{otherTypes}`, and
-`{otherPriorities}` are substituted by the skill.
+`{tmpfile}`, `{triagedLabel}`, `{needsInfoLabel}`, `{otherTypes}`,
+`{otherPriorities}`, and `{closeReason}` are substituted by the skill.
 
 - Set type: `gh issue edit {id} --add-label "{type}" --remove-label "{otherTypes}"` — `{otherTypes}` is the other two of `enhancement,bug,documentation`
 - Set priority: `gh issue edit {id} --add-label "priority/{p}" --remove-label "{otherPriorities}"` — `{otherPriorities}` is the other three of `priority/P0,priority/P1,priority/P2,priority/P3`
@@ -261,10 +261,11 @@ removes the overlap as a candidate. Fold an issue's label changes into one
 - Add area: `gh issue edit {id} --add-label "area:{a}"`
 - Remove area: `gh issue edit {id} --remove-label "area:{a}"`
 - Edit body (language fix / fill missing info): `gh issue edit {id} --body-file {tmpfile}` — the skill writes the approved new body to `{tmpfile}` first
-- Comment: `gh issue comment {id} --body "{text}"`
+- Comment: `gh issue comment {id} --body-file {tmpfile}` — the skill writes the comment text to `{tmpfile}` first, so backticks and other shell characters in the text reach the tracker unchanged
 - Flag needs-info: `gh issue edit {id} --add-label {needsInfoLabel}` (pair with a Comment saying what's missing) — here `{needsInfoLabel}` = `to refine`
 - Mark duplicate: `gh issue edit {id} --add-label duplicate` then `gh issue comment {id} --body "Duplicate of #{canonical}"`
 - Close duplicate (only with approval): `gh issue close {id} --reason "not planned" --comment "Duplicate of #{canonical}"`
+- Close as completed or not planned (only with approval): `gh issue close {id} --reason "{closeReason}"` — post the reason first through the Comment recipe; `{closeReason}` is `completed` or `not planned`
 - Create split issue: `gh issue create --title "{title}" --body "{body}" --label "{type},area:{a}"`
 - Link dependency: `gh issue comment {id} --body "Blocked by #{other}"`
 - Stamp triaged: `gh issue edit {id} --add-label {triagedLabel}`
