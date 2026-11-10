@@ -13,8 +13,9 @@ See the [wiki index](../index.md) for the other sections.
   `indexInParent` staleness rationale (gotcha #34)
 * [0003. Recipe pipeline split: pure interpreter vs. I/O applier](0003-recipe-pipeline-pure-interpreter-vs-io-applier.md) -
   `recipeInterpreter.ts` (pure, no I/O) split from `recipeApplier.ts`
-  (orchestrator with I/O); two pre-write validation chokepoints
-  (`assertEditorValid`, `validateInsertedCustomActions`)
+  (orchestrator with I/O); pre-write validation chokepoints in the applier
+  (`assertEditorValid`, `validateInsertedCustomActions`, and since ADR 0072 a
+  boolean-slot check after every sheet is computed)
 * [0004. Dual CLI + MCP surface over one shared pure library and shared formatters](0004-dual-surface-shared-library-and-formatters.md) -
   CLI + MCP as thin wrappers over `src/c3/`; shared formatters keep outputs
   byte-identical across both surfaces
@@ -639,3 +640,12 @@ See the [wiki index](../index.md) for the other sections.
   list; `exposeDocs` keeps `docsDir: "wiki"`, so every external URI is
   unchanged
   ([#387](https://github.com/GenvidTechnologies/construct3-chef/issues/387))
+* [0072. Recipe writes to boolean and combo slots are checked after compute](0072-recipe-writes-to-boolean-and-combo-slots-are-checked-after-compute.md) -
+  The recipe applier gains a third check, run after every event sheet is
+  computed and before anything is written. It refuses a value that a boolean
+  slot or a "true"/"false" choice slot cannot hold, over the slots the recipe
+  wrote. Slot types come from the callee's parameters and from a built-in
+  table keyed by owner. Per sheet, a native boolean written into a
+  "true"/"false" choice is stored as its string. The built-in table is a local
+  bridge until c3source ships it, retired by a tripwire test
+  ([#371](https://github.com/GenvidTechnologies/construct3-chef/issues/371))

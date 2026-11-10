@@ -77,7 +77,7 @@ Files whose names fail this check are skipped (a load error is reported by `list
 
 Placeholders take the form `{{PARAM}}` where `PARAM` is a declared param name. Substitution is applied recursively to all strings and object keys in the recipe.
 
-**Typed whole-value substitution.** When a string is exactly `"{{PARAM}}"` (nothing else), it is replaced by the param's typed value: a `number` param yields a real JSON number, `boolean` yields a boolean, `string` yields a string. This is how `"count": "{{MAX}}"` becomes `"count": 5` rather than `"count": "5"`.
+**Typed whole-value substitution.** When a string is exactly `"{{PARAM}}"` (nothing else), it is replaced by the param's typed value: a `number` param yields a real JSON number, `boolean` yields a boolean, `string` yields a string. This is how `"count": "{{MAX}}"` becomes `"count": 5` rather than `"count": "5"`. A `boolean` param substituted whole into a `"true"`/`"false"` choice param is stored as the string `"true"` or `"false"`. An op that interpolates text into a boolean slot is refused like any other recipe, with the `Boolean-slot validation failed:` error.
 
 **Text interpolation.** When `{{PARAM}}` appears embedded in a larger string (`"Screen_{{NAME}}"`), the token is replaced by `String(value)` and the result stays a string.
 
