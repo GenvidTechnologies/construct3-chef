@@ -2,7 +2,7 @@
 type: decision-record
 title: "0003. Recipe pipeline split: pure interpreter vs. I/O applier"
 description: >-
-  `recipeInterpreter.ts` (pure, no I/O) split from `recipeApplier.ts` (orchestrator with I/O); two pre-write validation chokepoints (`assertEditorValid`, `validateInsertedCustomActions`)
+  `recipeInterpreter.ts` (pure, no I/O) split from `recipeApplier.ts` (orchestrator with I/O); pre-write validation chokepoints in the applier (`assertEditorValid`, `validateInsertedCustomActions`, and since ADR 0072 a boolean-slot check after every sheet is computed)
 tags: [decision, architecture]
 status: stable
 generated: { by: process:maintain-wiki, at: 2026-08-20T15:29:10Z }
@@ -37,6 +37,8 @@ These are different layers: a runtime-resolution defect (chokepoint 2) passes ed
 See [CLAUDE.md](https://github.com/GenvidTechnologies/construct3-chef/blob/main/CLAUDE.md) § "Recipe pipeline" and [wiki/reference/recipe-reference.md](../reference/recipe-reference.md) for full detail.
 
 **Amended by ADR [0047](0047-recipe-apply-computes-every-step-in-memory-then-writes.md):** apply now computes all steps in memory and writes only after every step passed.
+
+**Amended 2026-11-10 ([#371](https://github.com/GenvidTechnologies/construct3-chef/issues/371)):** the applier now has a third check, run after all event sheets are computed and before anything is written. It refuses a value that a boolean slot or a "true"/"false" choice slot cannot hold (ADR [0072](0072-recipe-writes-to-boolean-and-combo-slots-are-checked-after-compute.md)).
 
 ## Compromise
 
