@@ -212,6 +212,12 @@ Inserts a single event. Supports SID-based and position-based targeting.
 { "op": "insert-event", "path": "events[2].children", "index": 0, "block": { ... } }
 ```
 
+**Top level of the sheet:** omit `path` (it defaults to the sheet's top level). Without `index` the event is appended. A `path` of `"events"` is refused with `Invalid jsonPath: malformed segment "events"`.
+
+```json
+{ "op": "insert-event", "index": 0, "function-block": { ... } }
+```
+
 **SID-based** — insert after a specific existing event:
 
 ```json
