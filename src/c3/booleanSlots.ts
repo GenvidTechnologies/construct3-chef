@@ -447,7 +447,7 @@ export function formatBooleanSlotFinding(f: BooleanSlotFinding): string {
     if (f.value === "true" || f.value === "false") {
       body = `${phrase} is boolean, but the recipe writes the string "${f.value}", which C3 loads as true. Write the native boolean ${f.value} (no quotes).`;
     } else {
-      body = `${phrase} is boolean, but the recipe writes ${renderValue(f.value)}. C3 keeps only true or false here and loads any other value as true. Write a native true or false.`;
+      body = `${phrase} is boolean, but the recipe writes ${renderValue(f.value)}. C3 keeps only true or false here: it loads an empty string, 0 or null as false and any other value as true. Write a native true or false.`;
     }
   } else {
     const iv = f.classification.initialValue;

@@ -412,7 +412,8 @@ describe("boolean slot rules and messages", () => {
     assert.equal(
       line,
       'eventSheets/X.json events[0].actions[0] (event 1, sid 77): function "Unlock" parameter 1 "isBulk" is boolean, ' +
-        'but the recipe writes "isBulk". C3 keeps only true or false here and loads any other value as true. ' +
+        'but the recipe writes "isBulk". C3 keeps only true or false here: it loads an empty string, 0 or null as ' +
+        "false and any other value as true. " +
         'Write a native true or false. For a computed value, branch with a condition and "else", pass a number ' +
         "and test it with != 0, or use a script block.",
     );
