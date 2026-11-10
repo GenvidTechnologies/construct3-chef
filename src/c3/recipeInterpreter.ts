@@ -598,7 +598,8 @@ export function expandAction(sidGen: SidGenerator, shorthand: BuilderAction): C3
   if ("call" in shorthand) {
     return buildCallAction(sidGen, {
       callFunction: shorthand.call,
-      // C3 stores a boolean param as a native JSON boolean; the declared `parameters?: string[]` type
+      // C3 stores a boolean function parameter as a native JSON boolean (the recipe applier refuses any other
+      // value in a boolean slot, ADR 0072); the declared `parameters?: string[]` type
       // under-states that, so the cast is deliberate. Widening the type is a breaking change: see
       // wiki/decisions/0052.
       parameters: shorthand.params?.map((p) => (typeof p === "string" || typeof p === "boolean" ? p : String(p))) as
@@ -647,7 +648,9 @@ export function expandAction(sidGen: SidGenerator, shorthand: BuilderAction): C3
           `If this is a System action, add it to SYSTEM_ACTION_IDS or set "object": "System".`,
       );
     }
-    // C3 stores a boolean param as a native JSON boolean; numbers and expressions are strings. The
+    // C3 stores a `boolean` param as a native JSON boolean; numbers and expressions are strings. A native boolean
+    // kept here for a "true"/"false" choice param (a combo, e.g. set-boolean-eventvar's "value") is turned into
+    // its item string by the recipe applier, not here (ADR 0072). The
     // declared `StandardAction.parameters` type (`Record<string, string>`) under-states that runtime
     // shape, so the cast below is deliberate (as in `patch-action-param`). Widening the type is a
     // breaking change deferred to the next major: see wiki/decisions/0052.
@@ -2298,7 +2301,9 @@ interface ParamTypeRule {
 /**
  * Rules for validating C3 action/condition parameter types in builder shorthands.
  * Maps action/condition IDs to parameter constraints.
- * Only checks literal values — C3 expressions that might evaluate correctly are not flagged.
+ * These are shorthand-level rules keyed by id alone, checked before the recipe computes. Whether a param is a
+ * boolean slot or a "true"/"false" choice is decided after compute, by owner, in `booleanSlots.ts` (ADR 0072); do
+ * not add a rule here for a slot that check owns.
  */
 export const PARAM_TYPE_RULES: Record<string, ParamTypeRule[]> = {
   "compare-two-values": [
@@ -2365,7 +2370,8 @@ export const PARAM_TYPE_RULES: Record<string, ParamTypeRule[]> = {
 
 /**
  * Validate params of a builder action shorthand against PARAM_TYPE_RULES.
- * Returns warning strings for any type mismatches found.
+ * Returns one message per problem found; `validateRecipe` treats every message as an error, so any entry refuses
+ * the recipe.
  */
 export function validateActionParams(action: Record<string, unknown>, prefix: string): string[] {
   const warnings: string[] = [];

@@ -33,8 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **The package ships and serves only the external docs; the internal wiki pages and `raw/` no longer ship** ([#387](https://github.com/GenvidTechnologies/construct3-chef/issues/387), part of [#339](https://github.com/GenvidTechnologies/construct3-chef/issues/339)). Consumer-visible: these `docs:///` resources are removed: `docs:///decisions/*`, `docs:///process/*`, `docs:///architecture/*`, `docs:///log`, `docs:///wiki-schema` and `docs:///local-verification-practice`. These stay: `docs:///index`, `docs:///reference/*` and `docs:///readme`. The `raw/` folder is no longer in the npm package. Anything that addresses a removed URI must repoint; the internal pages remain in the GitHub repository under `wiki/`.
+- **A recipe that writes an expression, or the string `"true"`/`"false"`, into a boolean slot is now refused** ([#371](https://github.com/GenvidTechnologies/construct3-chef/issues/371)). Before, it was accepted.
 
 ### Fixed
+
+- **`validate-recipe` and `apply-recipe` refuse a value that a boolean slot or a `"true"`/`"false"` choice slot cannot hold** ([#371](https://github.com/GenvidTechnologies/construct3-chef/issues/371)). This applies to CLI and MCP, dry-run and apply, and user-defined ops, in the slots a recipe writes: function-call arguments, custom-action arguments and built-in ACE parameters. Before, the recipe was accepted and the editor replaced the value on the next save. Known limitations: addon ACE parameters are not checked ([#394](https://github.com/GenvidTechnologies/construct3-chef/issues/394)), and call sites that a recipe turns boolean without writing them are not checked ([#396](https://github.com/GenvidTechnologies/construct3-chef/issues/396)).
+- **A native boolean written into a `"true"`/`"false"` choice is stored as the string** (for example the `value` of `set-boolean-eventvar`; [#371](https://github.com/GenvidTechnologies/construct3-chef/issues/371)). Since [#285](https://github.com/GenvidTechnologies/construct3-chef/issues/285) it was stored as a native boolean, which the C3 editor does not accept as an item there. Values already on disk are not repaired ([#395](https://github.com/GenvidTechnologies/construct3-chef/issues/395)).
 
 - **`sync-project` and `validate-project` no longer report a `project.c3proj`
   that is valid JSON but fails shape validation as `Could not parse … as JSON`**
