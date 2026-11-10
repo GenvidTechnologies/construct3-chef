@@ -8,7 +8,8 @@ import type { BuiltinParamAceKind, BuiltinParamSlot } from "./builtinBooleanPara
  * Pure check for the values a recipe writes into boolean slots of an event sheet.
  *
  * A "boolean" slot (a boolean function or custom-ACE parameter, or a built-in
- * boolean parameter) keeps only a constant: C3 loads any non-boolean value as true.
+ * boolean parameter) keeps only a constant: C3 loads an empty string, 0 or null as
+ * false and any other non-boolean value, the string "false" included, as true.
  * A "combo-bool" slot is a choice whose items are exactly "false" and "true": C3
  * stores the item string, so a native boolean there is normalized and any other
  * string is refused.
