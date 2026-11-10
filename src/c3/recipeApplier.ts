@@ -2,7 +2,7 @@ import { readFileSync, mkdirSync, existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { GENERATORS } from "./generators.js";
 import { writeSourceJson, serializeSourceJson } from "./sourceJson.js";
-import { diskIo, OverlayIo } from "./sourceIo.js";
+import { diskIo, OverlayIo, FOLD_CASE, type SourceIo } from "./sourceIo.js";
 import {
   PLUGIN_BASE_CLASS,
   getObjectTypePath,
@@ -61,6 +61,17 @@ import { findCaseFoldedMatch, findSpellingMismatches, type SpellingRef } from ".
 import { expandWorkflows, type LoadLayout } from "./workflowExpansion.js";
 import { applyNarration, dryRunNarration, type RecipeNarration } from "./recipeNarration.js";
 import { buildCustomAceIndex, validateInsertedCustomActions, type CustomAceIndex } from "./customAceIndex.js";
+import {
+  buildOwnerResolver,
+  buildSignatureIndex,
+  findBooleanSlotViolations,
+  findWrittenSlots,
+  formatBooleanSlotFailure,
+  normalizeWrittenComboBools,
+  type BooleanSlotFinding,
+  type OwnerRecord,
+  type OwnerResolver,
+} from "./booleanSlots.js";
 
 // ─── Constants ───
 
@@ -129,6 +140,74 @@ function assertCustomActionsValid(
   if (errors.length > 0) {
     throw new Error(`Custom-action validation failed for ${label}:\n${errors.map((e) => `  - ${e}`).join("\n")}`);
   }
+}
+
+/** An event sheet the files step computed, kept for the boolean-slot check that runs after the step. */
+interface TouchedSheet {
+  filePath: string;
+  original: EventSheet;
+  modified: EventSheet;
+}
+
+function readOwnerRecord(readText: () => string): OwnerRecord | undefined {
+  try {
+    const record = JSON.parse(readText()) as OwnerRecord;
+    return typeof record?.name === "string" ? record : undefined;
+  } catch {
+    // An unreadable record owns nothing; the slot it would classify is skipped, not refused.
+    return undefined;
+  }
+}
+
+/**
+ * Resolve which plugin or behavior owns an ACE's object class. Object types are read through `io`, so one the
+ * recipe created in this pass is visible. Families are read from disk: a recipe cannot create or change one.
+ */
+function buildAceOwnerResolver(io: SourceIo, rootDir: string): OwnerResolver {
+  const project = openProject(rootDir);
+  const objectTypes: OwnerRecord[] = [];
+  for (const file of io.listObjectTypeFiles(project.objectTypesDir)) {
+    const record = readOwnerRecord(() => io.readText(file));
+    if (record) objectTypes.push(record);
+  }
+  const families: OwnerRecord[] = [];
+  for (const file of project.findAllFamilies()) {
+    const record = readOwnerRecord(() => readFileSync(file, "utf-8"));
+    if (record) families.push(record);
+  }
+  return buildOwnerResolver(objectTypes, families);
+}
+
+/**
+ * Refuse a recipe that writes a value a boolean or "true"/"false" choice slot cannot hold (#371). Runs after every
+ * event sheet is computed, so a definition in any sheet of this recipe, or on disk, is visible to a call in any
+ * other sheet whatever the order of the recipe keys. Only slots the recipe wrote are checked.
+ */
+function assertBooleanSlotsValid(rootDir: string, touched: readonly TouchedSheet[], owners: OwnerResolver): void {
+  const keyOf = (abs: string): string => {
+    const resolved = path.resolve(abs);
+    return FOLD_CASE ? resolved.toLowerCase() : resolved;
+  };
+  const touchedKeys = new Set(touched.map((t) => keyOf(path.join(rootDir, t.filePath))));
+  const sheets: EventSheet[] = [];
+  for (const abs of find_all_eventsheets_path(openProject(rootDir).eventSheetsDir)) {
+    if (touchedKeys.has(keyOf(abs))) continue;
+    try {
+      sheets.push(JSON.parse(readFileSync(abs, "utf-8")) as EventSheet);
+    } catch {
+      // An unparseable sheet defines no callee; calls to it are skipped, not refused.
+    }
+  }
+  for (const t of touched) sheets.push(t.modified);
+  const signatures = buildSignatureIndex(sheets);
+
+  const findings: BooleanSlotFinding[] = [];
+  for (const t of touched) {
+    findings.push(
+      ...findBooleanSlotViolations(t.filePath, findWrittenSlots(t.original, t.modified), signatures, owners),
+    );
+  }
+  if (findings.length > 0) throw new Error(formatBooleanSlotFailure(findings));
 }
 
 /**
@@ -814,6 +893,9 @@ function computeRecipe(
   // `validate-recipe`.
   if (recipe.files && Object.keys(recipe.files).length > 0) {
     n.section("files");
+    // Built after Steps 1-1b, so an objectType this recipe created is visible through io.
+    const owners = buildAceOwnerResolver(io, rootDir);
+    const touched: TouchedSheet[] = [];
     for (const [filePath, entry] of Object.entries(recipe.files)) {
       const fullPath = path.join(rootDir, filePath);
       if (isFileCreate(entry)) {
@@ -822,9 +904,13 @@ function computeRecipe(
         // checkCreateTargets refused any CREATE over an existing path before Step 1 (#249),
         // so every CREATE reaching here writes a file sync-project must register.
         createdNewFile = true;
-        assertEditorValid(filePath, sheet);
         // Brand-new sheet: original is empty (no pre-existing events).
-        assertCustomActionsValid(customAceIndex, filePath, { ...sheet, events: [] }, sheet);
+        const emptyOriginal: EventSheet = { ...sheet, events: [] };
+        // Normalize before the editor-load check, so a native boolean in a "true"/"false" choice is stored as C3 does.
+        normalizeWrittenComboBools(emptyOriginal, sheet, owners, n.log);
+        assertEditorValid(filePath, sheet);
+        assertCustomActionsValid(customAceIndex, filePath, emptyOriginal, sheet);
+        touched.push({ filePath, original: emptyOriginal, modified: sheet });
         io.writeText(fullPath, serializeSourceJson(sheet), { mkdir: true });
         n.fileCreated(filePath);
         if (preview) previewEntries.push({ filePath, kind: "create", eventCount: entry.events.length });
@@ -838,13 +924,18 @@ function computeRecipe(
         executeFileOpsWithHints(sidGen, filePath, original, clone, opsClone, {
           autoAdjust: recipe.autoAdjust,
         });
+        normalizeWrittenComboBools(original, clone, owners, n.log);
         assertEditorValid(filePath, clone);
         assertCustomActionsValid(customAceIndex, filePath, original, clone);
+        touched.push({ filePath, original, modified: clone });
         io.writeText(fullPath, serializeSourceJson(clone));
         n.fileModified(filePath);
         if (preview) previewEntries.push({ filePath, kind: "diff", diffs: diffScripts(filePath, original, clone) });
       }
     }
+    // After the loop, so the callee index holds the definitions of every sheet this recipe computed, whatever the
+    // order of the recipe keys. Nothing has reached disk yet: the journal replays after compute returns.
+    if (touched.length > 0) assertBooleanSlotsValid(rootDir, touched, owners);
     n.sectionEnd();
   }
 
