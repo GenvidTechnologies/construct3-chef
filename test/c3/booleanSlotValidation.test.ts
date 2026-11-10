@@ -8,12 +8,14 @@ import type { Recipe } from "../../src/c3/recipeInterpreter.js";
 import { OpDefinitionSchema, substituteOp } from "../../src/c3/opTemplate.js";
 import {
   __getHandler,
+  __getExtractedDirty,
   __setExtractedDirty,
   __setProjectRoot,
   __setTestWatcher,
   __resetTestState,
 } from "../../src/mcp/server.js";
 import type { SidGenerator } from "../../src/c3/sidUtils.js";
+import { runCli } from "../helpers/runCli.js";
 
 // Integration tests for the boolean-slot chokepoint in applyRecipeInner (#371): a value written into a
 // boolean or "true"/"false" choice slot is refused, a native boolean in a choice slot is normalized, and
@@ -43,6 +45,8 @@ interface ProjectOpts {
   sheets?: Record<string, unknown>;
   /** Extra objectTypes/<name>.json files, on top of the defaults. */
   objectTypes?: Record<string, unknown>;
+  /** families/<name>.json files. */
+  families?: Record<string, unknown>;
 }
 
 const DEFAULT_OBJECT_TYPES: Record<string, unknown> = {
@@ -68,6 +72,12 @@ function makeProject(opts: ProjectOpts = {}): string {
   }
   for (const [name, json] of Object.entries({ ...DEFAULT_OBJECT_TYPES, ...(opts.objectTypes ?? {}) })) {
     writeFileSync(path.join(dir, "objectTypes", `${name}.json`), JSON.stringify(json, null, "\t") + "\n");
+  }
+  if (opts.families && Object.keys(opts.families).length > 0) {
+    mkdirSync(path.join(dir, "families"), { recursive: true });
+    for (const [name, json] of Object.entries(opts.families)) {
+      writeFileSync(path.join(dir, "families", `${name}.json`), JSON.stringify(json, null, "\t") + "\n");
+    }
   }
   return dir;
 }
@@ -705,6 +715,244 @@ describe("boolean-slot validation in applyRecipeInner (#371)", () => {
       const message = refusalOf(() => dry(dir, insertInto(TARGET, [callAction("Unlock", ["isBulk"])])));
       assert.include(message, "Editor-validation failed");
       assert.notInclude(message, HEADER);
+    });
+  });
+
+  // ─── R7: built-in boolean params by owner ───
+
+  describe("built-in boolean params are refused by owner", () => {
+    const EXPR = "someFlag";
+    const insertCondition = (condition: unknown) => ({
+      files: {
+        [TARGET]: [{ op: "insert-event", after: `sid:${BLOCK}`, block: { conditions: [condition], actions: [] } }],
+      },
+    });
+
+    it("I371-R7: a plugin action (System create-object create-hierarchy) is refused", () => {
+      const dir = makeProject({ sheets: { Target: targetSheet() } });
+      const action = {
+        id: "create-object",
+        object: "System",
+        params: { "object-to-create": "Hero", layer: "0", x: "0", y: "0", "create-hierarchy": EXPR },
+      };
+      const message = refusalOf(() => dry(dir, insertInto(TARGET, [action])));
+      assertRefusedBoolean(message, 'action "create-object" parameter "create-hierarchy"');
+    });
+
+    it("I371-R7: a plugin condition (System pick-by-highest-lowest-value pick-all-tied) is refused", () => {
+      const dir = makeProject({ sheets: { Target: targetSheet() } });
+      const condition = {
+        id: "pick-by-highest-lowest-value",
+        object: "System",
+        params: { object: "Hero", which: "highest", expression: "Hero.X", "pick-all-tied": EXPR },
+      };
+      const message = refusalOf(() => dry(dir, insertCondition(condition)));
+      assertRefusedBoolean(message, 'condition "pick-by-highest-lowest-value" parameter "pick-all-tied"');
+    });
+
+    it('I371-R7: a behavior action is refused when the behavior instance name differs from behaviorId "Bullet"', () => {
+      const dir = makeProject({
+        sheets: { Target: targetSheet() },
+        objectTypes: {
+          Shooter: {
+            name: "Shooter",
+            "plugin-id": "Sprite",
+            behaviorTypes: [{ behaviorId: "Bullet", name: "MyBullet", sid: 222 }],
+            instanceVariables: [],
+          },
+        },
+      });
+      const action = {
+        id: "set-bounce-off-solids",
+        object: "Shooter",
+        behavior: "MyBullet",
+        params: { state: EXPR },
+      };
+      const message = refusalOf(() => dry(dir, insertInto(TARGET, [action])));
+      assertRefusedBoolean(message, 'action "set-bounce-off-solids" parameter "state"');
+    });
+
+    it("I371-R7: a common action (add-child transform-x on a Sprite) is refused", () => {
+      const dir = makeProject({ sheets: { Target: targetSheet() } });
+      const action = { id: "add-child", object: "Hero", params: { child: "Hero", "transform-x": EXPR } };
+      const message = refusalOf(() => dry(dir, insertInto(TARGET, [action])));
+      assertRefusedBoolean(message, 'action "add-child" parameter "transform-x"');
+    });
+
+    it("I371-R7: a common condition (pick-highestlowest pick-all-tied on a Sprite) is refused", () => {
+      const dir = makeProject({ sheets: { Target: targetSheet() } });
+      const condition = {
+        id: "pick-highestlowest",
+        object: "Hero",
+        params: { which: "highest", expression: "Hero.X", "pick-all-tied": EXPR },
+      };
+      const message = refusalOf(() => dry(dir, insertCondition(condition)));
+      assertRefusedBoolean(message, 'condition "pick-highestlowest" parameter "pick-all-tied"');
+    });
+
+    it("I371-R7: a family objectClass is resolved through families/*.json plugin-id", () => {
+      const dir = makeProject({
+        sheets: { Target: targetSheet() },
+        families: { Group: { name: "Group", "plugin-id": "Sprite", members: ["Hero"] } },
+      });
+      const action = { id: "add-child", object: "Group", params: { child: "Hero", "transform-x": EXPR } };
+      const message = refusalOf(() => dry(dir, insertInto(TARGET, [action])));
+      assertRefusedBoolean(message, 'action "add-child" parameter "transform-x"');
+    });
+
+    it("I371-R7: an object type created by the same recipe's objectTypes step is resolved", () => {
+      const dir = makeProject({ sheets: { Target: targetSheet() } });
+      const recipe = {
+        objectTypes: [{ name: "FreshCfg", plugin: "Json" }],
+        ...insertInto(TARGET, [{ id: "set-boolean", object: "FreshCfg", params: { path: '"a"', value: EXPR } }]),
+      };
+      const message = refusalOf(() => dry(dir, recipe));
+      assertRefusedBoolean(message, 'action "set-boolean" parameter "value"');
+    });
+  });
+
+  // ─── R8: custom-action boolean arguments ───
+
+  describe("custom-action boolean arguments", () => {
+    function customAceBlock(objectClass: string, aceName: string, params: { name: string; type: "boolean" }[]) {
+      return {
+        eventType: "custom-ace-block",
+        aceType: "action",
+        aceName,
+        objectClass,
+        functionDescription: "",
+        functionCategory: "",
+        functionReturnType: "none",
+        functionCopyPicked: false,
+        functionIsAsync: false,
+        functionParameters: params.map((p) => ({
+          name: p.name,
+          type: p.type,
+          initialValue: "false",
+          comment: "",
+          sid: nextSid(),
+        })),
+        conditions: [],
+        actions: [],
+        sid: nextSid(),
+      };
+    }
+    const withBoost = () =>
+      makeProject({
+        sheets: {
+          Target: targetSheet(),
+          Defs: sheet("Defs", [customAceBlock("Hero", "Boost", [{ name: "on", type: "boolean" }])]),
+        },
+      });
+    const boost = (value: unknown, extra: Record<string, unknown> = {}) => ({
+      "custom-action": "Boost",
+      object: "Hero",
+      params: [value],
+      ...extra,
+    });
+
+    it("I371-R8: an expression in a custom action's boolean argument is refused", () => {
+      const message = refusalOf(() => dry(withBoost(), insertInto(TARGET, [boost("isOn")])));
+      assertRefusedBoolean(message, 'custom action "Boost" parameter 1 "on"');
+    });
+
+    it("I371-R8: a native false in a custom action's boolean argument passes (accept control)", () => {
+      assert.doesNotThrow(() => dry(withBoost(), insertInto(TARGET, [boost(false)])));
+    });
+
+    it("I371-R8: an expression in a family-provided custom action's boolean argument is refused", () => {
+      const dir = makeProject({
+        sheets: {
+          Target: targetSheet(),
+          Defs: sheet("Defs", [customAceBlock("Group", "Boost", [{ name: "on", type: "boolean" }])]),
+        },
+        families: { Group: { name: "Group", members: ["Hero"] } },
+      });
+      const message = refusalOf(() => dry(dir, insertInto(TARGET, [boost("isOn", { family: "Group" })])));
+      assertRefusedBoolean(message, 'custom action "Boost" parameter 1 "on"');
+    });
+  });
+
+  // ─── R10: the CLI and the MCP tool print the same findings ───
+
+  describe("CLI and MCP print the same findings", () => {
+    afterEach(() => {
+      __resetTestState();
+    });
+
+    it("I371-R10: CLI apply-recipe --dry-run and MCP validate-recipe give identical finding lines", async function () {
+      this.timeout(60000);
+      const dir = makeProject({ sheets: { Target: targetSheet(), Defs: defsSheet() } });
+      mkdirSync(path.join(dir, "extracted"), { recursive: true });
+      writeFileSync(path.join(dir, "extracted", "sid-registry.txt"), "");
+      const recipe = insertInto(TARGET, [callAction("Unlock", ["isBulk"]), eventVarAction("isBulk")]);
+      const recipeDir = mkdtempSync(path.join(os.tmpdir(), "c3-boolean-slot-recipe-"));
+      tmpDirs.push(recipeDir);
+      const recipeFile = path.join(recipeDir, "recipe.json");
+      writeFileSync(recipeFile, JSON.stringify(recipe));
+
+      const cli = runCli(["apply-recipe", recipeFile, "--project-dir", dir, "--dry-run"]);
+      assert.strictEqual(cli.exitCode, 1, cli.stderr);
+
+      const watcher = { txId: 5, bump() {}, suppress: async <T>(fn: () => Promise<T>) => fn(), expect() {} };
+      __setProjectRoot(dir);
+      __setTestWatcher(watcher as any);
+      __setExtractedDirty(true);
+      const result = (await __getHandler("validate-recipe")!({ recipe: JSON.stringify(recipe) }, {
+        signal: new AbortController().signal,
+      } as any)) as any;
+      assert.isTrue(result.isError, JSON.stringify(result));
+      const mcpText = result.content.map((b: any) => b.text).join("\n");
+
+      // Each run mints its own SID for the newly inserted actions. Masking `sid <n>` to `sid <SID>` in both
+      // outputs is the only difference allowed; the lines are otherwise compared byte for byte.
+      const mask = (line: string): string => line.replace(/sid \d+/g, "sid <SID>");
+      const cliLines = findingLines(cli.stderr).map(mask);
+      assert.lengthOf(cliLines, 2, cli.stderr);
+      assert.deepEqual(findingLines(mcpText).map(mask), cliLines);
+    });
+  });
+
+  // ─── R11: a refused MCP apply changes no state ───
+
+  describe("a refused MCP apply-recipe changes no state", () => {
+    afterEach(() => {
+      __resetTestState();
+    });
+
+    it("I371-R11: apply-recipe refused by the boolean-slot check leaves txId and extractedDirty unchanged", async () => {
+      const dir = makeProject({ sheets: { Target: targetSheet(), Defs: defsSheet() } });
+      mkdirSync(path.join(dir, "extracted"), { recursive: true });
+      writeFileSync(path.join(dir, "extracted", "sid-registry.txt"), "");
+      let bumps = 0;
+      const watcher = {
+        txId: 5,
+        bump() {
+          this.txId++;
+          bumps++;
+        },
+        suppress: async <T>(fn: () => Promise<T>) => fn(),
+        expect() {},
+      };
+      __setProjectRoot(dir);
+      __setTestWatcher(watcher as any);
+      __setExtractedDirty(false);
+      const before = snapshot(dir);
+
+      const result = (await __getHandler("apply-recipe")!(
+        {
+          recipe: JSON.stringify(insertInto(TARGET, [callAction("Unlock", ["isBulk"])])),
+          txId: "default:5",
+          regenerate: false,
+        },
+        { signal: new AbortController().signal } as any,
+      )) as any;
+
+      const text = result.content.map((b: any) => b.text).join("\n");
+      assert.isTrue(result.isError, text);
+      assert.include(text, HEADER);
+      assert.deepEqual({ bumped: bumps !== 0, dirty: __getExtractedDirty() }, { bumped: false, dirty: false });
+      assert.deepEqual(snapshot(dir), before);
     });
   });
 });
