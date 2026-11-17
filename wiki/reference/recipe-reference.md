@@ -249,7 +249,7 @@ Inserts multiple variables starting after position `after` in the container at `
 
 ### insert-actions
 
-Inserts multiple actions after position `after`. Supports `path`/`paths`.
+Inserts multiple actions after position `after`. Supports `path`/`paths`. The first new action lands at index `after + 1`, so `"after": -1` inserts at the start of the block's `actions`, in an empty block or a non-empty one. This differs from `insert-event`, where `"index": -1` (the default) appends.
 
 ```json
 {
@@ -269,7 +269,7 @@ Use `paths` to apply the same actions at multiple locations in one operation:
   "after": -1,
   "actions": [
     { "call": "RefreshData" },
-    { "id": "wait-for-previous-actions", "object": "System", "params": {} }
+    { "id": "wait-for-previous-actions", "object": "System" }
   ]
 }
 ```
@@ -284,6 +284,17 @@ Inserts multiple conditions after position `after`. Supports `path`/`paths`.
   "path": "events[5]",
   "after": 0,
   "conditions": [ { "id": "compare-two-values", "object": "System", "params": { ... } } ]
+}
+```
+
+As with `insert-actions`, the first new condition lands at index `after + 1`, so `"after": -1` inserts it first in the block's `conditions`, ahead of any condition already there. `insert-event`'s `"index": -1` appends instead.
+
+```json
+{
+  "op": "insert-conditions",
+  "in": "sid:100234567890123",
+  "after": -1,
+  "conditions": [ { "id": "is-visible", "object": "Sprite", "inverted": true } ]
 }
 ```
 
@@ -716,7 +727,15 @@ Each workflow is also exposed as a standalone MCP tool with matching parameters,
 
 > **Looking up ACE ids and param names:** use `search-docs` — e.g. `npx construct3-chef search-docs --object Sprite --query position` or `npx construct3-chef search-docs --id set-position`. Custom-addon ACEs are always covered; built-in ACEs require the gvt-construct3 `build-reference` cache. See [CLI Reference — search-docs](./cli.md#search-docs).
 
-**Param values**: the `id` shorthand writes a native boolean as a native JSON boolean and every other value as a string (`0` → `"0"`, an expression such as `'"L"'` unchanged), matching what C3 stores ([#285](https://github.com/GenvidTechnologies/construct3-chef/issues/285), ADR [`0052`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0052-id-shorthand-keeps-boolean-params-native-and-casts.md)). The exception is a boolean written into a `"true"`/`"false"` choice param (the `value` of `set-boolean-eventvar` and `set-boolean-instvar`, for example): the applier stores it as the string `"true"` or `"false"` and narrates the change (gotcha #40). `validateRecipe` still rejects the string form (`"true"`) for a param that requires a boolean. The `call` shorthand follows the same rule for its positional params: booleans stay native, every other value becomes a string (`[0, "hello", true]` → `["0", "hello", true]`, [#322](https://github.com/GenvidTechnologies/construct3-chef/issues/322)). An empty `params: []` on `call` or `custom-action` writes no `parameters` key, as the editor does for a zero-argument call ([#317](https://github.com/GenvidTechnologies/construct3-chef/issues/317)).
+**Param values**: the `id` shorthand writes a native boolean as a native JSON boolean and every other value as a string (`0` → `"0"`, an expression such as `'"L"'` unchanged), matching what C3 stores ([#285](https://github.com/GenvidTechnologies/construct3-chef/issues/285), ADR [`0052`](https://github.com/GenvidTechnologies/construct3-chef/blob/main/wiki/decisions/0052-id-shorthand-keeps-boolean-params-native-and-casts.md)). The exception is a boolean written into a `"true"`/`"false"` choice param (the `value` of `set-boolean-eventvar` and `set-boolean-instvar`, for example): the applier stores it as the string `"true"` or `"false"` and narrates the change (gotcha #40). `validateRecipe` still rejects the string form (`"true"`) for a param that requires a boolean. The `call` shorthand follows the same rule for its positional params: booleans stay native, every other value becomes a string (`[0, "hello", true]` → `["0", "hello", true]`, [#322](https://github.com/GenvidTechnologies/construct3-chef/issues/322)). An empty `params: []` on `call` or `custom-action` writes no `parameters` key, as the editor does for a zero-argument call ([#317](https://github.com/GenvidTechnologies/construct3-chef/issues/317)). An empty `params: {}` on an `id` action or an `id` condition writes no `parameters` key either, as the editor does for a parameterless action or condition such as `destroy`; omitting `params` gives the same result ([#364](https://github.com/GenvidTechnologies/construct3-chef/issues/364)).
+
+**`behavior` (behaviour actions)**: an action that a behaviour provides names the object in `object` and the behaviour in `behavior`. The builder writes `behaviorType`, and the DSL renders it as `Object[Behavior].id(...)`:
+
+```json
+{ "id": "stop", "object": "Parasite", "behavior": "MoveTo" }
+```
+
+This writes `{ "id": "stop", "objectClass": "Parasite", "sid": …, "behaviorType": "MoveTo" }` and renders as `Parasite[MoveTo].stop()`.
 
 **`object` / `objectClass`**: `object` names the target object class. `objectClass` (the field name used in the on-disk eventSheet JSON) is accepted as an alias. A genuinely-unknown key (e.g. a typo like `objclass`) is rejected at validate time.
 
@@ -729,12 +748,18 @@ Each workflow is also exposed as a standalone MCP tool with matching parameters,
 ```json
 { "else": true }
 { "trigger-once": true }
-{ "id": "cond-id", "object": "ObjectClass", "params": { "key": "value" }, "inverted": true }
+{ "id": "cond-id", "object": "ObjectClass", "params": { "key": "value" }, "inverted": true, "behavior": "BehaviorType" }
 { "id": "compare-boolean-eventvar", "object": "System", "params": { "variable": "myBoolVar" } }
 { "id": "is-boolean-instance-variable-set", "object": "ObjectClass", "params": { "instance-variable": "varName" } }
 ```
 
 **`object` / `objectClass`**: as with actions, `objectClass` is accepted as an alias for `object`, unknown keys are rejected, and an `id` condition with no `object`/`objectClass` is rejected at validate time. (`else` / `trigger-once` are System conditions and need no `object`.)
+
+**`inverted`**: `true` writes `isInverted: true`, and the DSL renders the condition as `NOT …`.
+
+**`behavior`**: a condition that a behaviour provides names the behaviour in `behavior`, and the builder writes `behaviorType`, as for actions. The DSL does not show the behaviour for a condition: it renders as `Object.id(...)`.
+
+**`params`**: an empty `params: {}` writes no `parameters` key, the same as omitting `params` (see **Param values** under [Actions](#actions)).
 
 **Comparison operator values** for `compare-two-values`:
 

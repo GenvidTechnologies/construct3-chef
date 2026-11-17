@@ -250,6 +250,11 @@ describe("eventSheetMutator", () => {
       assert.equal(action.behaviorType, "Timer");
       assert.notEqual(action.sid, 0);
     });
+
+    it("I364-R1: an empty parameters object is omitted, as the editor omits it for a parameterless action", () => {
+      const action = buildAction(sidGen, { id: "destroy", objectClass: "Enemy", parameters: {} });
+      assert.notProperty(action, "parameters");
+    });
   });
 
   describe("buildCallAction", () => {
@@ -626,6 +631,11 @@ describe("eventSheetMutator", () => {
         parameters: { first: "1", second: "2", comparison: 0 },
       });
       assert.deepStrictEqual(c.parameters, { first: "1", second: "2", comparison: 0 });
+    });
+
+    it("I364-R2: an empty parameters object is omitted, as the editor omits it for a parameterless condition", () => {
+      const c = buildCondition(sidGen, { id: "is-visible", objectClass: "Sprite", parameters: {} });
+      assert.notProperty(c, "parameters");
     });
 
     it("builds inverted condition", () => {

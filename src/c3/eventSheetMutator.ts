@@ -436,7 +436,8 @@ export function buildAction(
     objectClass: opts.objectClass,
     sid: sidGen(),
   };
-  if (opts.parameters) {
+  // The editor omits the key on a parameterless action, so an empty object writes none (#364; #317 for arrays).
+  if (opts.parameters && Object.keys(opts.parameters).length > 0) {
     action.parameters = opts.parameters;
   }
   if (opts.behaviorType) {
@@ -542,7 +543,8 @@ export function buildCondition(
     objectClass: opts.objectClass,
     sid: sidGen(),
   };
-  if (opts.parameters) {
+  // The editor omits the key on a parameterless condition, so an empty object writes none (#364).
+  if (opts.parameters && Object.keys(opts.parameters).length > 0) {
     condition.parameters = opts.parameters;
   }
   if (opts.isInverted) {

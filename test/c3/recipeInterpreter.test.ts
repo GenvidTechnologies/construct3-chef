@@ -130,6 +130,16 @@ describe("recipeInterpreter", () => {
       assert.deepStrictEqual((a as { parameters?: unknown[] }).parameters, ["1"]);
     });
 
+    it("I364-R1: a plain action with empty params omits the parameters key, as the editor omits it", () => {
+      const a = expandAction(sidGen, { id: "destroy", object: "Enemy", params: {} });
+      assert.notProperty(a, "parameters");
+    });
+
+    it("I364-R1: a plain action with non-empty params still emits them (negative control)", () => {
+      const a = expandAction(sidGen, { id: "set-text", object: "Text", params: { text: '"hi"' } });
+      assert.deepStrictEqual((a as StandardAction).parameters, { text: '"hi"' });
+    });
+
     it("expands call shorthand without params", () => {
       const result = expandAction(sidGen, { call: "doStuff" });
       const call = result as FunctionCallAction;
@@ -350,6 +360,16 @@ describe("recipeInterpreter", () => {
     it("expands inverted condition", () => {
       const result = expandCondition(sidGen, { id: "is-visible", object: "Sprite", inverted: true });
       assert.equal(result.isInverted, true);
+    });
+
+    it("I364-R2: a condition with empty params omits the parameters key, as the editor omits it", () => {
+      const c = expandCondition(sidGen, { id: "is-visible", object: "Sprite", params: {} });
+      assert.notProperty(c, "parameters");
+    });
+
+    it("I364-R2: a condition with non-empty params still emits them (negative control)", () => {
+      const c = expandCondition(sidGen, { id: "compare-two-values", object: "System", params: { first: "1" } });
+      assert.deepStrictEqual(c.parameters, { first: "1" });
     });
 
     it("accepts objectClass as an alias for object", () => {
@@ -682,6 +702,24 @@ describe("recipeInterpreter", () => {
       });
       assert.equal(block1.conditions.length, 1);
       assert.equal(block2.conditions.length, 1);
+    });
+
+    it("I364-R3: after -1 inserts first in a non-empty block, and empty params write no key", () => {
+      const block = makeBlock({ conditions: [makeCondition("existing")] });
+      const sheet = makeSheet(block);
+      executeOp(sidGen, sheet, {
+        op: "insert-conditions",
+        path: "events[0]",
+        after: -1,
+        conditions: [{ id: "is-visible", object: "Sprite", params: {}, inverted: true }],
+      });
+      assert.deepStrictEqual(
+        block.conditions.map((c) => ({ id: c.id, hasParams: "parameters" in c })),
+        [
+          { id: "is-visible", hasParams: false },
+          { id: "existing", hasParams: false },
+        ],
+      );
     });
   });
 
