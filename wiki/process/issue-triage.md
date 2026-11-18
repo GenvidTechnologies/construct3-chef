@@ -243,7 +243,7 @@ read the published `dist`, not the issue title.
 ## Mutation recipes
 
 The exact commands the triage skill runs to apply **approved** changes. `{id}`,
-`{type}`, `{p}`, `{a}`, `{text}`, `{canonical}`, `{other}`, `{title}`, `{body}`,
+`{type}`, `{p}`, `{a}`, `{text}`, `{canonical}`, `{other}`, `{title}`,
 `{tmpfile}`, `{triagedLabel}`, `{needsInfoLabel}`, `{otherTypes}`,
 `{otherPriorities}`, and `{closeReason}` are substituted by the skill.
 
@@ -266,6 +266,6 @@ removes the overlap as a candidate. Fold an issue's label changes into one
 - Mark duplicate: `gh issue edit {id} --add-label duplicate` then `gh issue comment {id} --body "Duplicate of #{canonical}"`
 - Close duplicate (only with approval): `gh issue close {id} --reason "not planned" --comment "Duplicate of #{canonical}"`
 - Close as completed or not planned (only with approval): `gh issue close {id} --reason "{closeReason}"` — post the reason first through the Comment recipe; `{closeReason}` is `completed` or `not planned`
-- Create split issue: `gh issue create --title "{title}" --body "{body}" --label "{type},area:{a}"`
+- Create split issue: `gh issue create --title "{title}" --body-file {tmpfile} --label "{type},priority/{p},area:{a}"` — the skill writes the drafted body to `{tmpfile}` first, so backticks in the body reach the tracker unchanged; the new issue gets one `priority/*` label like any other
 - Link dependency: `gh issue comment {id} --body "Blocked by #{other}"`
 - Stamp triaged: `gh issue edit {id} --add-label {triagedLabel}`
