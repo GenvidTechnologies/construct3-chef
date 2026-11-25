@@ -92,6 +92,16 @@ code settles, at which release, and what stays untraced (UI behaviour, what a
 save writes). #260 waited a month on two such checks; both were settled from
 the r495-2 bundle (ADR [0067](../decisions/0067-scaffold-and-objecttype-names-follow-c3s-name-rules.md)).
 
+**This repository is public, so an issue names nothing private.** An issue
+filed from the work or the retro of a private project names no private
+repository, no file path in it, and no type, object or layout name of that
+project. Describe the case in neutral terms ("a consuming game project",
+`Boss`, `Beam`) and keep the technical facts: the JSON keys, the values, the
+behaviour seen. When an issue arrives with private names, propose a body
+rewrite that replaces them, and check every triage draft for them before the
+write. #407 arrived naming a private repository, two of its issue numbers, a
+layout path and its game's type names; the triage rewrite replaced them.
+
 ## What `triaged` does and does not assert
 
 `triaged` means the fields above are present and the issue has been deduplicated,
